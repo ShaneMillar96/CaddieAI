@@ -49,6 +49,28 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.PlayingStyle)
             .HasColumnType("jsonb");
 
+        // Authentication fields
+        builder.Property(u => u.EmailVerified)
+            .IsRequired()
+            .HasDefaultValue(false);
+
+        builder.Property(u => u.EmailVerificationToken)
+            .HasMaxLength(255);
+
+        builder.Property(u => u.PasswordResetToken)
+            .HasMaxLength(255);
+
+        builder.Property(u => u.FailedLoginAttempts)
+            .IsRequired()
+            .HasDefaultValue(0);
+
+        builder.Property(u => u.TwoFactorEnabled)
+            .IsRequired()
+            .HasDefaultValue(false);
+
+        builder.Property(u => u.TwoFactorSecret)
+            .HasMaxLength(255);
+
         // Indexes
         builder.HasIndex(u => u.Status)
             .HasDatabaseName("idx_users_status");
@@ -66,6 +88,25 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.HasIndex(u => u.PlayingStyle)
             .HasDatabaseName("idx_users_playing_style")
             .HasMethod("GIN");
+
+        // Authentication indexes
+        builder.HasIndex(u => u.EmailVerified)
+            .HasDatabaseName("idx_users_email_verified");
+
+        builder.HasIndex(u => u.EmailVerificationToken)
+            .HasDatabaseName("idx_users_email_verification_token");
+
+        builder.HasIndex(u => u.PasswordResetToken)
+            .HasDatabaseName("idx_users_password_reset_token");
+
+        builder.HasIndex(u => u.FailedLoginAttempts)
+            .HasDatabaseName("idx_users_failed_login_attempts");
+
+        builder.HasIndex(u => u.LockedUntil)
+            .HasDatabaseName("idx_users_locked_until");
+
+        builder.HasIndex(u => u.TwoFactorEnabled)
+            .HasDatabaseName("idx_users_two_factor_enabled");
 
         // Relationships
         builder.HasMany(u => u.Rounds)
@@ -91,6 +132,21 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.HasMany(u => u.Locations)
             .WithOne(l => l.User)
             .HasForeignKey(l => l.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(u => u.RefreshTokens)
+            .WithOne(rt => rt.User)
+            .HasForeignKey(rt => rt.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(u => u.UserSessions)
+            .WithOne(us => us.User)
+            .HasForeignKey(us => us.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(u => u.PasswordResetTokens)
+            .WithOne(prt => prt.User)
+            .HasForeignKey(prt => prt.UserId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

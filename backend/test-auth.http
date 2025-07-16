@@ -1,0 +1,74 @@
+### Test Authentication Endpoints
+
+# Variables
+@baseUrl = http://localhost:5000
+@email = test@example.com
+@password = TestPassword123!
+
+### Health Check
+GET {{baseUrl}}/health
+
+### Register a new user
+POST {{baseUrl}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "confirmPassword": "{{password}}",
+  "firstName": "Test",
+  "lastName": "User",
+  "handicap": 15.5,
+  "skillLevel": "Intermediate"
+}
+
+### Login with the registered user
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "{{password}}",
+  "rememberMe": true
+}
+
+### Test token refresh (replace with actual refresh token from login response)
+POST {{baseUrl}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "your-refresh-token-here"
+}
+
+### Get user profile (requires Bearer token)
+GET {{baseUrl}}/api/user/profile
+Authorization: Bearer your-access-token-here
+
+### Check email availability
+GET {{baseUrl}}/api/auth/check-email?email={{email}}
+
+### Forgot password
+POST {{baseUrl}}/api/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "{{email}}"
+}
+
+### Logout (replace with actual refresh token)
+POST {{baseUrl}}/api/auth/logout
+Content-Type: application/json
+
+{
+  "refreshToken": "your-refresh-token-here"
+}
+
+### Test invalid login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "password": "WrongPassword123!",
+  "rememberMe": false
+}
