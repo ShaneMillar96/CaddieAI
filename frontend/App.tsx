@@ -1,17 +1,15 @@
 import React from 'react';
-import {NavigationContainer} from '@react-navigation/native';
-import {Provider} from 'react-redux';
-import {PersistGate} from 'redux-persist/integration/react';
-import {store, persistor} from './src/store';
+import { Provider } from 'react-redux';
+import { PersistGate } from 'redux-persist/integration/react';
+import { store, persistor } from './src/store';
 import AppNavigator from './src/navigation/AppNavigator';
+import { LoadingSpinner } from './src/components/auth';
 
 const App: React.FC = () => {
   return (
     <Provider store={store}>
-      <PersistGate loading={null} persistor={persistor}>
-        <NavigationContainer>
-          <AppNavigator />
-        </NavigationContainer>
+      <PersistGate loading={<LoadingSpinner message="Loading..." />} persistor={persistor}>
+        <AppNavigator />
       </PersistGate>
     </Provider>
   );
