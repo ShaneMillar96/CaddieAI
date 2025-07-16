@@ -1,0 +1,57 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{21D44CE0-57C5-4144-A84D-B0EAB93F52CC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "caddie.portal.api", "src\caddie.portal.api\caddie.portal.api.csproj", "{61C512A0-4A76-48D2-974D-AB6FDEA834CE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "caddie.portal.services", "src\caddie.portal.services\caddie.portal.services.csproj", "{E7AAA4AC-11D5-4D89-81C6-403A669920AC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "caddie.portal.dal", "src\caddie.portal.dal\caddie.portal.dal.csproj", "{332AFA00-3598-46AF-8131-FD47CB67BC06}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{3E2B170B-FEB8-4EF8-8257-31EC36F6BEEB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "caddie.portal.api.tests", "test\caddie.portal.api.tests\caddie.portal.api.tests.csproj", "{73F5C298-C143-4A96-9B87-8A26F8DFF30F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "caddie.portal.services.tests", "test\caddie.portal.services.tests\caddie.portal.services.tests.csproj", "{8ABAC5EE-4070-4E77-8EF5-ED305556B975}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{61C512A0-4A76-48D2-974D-AB6FDEA834CE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{61C512A0-4A76-48D2-974D-AB6FDEA834CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{61C512A0-4A76-48D2-974D-AB6FDEA834CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{61C512A0-4A76-48D2-974D-AB6FDEA834CE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E7AAA4AC-11D5-4D89-81C6-403A669920AC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E7AAA4AC-11D5-4D89-81C6-403A669920AC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E7AAA4AC-11D5-4D89-81C6-403A669920AC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E7AAA4AC-11D5-4D89-81C6-403A669920AC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{332AFA00-3598-46AF-8131-FD47CB67BC06}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{332AFA00-3598-46AF-8131-FD47CB67BC06}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{332AFA00-3598-46AF-8131-FD47CB67BC06}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{332AFA00-3598-46AF-8131-FD47CB67BC06}.Release|Any CPU.Build.0 = Release|Any CPU
+		{73F5C298-C143-4A96-9B87-8A26F8DFF30F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{73F5C298-C143-4A96-9B87-8A26F8DFF30F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{73F5C298-C143-4A96-9B87-8A26F8DFF30F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{73F5C298-C143-4A96-9B87-8A26F8DFF30F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8ABAC5EE-4070-4E77-8EF5-ED305556B975}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8ABAC5EE-4070-4E77-8EF5-ED305556B975}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8ABAC5EE-4070-4E77-8EF5-ED305556B975}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8ABAC5EE-4070-4E77-8EF5-ED305556B975}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{61C512A0-4A76-48D2-974D-AB6FDEA834CE} = {21D44CE0-57C5-4144-A84D-B0EAB93F52CC}
+		{E7AAA4AC-11D5-4D89-81C6-403A669920AC} = {21D44CE0-57C5-4144-A84D-B0EAB93F52CC}
+		{332AFA00-3598-46AF-8131-FD47CB67BC06} = {21D44CE0-57C5-4144-A84D-B0EAB93F52CC}
+		{73F5C298-C143-4A96-9B87-8A26F8DFF30F} = {3E2B170B-FEB8-4EF8-8257-31EC36F6BEEB}
+		{8ABAC5EE-4070-4E77-8EF5-ED305556B975} = {3E2B170B-FEB8-4EF8-8257-31EC36F6BEEB}
+	EndGlobalSection
+EndGlobal
