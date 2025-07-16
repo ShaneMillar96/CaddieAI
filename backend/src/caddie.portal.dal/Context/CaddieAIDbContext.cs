@@ -18,6 +18,9 @@ public class CaddieAIDbContext : DbContext
 
     // DbSets for all entities
     public DbSet<User> Users { get; set; } = null!;
+    public DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
+    public DbSet<UserSession> UserSessions { get; set; } = null!;
+    public DbSet<PasswordResetToken> PasswordResetTokens { get; set; } = null!;
     public DbSet<Course> Courses { get; set; } = null!;
     public DbSet<Hole> Holes { get; set; } = null!;
     public DbSet<Round> Rounds { get; set; } = null!;
@@ -39,6 +42,9 @@ public class CaddieAIDbContext : DbContext
 
         // Apply entity configurations
         modelBuilder.ApplyConfiguration(new UserConfiguration());
+        modelBuilder.ApplyConfiguration(new RefreshTokenConfiguration());
+        modelBuilder.ApplyConfiguration(new UserSessionConfiguration());
+        modelBuilder.ApplyConfiguration(new PasswordResetTokenConfiguration());
         modelBuilder.ApplyConfiguration(new CourseConfiguration());
         modelBuilder.ApplyConfiguration(new HoleConfiguration());
         modelBuilder.ApplyConfiguration(new RoundConfiguration());
