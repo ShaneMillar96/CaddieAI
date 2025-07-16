@@ -1,0 +1,97 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with PostGIS for geospatial data
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: caddieai_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-caddieai_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-caddieai_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-caddieai_password}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-caddieai_user} -d ${POSTGRES_DB:-caddieai_dev}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - caddieai_network
+
+  # Flyway for database migrations
+  flyway:
+    image: flyway/flyway:10-alpine
+    container_name: caddieai_flyway
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-caddieai_dev}
+      FLYWAY_USER: ${POSTGRES_USER:-caddieai_user}
+      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-caddieai_password}
+      FLYWAY_SCHEMAS: public
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_BASELINE_ON_MIGRATE: true
+      FLYWAY_VALIDATE_ON_MIGRATE: true
+    volumes:
+      - ./backend/database/migrations:/flyway/sql
+      - ./docker/flyway/flyway.conf:/flyway/conf/flyway.conf
+    command: migrate
+    networks:
+      - caddieai_network
+
+  # pgAdmin for database management (optional)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: caddieai_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@caddieai.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "${PGADMIN_PORT:-8080}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - caddieai_network
+
+  # Redis for caching (future use)
+  redis:
+    image: redis:7-alpine
+    container_name: caddieai_redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - caddieai_network
+
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  caddieai_network:
+    driver: bridge

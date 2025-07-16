@@ -238,11 +238,12 @@ Assert.Equal(user.Name, result.Name);
 ## Development Workflow
 
 ### Local Development Setup
+
 1. **Prerequisites**:
    - .NET 9.0 SDK
    - Node.js 18+
    - Docker Desktop
-   - PostgreSQL client tools
+   - Git
 
 2. **Initial Setup**:
    ```bash
@@ -250,13 +251,16 @@ Assert.Equal(user.Name, result.Name);
    git clone https://github.com/ShaneMillar96/CaddieAI.git
    cd CaddieAI
    
-   # Start infrastructure
-   docker-compose up -d
+   # Start database infrastructure
+   docker-compose up -d postgres flyway
+   
+   # Verify database is running
+   docker-compose logs postgres
    
    # Setup backend
    cd backend
    dotnet restore
-   dotnet ef database update
+   dotnet build
    
    # Setup frontend
    cd ../frontend
@@ -265,6 +269,9 @@ Assert.Equal(user.Name, result.Name);
 
 3. **Development Commands**:
    ```bash
+   # Start all services (database, pgAdmin, Redis)
+   docker-compose up -d
+   
    # Backend development
    cd backend/src/caddie.portal.api && dotnet watch run
    
@@ -274,9 +281,71 @@ Assert.Equal(user.Name, result.Name);
    # Run tests
    cd backend && dotnet test
    cd frontend && npm test
+   
+   # Stop all services
+   docker-compose down
    ```
 
+### Docker Development Environment
+
+The project uses Docker Compose for local development infrastructure:
+
+#### Services:
+- **PostgreSQL 16 + PostGIS**: Main database on port 5432
+- **Flyway**: Automatic database migrations
+- **pgAdmin**: Database management UI on port 8080
+- **Redis**: Caching layer on port 6379
+
+#### Docker Commands:
+```bash
+# Start all services
+docker-compose up -d
+
+# View service logs
+docker-compose logs -f postgres
+docker-compose logs -f flyway
+
+# Connect to database
+docker-compose exec postgres psql -U caddieai_user -d caddieai_dev
+
+# Run migrations manually
+docker-compose run --rm flyway migrate
+
+# Stop services
+docker-compose down
+
+# Remove volumes (reset database)
+docker-compose down -v
+```
+
+#### Environment Configuration:
+- Copy `.env.example` to `.env` for custom configuration
+- Default database: `caddieai_dev`
+- Default user: `caddieai_user`
+- Default password: `caddieai_password`
+- pgAdmin: http://localhost:8080 (admin@caddieai.com / admin)
+
 ### Database Operations
+
+#### Using Docker (Recommended):
+```bash
+# Start database and run migrations
+docker-compose up -d postgres flyway
+
+# Run migrations manually
+docker-compose run --rm flyway migrate
+
+# Connect to database directly
+docker-compose exec postgres psql -U caddieai_user -d caddieai_dev
+
+# View migration status
+docker-compose run --rm flyway info
+
+# Reset database (removes all data)
+docker-compose down -v postgres && docker-compose up -d postgres flyway
+```
+
+#### Using Entity Framework (Alternative):
 ```bash
 # Create new migration
 dotnet ef migrations add {MigrationName}
@@ -286,6 +355,21 @@ dotnet ef database update
 
 # Reset database
 dotnet ef database drop && dotnet ef database update
+```
+
+#### Common Database Tasks:
+```bash
+# Backup database
+docker-compose exec postgres pg_dump -U caddieai_user caddieai_dev > backup.sql
+
+# Restore database
+docker-compose exec -T postgres psql -U caddieai_user caddieai_dev < backup.sql
+
+# Monitor database logs
+docker-compose logs -f postgres
+
+# Check database health
+docker-compose exec postgres pg_isready -U caddieai_user -d caddieai_dev
 ```
 
 ### Git Workflow
