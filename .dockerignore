@@ -1,0 +1,106 @@
+# CaddieAI Docker Ignore File
+# This file specifies which files and directories should be excluded from Docker build context
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+CHANGELOG.md
+*.md
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.production
+
+# Logs
+*.log
+logs/
+
+# Node.js (for frontend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn
+
+# .NET
+**/bin/
+**/obj/
+**/.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Build outputs
+dist/
+build/
+out/
+
+# Test results
+TestResults/
+coverage/
+*.trx
+*.coverage
+*.coveragexml
+
+# Temporary files
+tmp/
+temp/
+
+# Package files
+*.tgz
+*.tar.gz
+*.zip
+
+# Docker files themselves
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Certificate files
+*.pfx
+*.p12
+*.pem
+*.crt
+*.key
+
+# Secrets and sensitive data
+secrets/
+*.secret
+*.key
+appsettings.Production.json
+
+# Frontend specific
+.expo/
+.expo-shared/
+android/
+ios/
+web-build/
