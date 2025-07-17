@@ -191,6 +191,9 @@ if (app.Environment.IsDevelopment())
 
 Log.Information("CaddieAI API starting up");
 
+// Configure URLs explicitly (needed when running DLL directly)
+app.Urls.Add("http://localhost:5277");
+
 try
 {
     app.Run();

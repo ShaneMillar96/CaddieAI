@@ -11,10 +11,14 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.ToTable("users", t => t.HasCheckConstraint("CK_User_Handicap", "handicap >= -10 AND handicap <= 54"));
 
         builder.HasKey(u => u.Id);
+        
+        builder.Property(u => u.Id)
+            .HasColumnName("id");
 
         builder.Property(u => u.Email)
             .IsRequired()
-            .HasMaxLength(255);
+            .HasMaxLength(255)
+            .HasColumnName("email");
 
         builder.HasIndex(u => u.Email)
             .IsUnique()
@@ -22,54 +26,87 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.Property(u => u.PasswordHash)
             .IsRequired()
-            .HasMaxLength(255);
+            .HasMaxLength(255)
+            .HasColumnName("password_hash");
 
         builder.Property(u => u.FirstName)
             .IsRequired()
-            .HasMaxLength(100);
+            .HasMaxLength(100)
+            .HasColumnName("first_name");
 
         builder.Property(u => u.LastName)
             .IsRequired()
-            .HasMaxLength(100);
+            .HasMaxLength(100)
+            .HasColumnName("last_name");
 
         builder.Property(u => u.Handicap)
-            .HasColumnType("decimal(4,1)");
+            .HasColumnType("decimal(4,1)")
+            .HasColumnName("handicap");
 
         builder.Property(u => u.SkillLevel)
             .IsRequired()
-            .HasDefaultValue(SkillLevel.Beginner);
+            .HasDefaultValue(SkillLevel.Beginner)
+            .HasColumnName("skill_level");
 
         builder.Property(u => u.Status)
             .IsRequired()
-            .HasDefaultValue(UserStatus.Active);
+            .HasDefaultValue(UserStatus.Active)
+            .HasColumnName("status");
 
         builder.Property(u => u.Preferences)
-            .HasColumnType("jsonb");
+            .HasColumnType("jsonb")
+            .HasColumnName("preferences");
 
         builder.Property(u => u.PlayingStyle)
-            .HasColumnType("jsonb");
+            .HasColumnType("jsonb")
+            .HasColumnName("playing_style");
 
         // Authentication fields
         builder.Property(u => u.EmailVerified)
             .IsRequired()
-            .HasDefaultValue(false);
+            .HasDefaultValue(false)
+            .HasColumnName("email_verified");
 
         builder.Property(u => u.EmailVerificationToken)
-            .HasMaxLength(255);
+            .HasMaxLength(255)
+            .HasColumnName("email_verification_token");
+
+        builder.Property(u => u.EmailVerificationExpires)
+            .HasColumnName("email_verification_expires");
 
         builder.Property(u => u.PasswordResetToken)
-            .HasMaxLength(255);
+            .HasMaxLength(255)
+            .HasColumnName("password_reset_token");
+
+        builder.Property(u => u.PasswordResetExpires)
+            .HasColumnName("password_reset_expires");
 
         builder.Property(u => u.FailedLoginAttempts)
             .IsRequired()
-            .HasDefaultValue(0);
+            .HasDefaultValue(0)
+            .HasColumnName("failed_login_attempts");
+
+        builder.Property(u => u.LockedUntil)
+            .HasColumnName("locked_until");
 
         builder.Property(u => u.TwoFactorEnabled)
             .IsRequired()
-            .HasDefaultValue(false);
+            .HasDefaultValue(false)
+            .HasColumnName("two_factor_enabled");
 
         builder.Property(u => u.TwoFactorSecret)
-            .HasMaxLength(255);
+            .HasMaxLength(255)
+            .HasColumnName("two_factor_secret");
+
+        // Timestamp fields
+        builder.Property(u => u.CreatedAt)
+            .HasColumnName("created_at");
+
+        builder.Property(u => u.UpdatedAt)
+            .HasColumnName("updated_at");
+
+        builder.Property(u => u.LastLoginAt)
+            .HasColumnName("last_login_at");
 
         // Indexes
         builder.HasIndex(u => u.Status)
