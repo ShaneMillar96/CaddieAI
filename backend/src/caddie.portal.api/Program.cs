@@ -35,6 +35,8 @@ builder.Services.AddDbContext<CaddieAIDbContext>(options =>
     options.UseNpgsql(connectionString, npgsqlOptions =>
     {
         npgsqlOptions.UseNetTopologySuite();
+        npgsqlOptions.MapEnum<caddie.portal.dal.Models.Users.SkillLevel>();
+        npgsqlOptions.MapEnum<caddie.portal.dal.Models.Users.UserStatus>();
     });
 });
 
@@ -161,7 +163,7 @@ app.UseMiddleware<ErrorHandlingMiddleware>();
 app.UseMiddleware<JwtMiddleware>();
 
 // Standard middleware
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection(); // Commented out for development - causes hanging on HTTP-only setup
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
