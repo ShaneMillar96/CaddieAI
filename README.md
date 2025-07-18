@@ -178,7 +178,7 @@ CaddieAI/
 │   ├── CaddieAI.sln                # Solution file
 │   ├── global.json                 # .NET version specification
 │   └── Directory.Build.props       # Common build properties
-├── frontend/                       # React Native Frontend
+├── CaddieAIMobile/                 # React Native Frontend
 │   ├── src/
 │   │   ├── components/             # Reusable UI components
 │   │   ├── screens/                # Screen components
@@ -234,9 +234,9 @@ CaddieAI/
 
 ### Frontend Setup
 
-1. Navigate to the frontend directory:
+1. Navigate to the CaddieAIMobile directory:
    ```bash
-   cd frontend
+   cd CaddieAIMobile
    ```
 
 2. Install dependencies:

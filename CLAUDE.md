@@ -197,7 +197,7 @@ cd backend && dotnet ef database update
 cd backend && dotnet build && dotnet test
 
 # Start frontend development
-cd frontend && npm start
+cd CaddieAIMobile && npm start
 ```
 
 ## Code Quality Standards
@@ -263,7 +263,7 @@ Assert.Equal(user.Name, result.Name);
    dotnet build
    
    # Setup frontend
-   cd ../frontend
+   cd ../CaddieAIMobile
    npm install
    ```
 
@@ -276,11 +276,11 @@ Assert.Equal(user.Name, result.Name);
    cd backend/src/caddie.portal.api && dotnet watch run
    
    # Frontend development
-   cd frontend && npm start
+   cd CaddieAIMobile && npm start
    
    # Run tests
    cd backend && dotnet test
-   cd frontend && npm test
+   cd CaddieAIMobile && npm test
    
    # Stop all services
    docker-compose down
@@ -447,10 +447,10 @@ docker-compose exec postgres pg_isready -U caddieai_user -d caddieai_dev
 - `backend/database/migrations/` - Database schema migrations (V1.0.0-V1.4.0)
 
 ### Frontend
-- `frontend/src/components/` - Reusable UI components
-- `frontend/src/screens/` - Screen components
-- `frontend/src/services/` - API service layer
-- `frontend/src/store/` - Redux store configuration
+- `CaddieAIMobile/src/components/` - Reusable UI components
+- `CaddieAIMobile/src/screens/` - Screen components
+- `CaddieAIMobile/src/services/` - API service layer
+- `CaddieAIMobile/src/store/` - Redux store configuration
 
 ### Documentation
 - `shared/docs/` - Comprehensive project documentation
@@ -461,7 +461,7 @@ docker-compose exec postgres pg_isready -U caddieai_user -d caddieai_dev
 
 ### Configuration
 - `backend/src/caddie.portal.api/appsettings.json` - Application configuration
-- `frontend/package.json` - Frontend dependencies and scripts
+- `CaddieAIMobile/package.json` - Frontend dependencies and scripts
 - `docker-compose.yml` - Local development infrastructure
 
 ## Success Metrics

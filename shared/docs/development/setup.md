@@ -42,7 +42,7 @@ dotnet run
 ### 3. Start Frontend Mobile App
 
 ```bash
-cd frontend
+cd CaddieAIMobile
 
 # Install dependencies (with legacy peer deps due to React Native compatibility)
 npm install --legacy-peer-deps
@@ -119,7 +119,7 @@ docker-compose up -d
 
 ## Environment Variables
 
-Create `.env` file in frontend directory:
+Create `.env` file in CaddieAIMobile directory:
 ```
 API_BASE_URL=http://localhost:5277/api
 ```
@@ -149,7 +149,7 @@ CaddieAI/
 │   │   ├── caddie.portal.services/ # Business logic
 │   │   └── caddie.portal.dal/      # Data access layer
 │   └── database/migrations/        # Database migrations
-├── frontend/              # React Native app
+├── CaddieAIMobile/        # React Native app
 │   ├── src/
 │   │   ├── components/    # Reusable components
 │   │   ├── screens/       # Screen components
