@@ -11,7 +11,7 @@ public class RegisterRequestDto
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public decimal? Handicap { get; set; }
-    public int SkillLevelId { get; set; } = 1; // Default to Beginner
+    public int SkillLevelId { get; set; }
     public Dictionary<string, object>? Preferences { get; set; }
     public Dictionary<string, object>? PlayingStyle { get; set; }
 }
