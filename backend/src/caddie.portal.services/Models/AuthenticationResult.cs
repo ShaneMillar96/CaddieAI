@@ -5,11 +5,11 @@ public class AuthenticationResult
     public bool IsSuccess { get; set; }
     public string? ErrorMessage { get; set; }
     public string? ErrorCode { get; set; }
-    public Guid? UserId { get; set; }
+    public int? UserId { get; set; }
     public TokenResponse? TokenResponse { get; set; }
     public UserModel? User { get; set; }
     
-    public static AuthenticationResult Success(Guid userId, TokenResponse tokenResponse, UserModel user)
+    public static AuthenticationResult Success(int userId, TokenResponse tokenResponse, UserModel user)
     {
         return new AuthenticationResult
         {

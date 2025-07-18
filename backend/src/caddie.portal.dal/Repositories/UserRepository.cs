@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using caddie.portal.dal.Context;
-using caddie.portal.dal.Models.Users;
+using caddie.portal.dal.Models;
 using caddie.portal.dal.Repositories.Interfaces;
 
 namespace caddie.portal.dal.Repositories;
@@ -14,174 +14,121 @@ public class UserRepository : IUserRepository
         _context = context;
     }
 
-    public async Task<User?> GetByIdAsync(Guid id)
+    public async Task<User?> GetByIdAsync(int id)
     {
         return await _context.Users
+            .Include(u => u.SkillLevel)
+            .Include(u => u.Status)
             .FirstOrDefaultAsync(u => u.Id == id);
     }
 
     public async Task<User?> GetByEmailAsync(string email)
     {
         return await _context.Users
-            .FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower());
+            .Include(u => u.SkillLevel)
+            .Include(u => u.Status)
+            .FirstOrDefaultAsync(u => u.Email == email);
+    }
+
+    public async Task<User> CreateAsync(User user)
+    {
+        _context.Users.Add(user);
+        await _context.SaveChangesAsync();
+        return user;
+    }
+
+    public async Task<User> UpdateAsync(User user)
+    {
+        _context.Users.Update(user);
+        await _context.SaveChangesAsync();
+        return user;
+    }
+
+    public async Task<bool> DeleteAsync(int id)
+    {
+        var user = await _context.Users.FindAsync(id);
+        if (user == null) return false;
+
+        _context.Users.Remove(user);
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<bool> ExistsAsync(string email)
+    {
+        return await _context.Users.AnyAsync(u => u.Email == email);
     }
 
     public async Task<User?> GetByEmailVerificationTokenAsync(string token)
     {
         return await _context.Users
+            .Include(u => u.SkillLevel)
+            .Include(u => u.Status)
             .FirstOrDefaultAsync(u => u.EmailVerificationToken == token);
     }
 
     public async Task<User?> GetByPasswordResetTokenAsync(string token)
     {
         return await _context.Users
+            .Include(u => u.SkillLevel)
+            .Include(u => u.Status)
             .FirstOrDefaultAsync(u => u.PasswordResetToken == token);
     }
 
-    public async Task<IEnumerable<User>> GetAllAsync()
+    public async Task<bool> IncrementFailedLoginAttemptsAsync(int userId)
     {
-        return await _context.Users
-            .OrderBy(u => u.CreatedAt)
-            .ToListAsync();
-    }
+        var user = await _context.Users.FindAsync(userId);
+        if (user == null) return false;
 
-    public async Task<User> CreateAsync(User user)
-    {
-        user.CreatedAt = DateTime.UtcNow;
-        user.UpdatedAt = DateTime.UtcNow;
+        user.FailedLoginAttempts = (user.FailedLoginAttempts ?? 0) + 1;
         
-        _context.Users.Add(user);
+        // Lock account after 5 failed attempts
+        if (user.FailedLoginAttempts >= 5)
+        {
+            user.LockedUntil = DateTime.UtcNow.AddMinutes(15);
+        }
+
         await _context.SaveChangesAsync();
-        
-        return user;
+        return true;
     }
 
-    public async Task<User> UpdateAsync(User user)
+    public async Task<bool> ResetFailedLoginAttemptsAsync(int userId)
     {
-        user.UpdatedAt = DateTime.UtcNow;
-        
-        _context.Users.Update(user);
+        var user = await _context.Users.FindAsync(userId);
+        if (user == null) return false;
+
+        user.FailedLoginAttempts = 0;
+        user.LockedUntil = null;
         await _context.SaveChangesAsync();
-        
-        return user;
+        return true;
     }
 
-    public async Task DeleteAsync(Guid id)
-    {
-        var user = await _context.Users.FindAsync(id);
-        if (user != null)
-        {
-            _context.Users.Remove(user);
-            await _context.SaveChangesAsync();
-        }
-    }
-
-    public async Task<bool> ExistsAsync(Guid id)
-    {
-        return await _context.Users.AnyAsync(u => u.Id == id);
-    }
-
-    public async Task<bool> EmailExistsAsync(string email)
-    {
-        return await _context.Users.AnyAsync(u => u.Email.ToLower() == email.ToLower());
-    }
-
-    public async Task<bool> EmailExistsAsync(string email, Guid excludeUserId)
-    {
-        return await _context.Users.AnyAsync(u => u.Email.ToLower() == email.ToLower() && u.Id != excludeUserId);
-    }
-
-    public async Task<int> GetFailedLoginAttemptsAsync(Guid userId)
+    public async Task<bool> UpdateLastLoginAsync(int userId)
     {
         var user = await _context.Users.FindAsync(userId);
-        return user?.FailedLoginAttempts ?? 0;
+        if (user == null) return false;
+
+        user.LastLoginAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return true;
     }
 
-    public async Task IncrementFailedLoginAttemptsAsync(Guid userId)
+    public async Task<bool> IsAccountLockedAsync(int userId)
     {
         var user = await _context.Users.FindAsync(userId);
-        if (user != null)
-        {
-            user.FailedLoginAttempts++;
-            user.UpdatedAt = DateTime.UtcNow;
-            
-            // Lock account after 5 failed attempts
-            if (user.FailedLoginAttempts >= 5)
-            {
-                user.LockedUntil = DateTime.UtcNow.AddMinutes(15);
-            }
-            
-            await _context.SaveChangesAsync();
-        }
+        if (user == null) return false;
+
+        return user.LockedUntil.HasValue && user.LockedUntil.Value > DateTime.UtcNow;
     }
 
-    public async Task ResetFailedLoginAttemptsAsync(Guid userId)
+    public async Task<bool> UnlockUserAccountAsync(int userId)
     {
         var user = await _context.Users.FindAsync(userId);
-        if (user != null)
-        {
-            user.FailedLoginAttempts = 0;
-            user.LockedUntil = null;
-            user.UpdatedAt = DateTime.UtcNow;
-            
-            await _context.SaveChangesAsync();
-        }
-    }
+        if (user == null) return false;
 
-    public async Task LockUserAccountAsync(Guid userId, DateTime lockedUntil)
-    {
-        var user = await _context.Users.FindAsync(userId);
-        if (user != null)
-        {
-            user.LockedUntil = lockedUntil;
-            user.UpdatedAt = DateTime.UtcNow;
-            
-            await _context.SaveChangesAsync();
-        }
-    }
-
-    public async Task UnlockUserAccountAsync(Guid userId)
-    {
-        var user = await _context.Users.FindAsync(userId);
-        if (user != null)
-        {
-            user.LockedUntil = null;
-            user.FailedLoginAttempts = 0;
-            user.UpdatedAt = DateTime.UtcNow;
-            
-            await _context.SaveChangesAsync();
-        }
-    }
-
-    public async Task<bool> IsAccountLockedAsync(Guid userId)
-    {
-        var user = await _context.Users.FindAsync(userId);
-        return user?.IsAccountLocked ?? false;
-    }
-
-    public async Task UpdateLastLoginAsync(Guid userId)
-    {
-        var user = await _context.Users.FindAsync(userId);
-        if (user != null)
-        {
-            user.LastLoginAt = DateTime.UtcNow;
-            user.UpdatedAt = DateTime.UtcNow;
-            
-            await _context.SaveChangesAsync();
-        }
-    }
-
-    public async Task<IEnumerable<User>> GetLockedUsersAsync()
-    {
-        return await _context.Users
-            .Where(u => u.LockedUntil.HasValue && u.LockedUntil.Value > DateTime.UtcNow)
-            .ToListAsync();
-    }
-
-    public async Task<IEnumerable<User>> GetUnverifiedUsersAsync()
-    {
-        return await _context.Users
-            .Where(u => !u.EmailVerified)
-            .ToListAsync();
+        user.LockedUntil = null;
+        user.FailedLoginAttempts = 0;
+        await _context.SaveChangesAsync();
+        return true;
     }
 }

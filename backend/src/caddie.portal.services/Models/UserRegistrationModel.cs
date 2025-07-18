@@ -1,4 +1,4 @@
-using caddie.portal.dal.Models.Users;
+using caddie.portal.dal.Models;
 
 namespace caddie.portal.services.Models;
 
@@ -9,7 +9,7 @@ public class UserRegistrationModel
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public decimal? Handicap { get; set; }
-    public SkillLevel SkillLevel { get; set; } = SkillLevel.Beginner;
+    public int SkillLevelId { get; set; } = 1;
     public Dictionary<string, object>? Preferences { get; set; }
     public Dictionary<string, object>? PlayingStyle { get; set; }
 }

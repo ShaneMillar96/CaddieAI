@@ -6,8 +6,8 @@ CREATE TYPE course_difficulty AS ENUM ('easy', 'moderate', 'difficult', 'champio
 CREATE TYPE hole_type AS ENUM ('par3', 'par4', 'par5');
 
 -- Courses table - Golf course information with geospatial data
-CREATE TABLE courses (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE Courses (
+    id SERIAL PRIMARY KEY,
     name VARCHAR(200) NOT NULL,
     description TEXT,
     address TEXT,
@@ -34,16 +34,16 @@ CREATE TABLE courses (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Apply updated_at trigger to courses table
+-- Apply updated_at trigger to Courses table
 CREATE TRIGGER update_courses_updated_at 
-    BEFORE UPDATE ON courses 
+    BEFORE UPDATE ON Courses 
     FOR EACH ROW 
     EXECUTE FUNCTION update_updated_at_column();
 
 -- Holes table - Individual hole information with enhanced data and simplified hazards
-CREATE TABLE holes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    course_id UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+CREATE TABLE Holes (
+    id SERIAL PRIMARY KEY,
+    course_id INTEGER NOT NULL REFERENCES Courses(id) ON DELETE CASCADE,
     hole_number INTEGER NOT NULL CHECK (hole_number >= 1 AND hole_number <= 18),
     name VARCHAR(100),
     par INTEGER NOT NULL CHECK (par >= 3 AND par <= 5),
@@ -70,52 +70,52 @@ CREATE TABLE holes (
     UNIQUE(course_id, hole_number)
 );
 
--- Apply updated_at trigger to holes table
+-- Apply updated_at trigger to Holes table
 CREATE TRIGGER update_holes_updated_at 
-    BEFORE UPDATE ON holes 
+    BEFORE UPDATE ON Holes 
     FOR EACH ROW 
     EXECUTE FUNCTION update_updated_at_column();
 
 -- Create indexes for better performance
-CREATE INDEX idx_courses_name ON courses(name);
-CREATE INDEX idx_courses_location ON courses USING GIST(location);
-CREATE INDEX idx_courses_boundary ON courses USING GIST(boundary);
-CREATE INDEX idx_courses_difficulty ON courses(difficulty);
-CREATE INDEX idx_courses_par_total ON courses(par_total);
-CREATE INDEX idx_courses_is_active ON courses(is_active);
-CREATE INDEX idx_courses_amenities ON courses USING GIN(amenities);
+CREATE INDEX idx_courses_name ON Courses(name);
+CREATE INDEX idx_courses_location ON Courses USING GIST(location);
+CREATE INDEX idx_courses_boundary ON Courses USING GIST(boundary);
+CREATE INDEX idx_courses_difficulty ON Courses(difficulty);
+CREATE INDEX idx_courses_par_total ON Courses(par_total);
+CREATE INDEX idx_courses_is_active ON Courses(is_active);
+CREATE INDEX idx_courses_amenities ON Courses USING GIN(amenities);
 
-CREATE INDEX idx_holes_course_id ON holes(course_id);
-CREATE INDEX idx_holes_hole_number ON holes(hole_number);
-CREATE INDEX idx_holes_par ON holes(par);
-CREATE INDEX idx_holes_hole_type ON holes(hole_type);
-CREATE INDEX idx_holes_stroke_index ON holes(stroke_index);
-CREATE INDEX idx_holes_ladies_par ON holes(ladies_par);
-CREATE INDEX idx_holes_tee_location ON holes USING GIST(tee_location);
-CREATE INDEX idx_holes_pin_location ON holes USING GIST(pin_location);
-CREATE INDEX idx_holes_hole_layout ON holes USING GIST(hole_layout);
-CREATE INDEX idx_holes_fairway_center_line ON holes USING GIST(fairway_center_line);
-CREATE INDEX idx_holes_simple_hazards ON holes USING GIN(simple_hazards);
+CREATE INDEX idx_holes_course_id ON Holes(course_id);
+CREATE INDEX idx_holes_hole_number ON Holes(hole_number);
+CREATE INDEX idx_holes_par ON Holes(par);
+CREATE INDEX idx_holes_hole_type ON Holes(hole_type);
+CREATE INDEX idx_holes_stroke_index ON Holes(stroke_index);
+CREATE INDEX idx_holes_ladies_par ON Holes(ladies_par);
+CREATE INDEX idx_holes_tee_location ON Holes USING GIST(tee_location);
+CREATE INDEX idx_holes_pin_location ON Holes USING GIST(pin_location);
+CREATE INDEX idx_holes_hole_layout ON Holes USING GIST(hole_layout);
+CREATE INDEX idx_holes_fairway_center_line ON Holes USING GIST(fairway_center_line);
+CREATE INDEX idx_holes_simple_hazards ON Holes USING GIN(simple_hazards);
 
 -- Add comments for documentation
-COMMENT ON TABLE courses IS 'Golf course information with geospatial data and metadata';
-COMMENT ON COLUMN courses.location IS 'Primary course location point (clubhouse/pro shop)';
-COMMENT ON COLUMN courses.boundary IS 'Course boundary polygon for geofencing';
-COMMENT ON COLUMN courses.course_rating IS 'USGA course rating for scratch golfer';
-COMMENT ON COLUMN courses.slope_rating IS 'USGA slope rating (55-155 range)';
-COMMENT ON COLUMN courses.green_fee_range IS 'Pricing information stored as JSON';
-COMMENT ON COLUMN courses.amenities IS 'Available amenities and facilities';
+COMMENT ON TABLE Courses IS 'Golf course information with geospatial data and metadata';
+COMMENT ON COLUMN Courses.location IS 'Primary course location point (clubhouse/pro shop)';
+COMMENT ON COLUMN Courses.boundary IS 'Course boundary polygon for geofencing';
+COMMENT ON COLUMN Courses.course_rating IS 'USGA course rating for scratch golfer';
+COMMENT ON COLUMN Courses.slope_rating IS 'USGA slope rating (55-155 range)';
+COMMENT ON COLUMN Courses.green_fee_range IS 'Pricing information stored as JSON';
+COMMENT ON COLUMN Courses.amenities IS 'Available amenities and facilities';
 
-COMMENT ON TABLE holes IS 'Individual hole information with enhanced data and playing tips';
-COMMENT ON COLUMN holes.hole_type IS 'Par classification for the hole';
-COMMENT ON COLUMN holes.stroke_index IS 'Hole difficulty ranking (1-18) for handicap calculations';
-COMMENT ON COLUMN holes.ladies_yardage IS 'Yardage from ladies tees';
-COMMENT ON COLUMN holes.ladies_par IS 'Par for ladies tees';
-COMMENT ON COLUMN holes.ladies_stroke_index IS 'Ladies tee difficulty ranking (1-18)';
-COMMENT ON COLUMN holes.tee_location IS 'Tee box center point';
-COMMENT ON COLUMN holes.pin_location IS 'Green/pin location point';
-COMMENT ON COLUMN holes.hole_layout IS 'Complete hole boundary including fairway, rough, and green';
-COMMENT ON COLUMN holes.fairway_center_line IS 'Optimal playing line from tee to green';
-COMMENT ON COLUMN holes.hole_tips IS 'Official playing tips and strategy advice for the hole';
-COMMENT ON COLUMN holes.simple_hazards IS 'Simplified hazard information stored as JSON array';
-COMMENT ON COLUMN holes.playing_tips IS 'Additional strategic advice for playing the hole';
+COMMENT ON TABLE Holes IS 'Individual hole information with enhanced data and playing tips';
+COMMENT ON COLUMN Holes.hole_type IS 'Par classification for the hole';
+COMMENT ON COLUMN Holes.stroke_index IS 'Hole difficulty ranking (1-18) for handicap calculations';
+COMMENT ON COLUMN Holes.ladies_yardage IS 'Yardage from ladies tees';
+COMMENT ON COLUMN Holes.ladies_par IS 'Par for ladies tees';
+COMMENT ON COLUMN Holes.ladies_stroke_index IS 'Ladies tee difficulty ranking (1-18)';
+COMMENT ON COLUMN Holes.tee_location IS 'Tee box center point';
+COMMENT ON COLUMN Holes.pin_location IS 'Green/pin location point';
+COMMENT ON COLUMN Holes.hole_layout IS 'Complete hole boundary including fairway, rough, and green';
+COMMENT ON COLUMN Holes.fairway_center_line IS 'Optimal playing line from tee to green';
+COMMENT ON COLUMN Holes.hole_tips IS 'Official playing tips and strategy advice for the hole';
+COMMENT ON COLUMN Holes.simple_hazards IS 'Simplified hazard information stored as JSON array';
+COMMENT ON COLUMN Holes.playing_tips IS 'Additional strategic advice for playing the hole';
