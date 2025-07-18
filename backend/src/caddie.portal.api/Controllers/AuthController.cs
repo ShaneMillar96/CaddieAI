@@ -438,10 +438,10 @@ public class AuthController : ControllerBase
         }
     }
 
-    private Guid? GetCurrentUserId()
+    private int? GetCurrentUserId()
     {
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        return Guid.TryParse(userIdClaim, out var userId) ? userId : null;
+        return int.TryParse(userIdClaim, out var userId) ? userId : null;
     }
 
     private string GetClientIpAddress()

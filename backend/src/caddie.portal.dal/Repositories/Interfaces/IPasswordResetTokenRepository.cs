@@ -1,20 +1,14 @@
-using caddie.portal.dal.Models.Users;
+using caddie.portal.dal.Models;
 
 namespace caddie.portal.dal.Repositories.Interfaces;
 
 public interface IPasswordResetTokenRepository
 {
-    Task<PasswordResetToken?> GetByIdAsync(Guid id);
     Task<PasswordResetToken?> GetByTokenAsync(string token);
-    Task<IEnumerable<PasswordResetToken>> GetByUserIdAsync(Guid userId);
-    Task<PasswordResetToken?> GetValidByTokenAsync(string token);
     Task<PasswordResetToken> CreateAsync(PasswordResetToken passwordResetToken);
-    Task<PasswordResetToken> UpdateAsync(PasswordResetToken passwordResetToken);
-    Task DeleteAsync(Guid id);
-    Task MarkAsUsedAsync(Guid id);
-    Task<bool> ExistsAsync(string token);
-    Task<bool> IsValidAsync(string token);
-    Task InvalidateAllForUserAsync(Guid userId);
-    Task DeleteExpiredTokensAsync();
-    Task<bool> HasValidTokenForUserAsync(Guid userId);
+    Task<bool> MarkAsUsedAsync(string token);
+    Task<bool> MarkAsUsedAsync(int id);
+    Task<bool> DeleteExpiredTokensAsync();
+    Task<bool> InvalidateAllForUserAsync(int userId);
+    Task<PasswordResetToken?> GetValidByTokenAsync(string token);
 }

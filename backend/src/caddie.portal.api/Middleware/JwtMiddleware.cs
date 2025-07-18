@@ -74,11 +74,11 @@ public class JwtMiddleware
             {
                 var userIdClaim = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 
-                if (Guid.TryParse(userIdClaim, out var userId))
+                if (int.TryParse(userIdClaim, out var userId))
                 {
                     // Optionally verify user still exists and is active
                     var user = await authService.GetUserAsync(userId);
-                    if (user != null && user.Status == caddie.portal.dal.Models.Users.UserStatus.Active)
+                    if (user != null && user.Status.Name == "Active")
                     {
                         context.User = principal;
                         context.Items["UserId"] = userId;

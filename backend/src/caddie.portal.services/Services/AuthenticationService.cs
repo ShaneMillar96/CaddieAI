@@ -5,7 +5,7 @@ using caddie.portal.services.Configuration;
 using caddie.portal.services.Interfaces;
 using caddie.portal.services.Models;
 using caddie.portal.dal.Repositories.Interfaces;
-using caddie.portal.dal.Models.Users;
+using caddie.portal.dal.Models;
 
 namespace caddie.portal.services.Services;
 
@@ -48,7 +48,7 @@ public class AuthenticationService : IAuthenticationService
         try
         {
             // Check if email already exists
-            if (await _userRepository.EmailExistsAsync(model.Email))
+            if (await _userRepository.ExistsAsync(model.Email))
             {
                 return AuthenticationResult.Failure("Email address is already registered", "EMAIL_EXISTS");
             }
@@ -67,20 +67,20 @@ public class AuthenticationService : IAuthenticationService
                 FirstName = model.FirstName.Trim(),
                 LastName = model.LastName.Trim(),
                 Handicap = model.Handicap,
-                SkillLevel = model.SkillLevel,
-                Status = UserStatus.Active,
+                SkillLevelId = model.SkillLevelId,
+                StatusId = 1, // Active
                 EmailVerified = !_authSettings.RequireEmailVerification
             };
 
             // Set preferences and playing style if provided
             if (model.Preferences != null)
             {
-                user.Preferences = JsonSerializer.SerializeToDocument(model.Preferences);
+                user.Preferences = JsonSerializer.Serialize(model.Preferences);
             }
 
             if (model.PlayingStyle != null)
             {
-                user.PlayingStyle = JsonSerializer.SerializeToDocument(model.PlayingStyle);
+                user.PlayingStyle = JsonSerializer.Serialize(model.PlayingStyle);
             }
 
             // Generate email verification token if required
@@ -132,13 +132,13 @@ public class AuthenticationService : IAuthenticationService
             }
 
             // Check if account is locked
-            if (user.IsAccountLocked)
+            if (user.LockedUntil.HasValue && user.LockedUntil.Value > DateTime.UtcNow)
             {
                 return AuthenticationResult.Failure("Account is temporarily locked", "ACCOUNT_LOCKED");
             }
 
-            // Check if account is active
-            if (user.Status != UserStatus.Active)
+            // Check if account is active (Status ID 1 = Active)
+            if (user.StatusId != 1)
             {
                 return AuthenticationResult.Failure("Account is not active", "ACCOUNT_INACTIVE");
             }
@@ -159,7 +159,7 @@ public class AuthenticationService : IAuthenticationService
             }
 
             // Check email verification if required
-            if (_authSettings.RequireEmailVerification && !user.EmailVerified)
+            if (_authSettings.RequireEmailVerification && !user.EmailVerified.GetValueOrDefault())
             {
                 return AuthenticationResult.Failure("Email address not verified", "EMAIL_NOT_VERIFIED");
             }
@@ -225,7 +225,7 @@ public class AuthenticationService : IAuthenticationService
         }
     }
 
-    public async Task<bool> LogoutAllAsync(Guid userId)
+    public async Task<bool> LogoutAllAsync(int userId)
     {
         try
         {
@@ -337,7 +337,7 @@ public class AuthenticationService : IAuthenticationService
         }
     }
 
-    public async Task<bool> ChangePasswordAsync(Guid userId, string currentPassword, string newPassword)
+    public async Task<bool> ChangePasswordAsync(int userId, string currentPassword, string newPassword)
     {
         try
         {
@@ -371,7 +371,7 @@ public class AuthenticationService : IAuthenticationService
         }
     }
 
-    public async Task<UserModel?> GetUserAsync(Guid userId)
+    public async Task<UserModel?> GetUserAsync(int userId)
     {
         try
         {
@@ -387,15 +387,15 @@ public class AuthenticationService : IAuthenticationService
 
     public async Task<bool> IsEmailAvailableAsync(string email)
     {
-        return !await _userRepository.EmailExistsAsync(email);
+        return !await _userRepository.ExistsAsync(email);
     }
 
-    public async Task<bool> IsAccountLockedAsync(Guid userId)
+    public async Task<bool> IsAccountLockedAsync(int userId)
     {
         return await _userRepository.IsAccountLockedAsync(userId);
     }
 
-    public async Task<bool> UnlockAccountAsync(Guid userId)
+    public async Task<bool> UnlockAccountAsync(int userId)
     {
         try
         {
@@ -417,17 +417,17 @@ public class AuthenticationService : IAuthenticationService
             Email = user.Email,
             FirstName = user.FirstName,
             LastName = user.LastName,
-            FullName = user.FullName,
+            FullName = $"{user.FirstName} {user.LastName}",
             Handicap = user.Handicap,
             SkillLevel = user.SkillLevel,
             Preferences = user.Preferences != null ? JsonSerializer.Deserialize<Dictionary<string, object>>(user.Preferences) : null,
             PlayingStyle = user.PlayingStyle != null ? JsonSerializer.Deserialize<Dictionary<string, object>>(user.PlayingStyle) : null,
             Status = user.Status,
-            EmailVerified = user.EmailVerified,
+            EmailVerified = user.EmailVerified.GetValueOrDefault(),
             LastLoginAt = user.LastLoginAt,
             CreatedAt = user.CreatedAt,
             UpdatedAt = user.UpdatedAt,
-            TwoFactorEnabled = user.TwoFactorEnabled
+            TwoFactorEnabled = user.TwoFactorEnabled.GetValueOrDefault()
         };
     }
 }

@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using caddie.portal.dal.Context;
-using caddie.portal.dal.Models.Users;
+using caddie.portal.dal.Models;
 using caddie.portal.dal.Repositories.Interfaces;
 
 namespace caddie.portal.dal.Repositories;
@@ -14,13 +14,6 @@ public class RefreshTokenRepository : IRefreshTokenRepository
         _context = context;
     }
 
-    public async Task<RefreshToken?> GetByIdAsync(Guid id)
-    {
-        return await _context.RefreshTokens
-            .Include(rt => rt.User)
-            .FirstOrDefaultAsync(rt => rt.Id == id);
-    }
-
     public async Task<RefreshToken?> GetByTokenAsync(string token)
     {
         return await _context.RefreshTokens
@@ -28,125 +21,68 @@ public class RefreshTokenRepository : IRefreshTokenRepository
             .FirstOrDefaultAsync(rt => rt.Token == token);
     }
 
-    public async Task<IEnumerable<RefreshToken>> GetByUserIdAsync(Guid userId)
-    {
-        return await _context.RefreshTokens
-            .Where(rt => rt.UserId == userId)
-            .OrderByDescending(rt => rt.CreatedAt)
-            .ToListAsync();
-    }
-
-    public async Task<IEnumerable<RefreshToken>> GetActiveByUserIdAsync(Guid userId)
-    {
-        return await _context.RefreshTokens
-            .Where(rt => rt.UserId == userId && !rt.IsRevoked && rt.ExpiresAt > DateTime.UtcNow)
-            .OrderByDescending(rt => rt.CreatedAt)
-            .ToListAsync();
-    }
-
     public async Task<RefreshToken> CreateAsync(RefreshToken refreshToken)
     {
-        refreshToken.CreatedAt = DateTime.UtcNow;
-        refreshToken.UpdatedAt = DateTime.UtcNow;
-        
         _context.RefreshTokens.Add(refreshToken);
         await _context.SaveChangesAsync();
-        
         return refreshToken;
     }
 
-    public async Task<RefreshToken> UpdateAsync(RefreshToken refreshToken)
+    public async Task<bool> RevokeAsync(string token)
     {
-        refreshToken.UpdatedAt = DateTime.UtcNow;
+        var refreshToken = await _context.RefreshTokens
+            .FirstOrDefaultAsync(rt => rt.Token == token);
         
-        _context.RefreshTokens.Update(refreshToken);
+        if (refreshToken == null) return false;
+
+        refreshToken.IsRevoked = true;
+        refreshToken.RevokedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
-        
-        return refreshToken;
+        return true;
     }
 
-    public async Task DeleteAsync(Guid id)
+    public async Task<bool> RevokeAllUserTokensAsync(int userId)
     {
-        var refreshToken = await _context.RefreshTokens.FindAsync(id);
-        if (refreshToken != null)
-        {
-            _context.RefreshTokens.Remove(refreshToken);
-            await _context.SaveChangesAsync();
-        }
-    }
-
-    public async Task RevokeAsync(Guid id)
-    {
-        var refreshToken = await _context.RefreshTokens.FindAsync(id);
-        if (refreshToken != null)
-        {
-            refreshToken.IsRevoked = true;
-            refreshToken.RevokedAt = DateTime.UtcNow;
-            refreshToken.UpdatedAt = DateTime.UtcNow;
-            
-            await _context.SaveChangesAsync();
-        }
-    }
-
-    public async Task RevokeAllForUserAsync(Guid userId)
-    {
-        var activeTokens = await _context.RefreshTokens
-            .Where(rt => rt.UserId == userId && !rt.IsRevoked)
+        var tokens = await _context.RefreshTokens
+            .Where(rt => rt.UserId == userId && rt.IsRevoked == false)
             .ToListAsync();
 
-        foreach (var token in activeTokens)
+        foreach (var token in tokens)
         {
             token.IsRevoked = true;
             token.RevokedAt = DateTime.UtcNow;
-            token.UpdatedAt = DateTime.UtcNow;
         }
 
         await _context.SaveChangesAsync();
+        return true;
     }
 
-    public async Task<bool> ExistsAsync(string token)
-    {
-        return await _context.RefreshTokens.AnyAsync(rt => rt.Token == token);
-    }
-
-    public async Task<bool> IsActiveAsync(string token)
-    {
-        return await _context.RefreshTokens
-            .AnyAsync(rt => rt.Token == token && !rt.IsRevoked && rt.ExpiresAt > DateTime.UtcNow);
-    }
-
-    public async Task DeleteExpiredTokensAsync()
+    public async Task<bool> DeleteExpiredTokensAsync()
     {
         var expiredTokens = await _context.RefreshTokens
-            .Where(rt => rt.ExpiresAt <= DateTime.UtcNow)
+            .Where(rt => rt.ExpiresAt < DateTime.UtcNow)
             .ToListAsync();
 
         _context.RefreshTokens.RemoveRange(expiredTokens);
         await _context.SaveChangesAsync();
+        return true;
     }
 
-    public async Task<int> GetActiveTokenCountForUserAsync(Guid userId)
+    public async Task<bool> RevokeOldestTokensForUserAsync(int userId, int keepCount)
     {
-        return await _context.RefreshTokens
-            .CountAsync(rt => rt.UserId == userId && !rt.IsRevoked && rt.ExpiresAt > DateTime.UtcNow);
-    }
-
-    public async Task RevokeOldestTokensForUserAsync(Guid userId, int keepCount)
-    {
-        var activeTokens = await _context.RefreshTokens
-            .Where(rt => rt.UserId == userId && !rt.IsRevoked && rt.ExpiresAt > DateTime.UtcNow)
-            .OrderBy(rt => rt.CreatedAt)
+        var userTokens = await _context.RefreshTokens
+            .Where(rt => rt.UserId == userId && rt.IsRevoked == false)
+            .OrderByDescending(rt => rt.CreatedAt)
+            .Skip(keepCount)
             .ToListAsync();
 
-        var tokensToRevoke = activeTokens.Take(Math.Max(0, activeTokens.Count - keepCount));
-
-        foreach (var token in tokensToRevoke)
+        foreach (var token in userTokens)
         {
             token.IsRevoked = true;
             token.RevokedAt = DateTime.UtcNow;
-            token.UpdatedAt = DateTime.UtcNow;
         }
 
         await _context.SaveChangesAsync();
+        return true;
     }
 }

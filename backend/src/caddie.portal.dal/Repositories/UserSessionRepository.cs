@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using caddie.portal.dal.Context;
-using caddie.portal.dal.Models.Users;
+using caddie.portal.dal.Models;
 using caddie.portal.dal.Repositories.Interfaces;
 
 namespace caddie.portal.dal.Repositories;
@@ -14,13 +14,6 @@ public class UserSessionRepository : IUserSessionRepository
         _context = context;
     }
 
-    public async Task<UserSession?> GetByIdAsync(Guid id)
-    {
-        return await _context.UserSessions
-            .Include(us => us.User)
-            .FirstOrDefaultAsync(us => us.Id == id);
-    }
-
     public async Task<UserSession?> GetBySessionTokenAsync(string sessionToken)
     {
         return await _context.UserSessions
@@ -28,135 +21,55 @@ public class UserSessionRepository : IUserSessionRepository
             .FirstOrDefaultAsync(us => us.SessionToken == sessionToken);
     }
 
-    public async Task<IEnumerable<UserSession>> GetByUserIdAsync(Guid userId)
+    public async Task<IEnumerable<UserSession>> GetActiveSessionsByUserIdAsync(int userId)
     {
         return await _context.UserSessions
-            .Where(us => us.UserId == userId)
-            .OrderByDescending(us => us.LastActivity)
-            .ToListAsync();
-    }
-
-    public async Task<IEnumerable<UserSession>> GetActiveByUserIdAsync(Guid userId)
-    {
-        return await _context.UserSessions
-            .Where(us => us.UserId == userId && us.IsActive && us.ExpiresAt > DateTime.UtcNow)
-            .OrderByDescending(us => us.LastActivity)
+            .Where(us => us.UserId == userId && us.IsActive == true)
             .ToListAsync();
     }
 
     public async Task<UserSession> CreateAsync(UserSession userSession)
     {
-        userSession.CreatedAt = DateTime.UtcNow;
-        userSession.UpdatedAt = DateTime.UtcNow;
-        userSession.LastActivity = DateTime.UtcNow;
-        
         _context.UserSessions.Add(userSession);
         await _context.SaveChangesAsync();
-        
         return userSession;
     }
 
-    public async Task<UserSession> UpdateAsync(UserSession userSession)
+    public async Task<bool> DeactivateAsync(string sessionToken)
     {
-        userSession.UpdatedAt = DateTime.UtcNow;
+        var userSession = await _context.UserSessions
+            .FirstOrDefaultAsync(us => us.SessionToken == sessionToken);
         
-        _context.UserSessions.Update(userSession);
+        if (userSession == null) return false;
+
+        userSession.IsActive = false;
         await _context.SaveChangesAsync();
-        
-        return userSession;
+        return true;
     }
 
-    public async Task DeleteAsync(Guid id)
+    public async Task<bool> DeactivateAllUserSessionsAsync(int userId)
     {
-        var userSession = await _context.UserSessions.FindAsync(id);
-        if (userSession != null)
-        {
-            _context.UserSessions.Remove(userSession);
-            await _context.SaveChangesAsync();
-        }
-    }
-
-    public async Task DeactivateAsync(Guid id)
-    {
-        var userSession = await _context.UserSessions.FindAsync(id);
-        if (userSession != null)
-        {
-            userSession.IsActive = false;
-            userSession.UpdatedAt = DateTime.UtcNow;
-            
-            await _context.SaveChangesAsync();
-        }
-    }
-
-    public async Task DeactivateAllForUserAsync(Guid userId)
-    {
-        var activeSessions = await _context.UserSessions
-            .Where(us => us.UserId == userId && us.IsActive)
+        var sessions = await _context.UserSessions
+            .Where(us => us.UserId == userId && us.IsActive == true)
             .ToListAsync();
 
-        foreach (var session in activeSessions)
+        foreach (var session in sessions)
         {
             session.IsActive = false;
-            session.UpdatedAt = DateTime.UtcNow;
         }
 
         await _context.SaveChangesAsync();
+        return true;
     }
 
-    public async Task<bool> ExistsAsync(string sessionToken)
-    {
-        return await _context.UserSessions.AnyAsync(us => us.SessionToken == sessionToken);
-    }
-
-    public async Task<bool> IsActiveAsync(string sessionToken)
-    {
-        return await _context.UserSessions
-            .AnyAsync(us => us.SessionToken == sessionToken && us.IsActive && us.ExpiresAt > DateTime.UtcNow);
-    }
-
-    public async Task UpdateLastActivityAsync(Guid id)
-    {
-        var userSession = await _context.UserSessions.FindAsync(id);
-        if (userSession != null)
-        {
-            userSession.LastActivity = DateTime.UtcNow;
-            userSession.UpdatedAt = DateTime.UtcNow;
-            
-            await _context.SaveChangesAsync();
-        }
-    }
-
-    public async Task DeleteExpiredSessionsAsync()
+    public async Task<bool> DeleteExpiredSessionsAsync()
     {
         var expiredSessions = await _context.UserSessions
-            .Where(us => us.ExpiresAt <= DateTime.UtcNow)
+            .Where(us => us.ExpiresAt < DateTime.UtcNow)
             .ToListAsync();
 
         _context.UserSessions.RemoveRange(expiredSessions);
         await _context.SaveChangesAsync();
-    }
-
-    public async Task<int> GetActiveSessionCountForUserAsync(Guid userId)
-    {
-        return await _context.UserSessions
-            .CountAsync(us => us.UserId == userId && us.IsActive && us.ExpiresAt > DateTime.UtcNow);
-    }
-
-    public async Task DeactivateOldestSessionsForUserAsync(Guid userId, int keepCount)
-    {
-        var activeSessions = await _context.UserSessions
-            .Where(us => us.UserId == userId && us.IsActive && us.ExpiresAt > DateTime.UtcNow)
-            .OrderBy(us => us.LastActivity)
-            .ToListAsync();
-
-        var sessionsToDeactivate = activeSessions.Take(Math.Max(0, activeSessions.Count - keepCount));
-
-        foreach (var session in sessionsToDeactivate)
-        {
-            session.IsActive = false;
-            session.UpdatedAt = DateTime.UtcNow;
-        }
-
-        await _context.SaveChangesAsync();
+        return true;
     }
 }

@@ -34,7 +34,7 @@ public class RegisterRequestValidator : AbstractValidator<RegisterRequestDto>
             .InclusiveBetween(-10, 54).WithMessage("Handicap must be between -10 and 54")
             .When(x => x.Handicap.HasValue);
 
-        RuleFor(x => x.SkillLevel)
-            .IsInEnum().WithMessage("Invalid skill level");
+        RuleFor(x => x.SkillLevelId)
+            .GreaterThan(0).WithMessage("Invalid skill level");
     }
 }

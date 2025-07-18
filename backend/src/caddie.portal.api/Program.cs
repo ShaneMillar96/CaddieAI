@@ -35,8 +35,6 @@ builder.Services.AddDbContext<CaddieAIDbContext>(options =>
     options.UseNpgsql(connectionString, npgsqlOptions =>
     {
         npgsqlOptions.UseNetTopologySuite();
-        npgsqlOptions.MapEnum<caddie.portal.dal.Models.Users.SkillLevel>();
-        npgsqlOptions.MapEnum<caddie.portal.dal.Models.Users.UserStatus>();
     });
 });
 

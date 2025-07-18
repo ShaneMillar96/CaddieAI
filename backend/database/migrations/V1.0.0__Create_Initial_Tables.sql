@@ -3,15 +3,14 @@
 
 -- Enable PostGIS extension for geospatial data support
 CREATE EXTENSION IF NOT EXISTS postgis;
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create enum types for better data consistency
 CREATE TYPE user_status AS ENUM ('active', 'inactive', 'suspended');
 CREATE TYPE skill_level AS ENUM ('beginner', 'intermediate', 'advanced', 'professional');
 
 -- Users table - Core user information with golf-specific data
-CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE Users (
+    id SERIAL PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     first_name VARCHAR(100) NOT NULL,
@@ -35,23 +34,23 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Apply updated_at trigger to users table
+-- Apply updated_at trigger to Users table
 CREATE TRIGGER update_users_updated_at 
-    BEFORE UPDATE ON users 
+    BEFORE UPDATE ON Users 
     FOR EACH ROW 
     EXECUTE FUNCTION update_updated_at_column();
 
 -- Create indexes for better performance
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_status ON users(status);
-CREATE INDEX idx_users_skill_level ON users(skill_level);
-CREATE INDEX idx_users_handicap ON users(handicap);
-CREATE INDEX idx_users_preferences ON users USING GIN(preferences);
-CREATE INDEX idx_users_playing_style ON users USING GIN(playing_style);
+CREATE INDEX idx_users_email ON Users(email);
+CREATE INDEX idx_users_status ON Users(status);
+CREATE INDEX idx_users_skill_level ON Users(skill_level);
+CREATE INDEX idx_users_handicap ON Users(handicap);
+CREATE INDEX idx_users_preferences ON Users USING GIN(preferences);
+CREATE INDEX idx_users_playing_style ON Users USING GIN(playing_style);
 
 -- Add comments for documentation
-COMMENT ON TABLE users IS 'Core user information including golf-specific data and preferences';
-COMMENT ON COLUMN users.handicap IS 'Golf handicap index, typically between -10 and 54';
-COMMENT ON COLUMN users.preferences IS 'User preferences stored as JSON (club preferences, notifications, etc.)';
-COMMENT ON COLUMN users.playing_style IS 'Playing style characteristics stored as JSON (aggressive, conservative, etc.)';
-COMMENT ON COLUMN users.skill_level IS 'General skill level assessment for AI context';
+COMMENT ON TABLE Users IS 'Core user information including golf-specific data and preferences';
+COMMENT ON COLUMN Users.handicap IS 'Golf handicap index, typically between -10 and 54';
+COMMENT ON COLUMN Users.preferences IS 'User preferences stored as JSON (club preferences, notifications, etc.)';
+COMMENT ON COLUMN Users.playing_style IS 'Playing style characteristics stored as JSON (aggressive, conservative, etc.)';
+COMMENT ON COLUMN Users.skill_level IS 'General skill level assessment for AI context';

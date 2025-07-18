@@ -8,7 +8,7 @@ using caddie.portal.services.Configuration;
 using caddie.portal.services.Interfaces;
 using caddie.portal.services.Models;
 using caddie.portal.dal.Repositories.Interfaces;
-using caddie.portal.dal.Models.Users;
+using caddie.portal.dal.Models;
 
 namespace caddie.portal.services.Services;
 
@@ -28,7 +28,7 @@ public class TokenService : ITokenService
         _userRepository = userRepository;
     }
 
-    public string GenerateAccessToken(Guid userId, string email, IEnumerable<string>? roles = null)
+    public string GenerateAccessToken(int userId, string email, IEnumerable<string>? roles = null)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -90,7 +90,7 @@ public class TokenService : ITokenService
         return principal;
     }
 
-    public async Task<TokenResponse> GenerateTokensAsync(Guid userId, string email, IEnumerable<string>? roles = null)
+    public async Task<TokenResponse> GenerateTokensAsync(int userId, string email, IEnumerable<string>? roles = null)
     {
         var accessToken = GenerateAccessToken(userId, email, roles);
         var refreshToken = GenerateRefreshToken();
@@ -131,13 +131,13 @@ public class TokenService : ITokenService
         var token = await _refreshTokenRepository.GetByTokenAsync(refreshToken);
         if (token != null)
         {
-            await _refreshTokenRepository.RevokeAsync(token.Id);
+            await _refreshTokenRepository.RevokeAsync(token.Token);
         }
     }
 
-    public async Task RevokeAllRefreshTokensAsync(Guid userId)
+    public async Task RevokeAllRefreshTokensAsync(int userId)
     {
-        await _refreshTokenRepository.RevokeAllForUserAsync(userId);
+        await _refreshTokenRepository.RevokeAllUserTokensAsync(userId);
     }
 
     public async Task<TokenResponse?> RefreshTokenAsync(string refreshToken)
@@ -149,13 +149,13 @@ public class TokenService : ITokenService
         }
 
         var user = await _userRepository.GetByIdAsync(token.UserId);
-        if (user == null || user.Status != UserStatus.Active)
+        if (user == null || user.StatusId != 1) // StatusId 1 = Active
         {
             return null;
         }
 
         // Revoke the old refresh token
-        await _refreshTokenRepository.RevokeAsync(token.Id);
+        await _refreshTokenRepository.RevokeAsync(token.Token);
 
         // Generate new tokens
         return await GenerateTokensAsync(user.Id, user.Email);
