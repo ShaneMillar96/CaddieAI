@@ -109,6 +109,94 @@ public static class GolfConstants
 }
 ```
 
+### Enum Development Pattern
+
+**For Database Lookup Values**: Use enums with integer values that map to database lookup tables for type safety and performance.
+
+#### Enum Definition
+Create enums in `caddie.portal.dal.Enums` namespace with explicit integer values:
+
+```csharp
+namespace caddie.portal.dal.Enums;
+
+public enum RoundStatus
+{
+    NotStarted = 1,
+    InProgress = 2,
+    Paused = 3,
+    Completed = 4,
+    Abandoned = 5
+}
+```
+
+#### Database Schema
+- Create lookup table with integer primary key matching enum values
+- Use foreign key relationship instead of enum column for performance
+- Include name and description columns for human readability
+
+```sql
+CREATE TABLE RoundStatuses (
+    id INTEGER PRIMARY KEY,
+    name VARCHAR(50) NOT NULL UNIQUE,
+    description VARCHAR(255)
+);
+
+INSERT INTO RoundStatuses (id, name, description) VALUES 
+(1, 'not_started', 'Round has not been started yet'),
+(2, 'in_progress', 'Round is currently being played');
+```
+
+#### Entity Configuration
+```csharp
+public class Round
+{
+    public int StatusId { get; set; }
+    public virtual RoundStatus Status { get; set; } = null!;
+}
+```
+
+#### Repository Usage
+Use enum casting for type-safe queries without FromSqlRaw:
+
+```csharp
+// Good: Type-safe enum-based filtering
+public async Task<IEnumerable<Round>> GetActiveRoundsAsync()
+{
+    return await _context.Rounds
+        .Include(r => r.Status)
+        .Where(r => r.StatusId == (int)RoundStatus.InProgress || 
+                   r.StatusId == (int)RoundStatus.Paused)
+        .ToListAsync();
+}
+
+// Avoid: Raw SQL queries
+// FromSqlRaw("SELECT * FROM rounds WHERE status = 'in_progress'")
+```
+
+#### Service Layer Enum Handling
+```csharp
+// Convert between service enum and database ID
+private async Task<int> GetStatusIdByNameAsync(string statusName)
+{
+    var status = await _context.RoundStatuses
+        .FirstOrDefaultAsync(s => s.Name == statusName);
+    return status?.Id ?? (int)RoundStatus.NotStarted;
+}
+
+// Use enum for business logic
+if (currentStatus == ServiceRoundStatus.InProgress)
+{
+    // Business logic here
+}
+```
+
+#### Benefits of Enum Pattern
+- **Type Safety**: Compile-time checking prevents invalid status values
+- **Performance**: Integer comparisons faster than string operations
+- **IntelliSense**: IDE autocompletion for available values
+- **Refactoring**: Easy to rename and track usage across codebase
+- **Validation**: Automatic validation of valid enum values
+
 ### Error Handling
 - Use specific exception types for different error scenarios
 - Implement global exception handling middleware

@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "jira-api": {
+      "type": "sse",
+      "url": "https://caddieaiapp.atlassian.net/rest/api/3",
+      "description": "JIRA MCP Server for CaddieAI project management integration",
+      "projectKey": "ECS",
+      "capabilities": [
+        "search_issues",
+        "create_issues",
+        "update_issues",
+        "get_project_info",
+        "manage_sprints"
+      ],
+      "defaultFilters": {
+        "project": "ECS",
+        "orderBy": "updated DESC"
+      }
+    }
+  }
+}

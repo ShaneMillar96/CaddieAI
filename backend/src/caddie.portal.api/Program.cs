@@ -78,6 +78,7 @@ builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IUserSessionRepository, UserSessionRepository>();
 builder.Services.AddScoped<IPasswordResetTokenRepository, PasswordResetTokenRepository>();
 builder.Services.AddScoped<ICourseRepository, CourseRepository>();
+builder.Services.AddScoped<IRoundRepository, RoundRepository>();
 
 // Register Services
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
@@ -85,9 +86,10 @@ builder.Services.AddScoped<IPasswordService, PasswordService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<ICourseService, CourseService>();
+builder.Services.AddScoped<IRoundService, RoundService>();
 
 // Add AutoMapper
-builder.Services.AddAutoMapper(typeof(AuthMappingProfile), typeof(CourseMappingProfile));
+builder.Services.AddAutoMapper(typeof(AuthMappingProfile), typeof(CourseMappingProfile), typeof(RoundMappingProfile));
 
 // Add FluentValidation
 builder.Services.AddFluentValidationAutoValidation();
