@@ -23,7 +23,7 @@ CaddieAI is an AI-powered golf companion mobile application designed to enhance 
 **External Services**
 - OpenAI GPT-4o for AI conversations
 - Garmin Golf API / Mapbox SDK for course data
-- Native GPS for location services
+- Native GPS for location services (@react-native-community/geolocation)
 - PostgreSQL with PostGIS for geospatial data
 
 **Infrastructure**
@@ -237,6 +237,39 @@ Assert.Equal(user.Name, result.Name);
 
 ## Development Workflow
 
+### JIRA Integration
+
+The project uses JIRA for task tracking and project management:
+
+- **JIRA Board**: https://caddieaiapp.atlassian.net/jira/software/projects/ECS/boards/1
+- **MCP Integration**: Configured for direct JIRA integration through Claude MCP
+- **Task Tracking**: All location tracking features are tracked as ECS tasks (ECS-1 through ECS-12)
+- **Story Points**: Tasks estimated using 1-5 point scale for planning
+- **Sprint Planning**: Tasks organized in sprints with clear dependencies
+
+### Location Tracking Implementation Plan
+
+**Phase 1: Foundation (ECS-1 to ECS-4)**
+- Install React Native location dependencies
+- Configure platform permissions
+- Build location service wrapper
+- Create permission handling UI
+
+**Phase 2: Backend API (ECS-5 to ECS-6)**
+- Create location tracking controller
+- Implement location tracking endpoints
+- Add location validation and storage
+
+**Phase 3: Frontend Features (ECS-7 to ECS-9)**
+- Build course selection screens
+- Add nearby course detection
+- Implement real-time location tracking
+
+**Phase 4: Advanced Features (ECS-10 to ECS-12)**
+- Add distance calculations
+- Create round management interface
+- Build location history and analytics
+
 ### Local Development Setup
 
 1. **Prerequisites**:
@@ -412,6 +445,15 @@ docker-compose exec postgres pg_isready -U caddieai_user -d caddieai_dev
 - **AI Features**: Chat sessions, club recommendations, and user feedback system
 - **Faughan Valley Golf Centre**: Complete course data for MVP development
 
+### Location Tracking Architecture (V1.5.0 - Planned)
+- **React Native Location Services**: GPS tracking with @react-native-community/geolocation
+- **Location Permissions**: Cross-platform permission handling for iOS and Android
+- **Real-time Tracking**: Continuous location updates during golf rounds
+- **Course Detection**: Automatic detection of nearby courses and course boundaries
+- **Distance Calculations**: Real-time distance to tee, pin, and course features
+- **Location History**: Breadcrumb tracking and round replay functionality
+- **Battery Optimization**: Efficient background location tracking
+
 ### Current Database Schema
 - **12 Tables**: Users, courses, holes, rounds, locations, chat sessions, etc.
 - **12 Enum Types**: For data consistency and validation
@@ -448,8 +490,9 @@ docker-compose exec postgres pg_isready -U caddieai_user -d caddieai_dev
 
 ### Frontend
 - `CaddieAIMobile/src/components/` - Reusable UI components
-- `CaddieAIMobile/src/screens/` - Screen components
+- `CaddieAIMobile/src/screens/` - Screen components  
 - `CaddieAIMobile/src/services/` - API service layer
+- `CaddieAIMobile/src/services/LocationService.ts` - Location tracking service (planned)
 - `CaddieAIMobile/src/store/` - Redux store configuration
 
 ### Documentation
