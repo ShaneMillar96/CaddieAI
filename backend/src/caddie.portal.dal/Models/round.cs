@@ -25,6 +25,11 @@ public partial class Round
     /// </summary>
     public int? CurrentHole { get; set; }
 
+    /// <summary>
+    /// Foreign key to RoundStatus lookup table
+    /// </summary>
+    public int StatusId { get; set; }
+
     public int? TotalScore { get; set; }
 
     public int? TotalPutts { get; set; }
@@ -61,6 +66,8 @@ public partial class Round
     public virtual Course Course { get; set; } = null!;
 
     public virtual ICollection<Location> Locations { get; set; } = new List<Location>();
+
+    public virtual RoundStatus Status { get; set; } = null!;
 
     public virtual User User { get; set; } = null!;
 }

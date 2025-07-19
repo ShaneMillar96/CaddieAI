@@ -59,11 +59,14 @@ shared/docs/
 
 ### For API Consumers
 - **API Endpoints**: `api/endpoints/`
+  - [Course Management API](api/endpoints/course-endpoints.md)
 - **Data Models**: `api/models/`
+  - [Course Models](api/models/course-models.md)
 - **Authentication**: `api/authentication/`
 
 ### For Project Management
 - **Feature Progress**: `changelog/features/`
+  - [Course Management API v1.0.0](changelog/features/course-management-api-v1.0.0.md)
 - **Architecture Decisions**: `changelog/decisions/`
 - **Migration History**: `changelog/migrations/`
 

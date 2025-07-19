@@ -36,6 +36,8 @@ public partial class CaddieAIDbContext : DbContext
 
     public virtual DbSet<Round> Rounds { get; set; }
 
+    public virtual DbSet<RoundStatus> RoundStatuses { get; set; }
+
     public virtual DbSet<SkillLevel> SkillLevels { get; set; }
 
     public virtual DbSet<User> Users { get; set; }
