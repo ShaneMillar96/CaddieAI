@@ -77,15 +77,17 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IUserSessionRepository, UserSessionRepository>();
 builder.Services.AddScoped<IPasswordResetTokenRepository, PasswordResetTokenRepository>();
+builder.Services.AddScoped<ICourseRepository, CourseRepository>();
 
 // Register Services
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
 builder.Services.AddScoped<IPasswordService, PasswordService>();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<ICourseService, CourseService>();
 
 // Add AutoMapper
-builder.Services.AddAutoMapper(typeof(AuthMappingProfile));
+builder.Services.AddAutoMapper(typeof(AuthMappingProfile), typeof(CourseMappingProfile));
 
 // Add FluentValidation
 builder.Services.AddFluentValidationAutoValidation();
