@@ -42,6 +42,7 @@ builder.Services.AddDbContext<CaddieAIDbContext>(options =>
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection(EmailSettings.SectionName));
 builder.Services.Configure<AuthenticationSettings>(builder.Configuration.GetSection(AuthenticationSettings.SectionName));
+builder.Services.Configure<OpenAISettings>(builder.Configuration.GetSection(OpenAISettings.SectionName));
 
 // Add Authentication and Authorization
 var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>();
@@ -80,6 +81,8 @@ builder.Services.AddScoped<IPasswordResetTokenRepository, PasswordResetTokenRepo
 builder.Services.AddScoped<ICourseRepository, CourseRepository>();
 builder.Services.AddScoped<IRoundRepository, RoundRepository>();
 builder.Services.AddScoped<ILocationRepository, LocationRepository>();
+builder.Services.AddScoped<IChatSessionRepository, ChatSessionRepository>();
+builder.Services.AddScoped<IChatMessageRepository, ChatMessageRepository>();
 
 // Register Services
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
@@ -89,8 +92,25 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<ICourseService, CourseService>();
 builder.Services.AddScoped<IRoundService, RoundService>();
 
+// Configure OpenAI
+var openAISettings = builder.Configuration.GetSection(OpenAISettings.SectionName).Get<OpenAISettings>();
+if (openAISettings == null)
+{
+    throw new InvalidOperationException("OpenAI settings are not configured");
+}
+
+builder.Services.AddHttpClient("OpenAI", client =>
+{
+    client.BaseAddress = new Uri(openAISettings.BaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(openAISettings.TimeoutSeconds);
+    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAISettings.ApiKey}");
+});
+
+builder.Services.AddScoped<IOpenAIService, OpenAIService>();
+builder.Services.AddScoped<IGolfContextService, GolfContextService>();
+
 // Add AutoMapper
-builder.Services.AddAutoMapper(typeof(AuthMappingProfile), typeof(CourseMappingProfile), typeof(RoundMappingProfile));
+builder.Services.AddAutoMapper(typeof(AuthMappingProfile), typeof(CourseMappingProfile), typeof(RoundMappingProfile), typeof(ChatMappingProfile));
 
 // Add FluentValidation
 builder.Services.AddFluentValidationAutoValidation();
