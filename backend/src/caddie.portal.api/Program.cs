@@ -83,6 +83,7 @@ builder.Services.AddScoped<IRoundRepository, RoundRepository>();
 builder.Services.AddScoped<ILocationRepository, LocationRepository>();
 builder.Services.AddScoped<IChatSessionRepository, ChatSessionRepository>();
 builder.Services.AddScoped<IChatMessageRepository, ChatMessageRepository>();
+builder.Services.AddScoped<IClubRecommendationRepository, ClubRecommendationRepository>();
 
 // Register Services
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
@@ -91,6 +92,7 @@ builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<ICourseService, CourseService>();
 builder.Services.AddScoped<IRoundService, RoundService>();
+builder.Services.AddScoped<IClubRecommendationService, ClubRecommendationService>();
 
 // Configure OpenAI
 var openAISettings = builder.Configuration.GetSection(OpenAISettings.SectionName).Get<OpenAISettings>();
@@ -110,7 +112,7 @@ builder.Services.AddScoped<IOpenAIService, OpenAIService>();
 builder.Services.AddScoped<IGolfContextService, GolfContextService>();
 
 // Add AutoMapper
-builder.Services.AddAutoMapper(typeof(AuthMappingProfile), typeof(CourseMappingProfile), typeof(RoundMappingProfile), typeof(ChatMappingProfile));
+builder.Services.AddAutoMapper(typeof(AuthMappingProfile), typeof(CourseMappingProfile), typeof(RoundMappingProfile), typeof(ChatMappingProfile), typeof(ClubRecommendationMappingProfile));
 
 // Add FluentValidation
 builder.Services.AddFluentValidationAutoValidation();
