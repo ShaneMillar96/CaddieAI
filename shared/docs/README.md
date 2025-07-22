@@ -11,6 +11,7 @@ shared/docs/
 ├── features/                   # Feature-specific documentation
 │   ├── database/              # Database and migration documentation
 │   ├── ai/                    # AI features documentation
+│   ├── analytics/             # Golf statistics and analytics
 │   ├── location/              # GPS and location features
 │   └── course-management/     # Course data management
 ├── api/                       # API documentation
@@ -60,13 +61,16 @@ shared/docs/
 ### For API Consumers
 - **API Endpoints**: `api/endpoints/`
   - [Course Management API](api/endpoints/course-endpoints.md)
+  - [Statistics API](api/endpoints/statistics-endpoints.md)
 - **Data Models**: `api/models/`
   - [Course Models](api/models/course-models.md)
+  - [Statistics Models](api/models/statistics-models.md)
 - **Authentication**: `api/authentication/`
 
 ### For Project Management
 - **Feature Progress**: `changelog/features/`
   - [Course Management API v1.0.0](changelog/features/course-management-api-v1.0.0.md)
+  - [Golf Statistics Service v1.0.0](changelog/features/golf-statistics-service-v1.0.0.md)
 - **Architecture Decisions**: `changelog/decisions/`
 - **Migration History**: `changelog/migrations/`
 
