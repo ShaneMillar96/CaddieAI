@@ -110,9 +110,10 @@ builder.Services.AddHttpClient("OpenAI", client =>
 
 builder.Services.AddScoped<IOpenAIService, OpenAIService>();
 builder.Services.AddScoped<IGolfContextService, GolfContextService>();
+builder.Services.AddScoped<IGolfStatisticsService, GolfStatisticsService>();
 
 // Add AutoMapper
-builder.Services.AddAutoMapper(typeof(AuthMappingProfile), typeof(CourseMappingProfile), typeof(RoundMappingProfile), typeof(ChatMappingProfile), typeof(ClubRecommendationMappingProfile));
+builder.Services.AddAutoMapper(typeof(AuthMappingProfile), typeof(CourseMappingProfile), typeof(RoundMappingProfile), typeof(ChatMappingProfile), typeof(ClubRecommendationMappingProfile), typeof(StatisticsMappingProfile));
 
 // Add FluentValidation
 builder.Services.AddFluentValidationAutoValidation();
