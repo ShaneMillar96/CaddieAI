@@ -14,6 +14,7 @@ shared/docs/
 │   ├── analytics/             # Golf statistics and analytics
 │   ├── location/              # GPS and location features
 │   ├── course-management/     # Course data management
+│   ├── api-services/          # API service implementations
 │   └── state-management/      # Frontend state management (Redux)
 ├── api/                       # API documentation
 │   ├── endpoints/             # Individual endpoint documentation
@@ -69,6 +70,7 @@ shared/docs/
   - [Statistics Models](api/models/statistics-models.md)
 - **Frontend Integration**: `api/frontend/`
   - [Golf State Management API](api/frontend/golf-state-management-api.md)
+  - [Golf API Service Integration](api/frontend/golf-api-service-integration.md)
 - **Authentication**: `api/authentication/`
 
 ### For Project Management
@@ -76,14 +78,18 @@ shared/docs/
   - [Course Management API v1.0.0](changelog/features/course-management-api-v1.0.0.md)
   - [Golf Statistics Service v1.0.0](changelog/features/golf-statistics-service-v1.0.0.md)
   - [Golf State Management v1.0.0](changelog/features/golf-state-management-v1.0.0.md)
+  - [Golf API Service v1.0.0](changelog/features/golf-api-service-v1.0.0.md)
 - **Architecture Decisions**: `changelog/decisions/`
 - **Migration History**: `changelog/migrations/`
 
 ### For Frontend Developers
 - **State Management**: `features/state-management/`
   - [Golf State Management](features/state-management/golf-state-management.md)
+- **API Services**: `features/api-services/`
+  - [Golf API Service](features/api-services/golf-api-service.md)
 - **Frontend API Integration**: `api/frontend/`
   - [Golf State Management API](api/frontend/golf-state-management-api.md)
+  - [Golf API Service Integration](api/frontend/golf-api-service-integration.md)
 - **Redux Patterns**: `features/state-management/`
 
 ## Contributing to Documentation
