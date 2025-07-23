@@ -8,7 +8,7 @@ export const ActiveRoundScreen: React.FC = () => {
       <Text style={styles.subtitle}>Track your game in real-time</Text>
       <Text style={styles.description}>
         Start a new round or continue tracking your current game with GPS 
-        location tracking, score keeping, and AI-powered recommendations.
+        location tracking, score keeping, and AI-powered recommendationss.
       </Text>
     </View>
   );
