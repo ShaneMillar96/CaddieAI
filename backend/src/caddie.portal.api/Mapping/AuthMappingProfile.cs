@@ -14,7 +14,11 @@ public class AuthMappingProfile : Profile
         CreateMap<LoginRequestDto, UserLoginModel>();
 
         // Service Models to Response DTOs
-        CreateMap<UserModel, UserDto>();
+        CreateMap<UserModel, UserDto>()
+            .ForMember(dest => dest.SkillLevelId, opt => opt.MapFrom(src => src.SkillLevel.Id))
+            .ForMember(dest => dest.SkillLevelName, opt => opt.MapFrom(src => src.SkillLevel.Name))
+            .ForMember(dest => dest.StatusId, opt => opt.MapFrom(src => src.Status.Id))
+            .ForMember(dest => dest.StatusName, opt => opt.MapFrom(src => src.Status.Name));
         CreateMap<TokenResponse, LoginResponseDto>();
         CreateMap<AuthenticationResult, LoginResponseDto>()
             .ForMember(dest => dest.AccessToken, opt => opt.MapFrom(src => src.TokenResponse!.AccessToken))
