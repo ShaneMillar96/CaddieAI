@@ -693,6 +693,9 @@ public partial class CaddieAIDbContext : DbContext
             entity.Property(e => e.Token)
                 .HasMaxLength(255)
                 .HasColumnName("token");
+            entity.Property(e => e.UpdatedAt)
+                .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                .HasColumnName("updated_at");
             entity.Property(e => e.UserId).HasColumnName("user_id");
 
             entity.HasOne(d => d.User).WithMany(p => p.RefreshTokens)
