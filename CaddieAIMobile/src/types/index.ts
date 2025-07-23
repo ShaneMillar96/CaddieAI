@@ -118,10 +118,17 @@ export type AuthStackParamList = {
   VerifyEmail: { token: string };
 };
 
+export type MainTabParamList = {
+  Home: undefined;
+  Courses: undefined;
+  ActiveRound: undefined;
+  AIChat: undefined;
+  Profile: undefined;
+};
+
 export type RootStackParamList = {
   Auth: undefined;
-  Home: undefined;
-  Profile: undefined;
+  MainTabs: undefined;
 };
 
 // Paginated response wrapper interface (shared)
