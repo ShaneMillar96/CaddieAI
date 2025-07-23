@@ -36,7 +36,7 @@ export const RegisterScreen: React.FC = () => {
     firstName: '',
     lastName: '',
     handicap: undefined,
-    skillLevel: SkillLevel.Beginner,
+    skillLevelId: SkillLevel.Beginner,
   });
 
   const [formErrors, setFormErrors] = useState<{
@@ -120,6 +120,7 @@ export const RegisterScreen: React.FC = () => {
     }
 
     try {
+      console.log(formData)
       await dispatch(register(formData)).unwrap();
       Alert.alert(
         'Registration Successful',
@@ -269,8 +270,8 @@ export const RegisterScreen: React.FC = () => {
 
           <SkillLevelPicker
             label="Skill Level"
-            selectedLevel={formData.skillLevel}
-            onLevelChange={(level) => handleInputChange('skillLevel', level)}
+            selectedLevel={formData.skillLevelId}
+            onLevelChange={(level) => handleInputChange('skillLevelId', level)}
           />
 
           <Button

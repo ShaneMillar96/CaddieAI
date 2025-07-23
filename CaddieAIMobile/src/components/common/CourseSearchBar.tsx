@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   TextInput,
@@ -28,30 +28,30 @@ export const CourseSearchBar: React.FC<CourseSearchBarProps> = ({
   isLocationLoading = false,
 }) => {
   const [searchText, setSearchText] = useState('');
-  const [debounceTimer, setDebounceTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Debounced search functionality
   const debouncedSearch = useCallback((text: string) => {
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
     }
 
     const timer = setTimeout(() => {
       onSearch(text.trim());
     }, 500); // 500ms delay
 
-    setDebounceTimer(timer);
-  }, [debounceTimer, onSearch]);
+    debounceTimer.current = timer;
+  }, [onSearch]);
 
   useEffect(() => {
     debouncedSearch(searchText);
     
     return () => {
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
       }
     };
-  }, [searchText, debouncedSearch, debounceTimer]);
+  }, [searchText, debouncedSearch]);
 
   const clearSearch = () => {
     setSearchText('');
