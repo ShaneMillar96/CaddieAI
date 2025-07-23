@@ -1,20 +1,14 @@
 {
   "mcpServers": {
-    "jira-api": {
-      "type": "sse",
-      "url": "https://caddieaiapp.atlassian.net/rest/api/3",
-      "description": "JIRA MCP Server for CaddieAI project management integration",
-      "projectKey": "ECS",
-      "capabilities": [
-        "search_issues",
-        "create_issues",
-        "update_issues",
-        "get_project_info",
-        "manage_sprints"
-      ],
-      "defaultFilters": {
-        "project": "ECS",
-        "orderBy": "updated DESC"
+    "jira-mcp": {
+      "command": "node",
+      "args": ["/Users/shane.millar/Desktop/Projects/CaddieAI/jira-mcp/build/index.js"],
+      "env": {
+        "JIRA_HOST": "caddieaiapp.atlassian.net",
+        "JIRA_USERNAME": "shanemillar1996@gmail.com",
+        "JIRA_API_TOKEN": "your-jira-api-token-here",
+        "JIRA_PROJECT_KEY": "ECS",
+        "AUTO_CREATE_TEST_TICKETS": "false"
       }
     }
   }
