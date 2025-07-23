@@ -32,7 +32,15 @@ class AuthApiService {
       async (config) => {
         const token = await TokenStorage.getAccessToken();
         if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
+          // Validate token before using it
+          if (TokenStorage.isTokenValid(token)) {
+            config.headers.Authorization = `Bearer ${token}`;
+          } else {
+            // Token is invalid, clear it and don't add to request
+            console.log('Invalid access token detected, clearing storage');
+            await TokenStorage.clearAll();
+            // Don't add authorization header for invalid token
+          }
         }
         return config;
       },
@@ -45,21 +53,34 @@ class AuthApiService {
       async (error) => {
         const originalRequest = error.config;
         
+        // Handle 401 Unauthorized responses
         if (error.response?.status === 401 && !originalRequest._retry) {
           originalRequest._retry = true;
           
+          console.log('Received 401, attempting token refresh...');
+          
           try {
             const newToken = await this.refreshToken();
-            if (newToken) {
+            if (newToken && TokenStorage.isTokenValid(newToken)) {
               originalRequest.headers.Authorization = `Bearer ${newToken}`;
               return this.api(originalRequest);
+            } else {
+              // Refresh token is also invalid or refresh failed
+              console.log('Token refresh failed or returned invalid token');
+              await TokenStorage.clearAll();
+              return Promise.reject(new Error('Authentication failed - please login again'));
             }
           } catch (refreshError) {
-            // Refresh failed, redirect to login
+            // Refresh failed, clear storage and require re-authentication
+            console.log('Token refresh error:', refreshError);
             await TokenStorage.clearAll();
-            // You might want to emit an event here or use a callback
-            return Promise.reject(refreshError);
+            return Promise.reject(new Error('Authentication failed - please login again'));
           }
+        }
+        
+        // Handle other authentication-related errors
+        if (error.response?.status === 403) {
+          console.log('Access forbidden - insufficient permissions');
         }
         
         return Promise.reject(error);
@@ -102,6 +123,14 @@ class AuthApiService {
     const storedRefreshToken = await TokenStorage.getRefreshToken();
     
     if (!storedRefreshToken) {
+      console.log('No refresh token found');
+      return null;
+    }
+
+    // Validate refresh token before using it
+    if (!TokenStorage.isTokenValid(storedRefreshToken)) {
+      console.log('Refresh token is invalid or expired, clearing storage');
+      await TokenStorage.clearAll();
       return null;
     }
 
@@ -112,13 +141,25 @@ class AuthApiService {
       );
       
       if (response.data.success && response.data.data) {
-        await TokenStorage.storeTokens(response.data.data.accessToken, response.data.data.refreshToken);
-        await TokenStorage.storeUserData(response.data.data.user);
-        return response.data.data.accessToken;
+        const { accessToken, refreshToken: newRefreshToken } = response.data.data;
+        
+        // Validate the new tokens before storing
+        if (TokenStorage.isTokenValid(accessToken) && TokenStorage.isTokenValid(newRefreshToken)) {
+          await TokenStorage.storeTokens(accessToken, newRefreshToken);
+          await TokenStorage.storeUserData(response.data.data.user);
+          console.log('Token refresh successful');
+          return accessToken;
+        } else {
+          console.log('Server returned invalid tokens');
+          await TokenStorage.clearAll();
+          return null;
+        }
       }
       
+      console.log('Token refresh response was not successful');
       return null;
     } catch (error) {
+      console.log('Token refresh failed:', error);
       await TokenStorage.clearAll();
       return null;
     }

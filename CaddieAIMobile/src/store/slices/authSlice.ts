@@ -1,4 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
+import { REHYDRATE } from 'redux-persist';
 import {
   AuthState,
   User,
@@ -23,22 +24,47 @@ export const initializeAuth = createAsyncThunk(
   'auth/initializeAuth',
   async (_, { rejectWithValue }) => {
     try {
+      console.log('Initializing authentication...');
+      
+      // First check if tokens exist
       const hasTokens = await TokenStorage.hasTokens();
-      if (hasTokens) {
-        const userData = await TokenStorage.getUserData();
-        const accessToken = await TokenStorage.getAccessToken();
-        const refreshToken = await TokenStorage.getRefreshToken();
-        
-        if (userData && accessToken && refreshToken) {
-          return {
-            user: userData,
-            accessToken,
-            refreshToken,
-          };
-        }
+      if (!hasTokens) {
+        console.log('No tokens found, user needs to authenticate');
+        return null;
       }
+
+      // Validate stored tokens (this will clear invalid/expired tokens automatically)
+      const areTokensValid = await TokenStorage.validateStoredTokens();
+      if (!areTokensValid) {
+        console.log('Stored tokens are invalid or expired, user needs to re-authenticate');
+        return null;
+      }
+
+      // Get validated tokens and user data
+      const [userData, accessToken, refreshToken] = await Promise.all([
+        TokenStorage.getUserData(),
+        TokenStorage.getAccessToken(),
+        TokenStorage.getRefreshToken()
+      ]);
+      
+      // Double-check that all required data is present
+      if (userData && accessToken && refreshToken) {
+        console.log('Valid authentication data found, user authenticated');
+        return {
+          user: userData,
+          accessToken,
+          refreshToken,
+        };
+      }
+
+      // If any data is missing, clear everything and require re-authentication
+      console.log('Authentication data incomplete, clearing storage');
+      await TokenStorage.clearAll();
       return null;
     } catch (error: any) {
+      console.error('Error initializing auth:', error);
+      // Clear storage on any error to ensure clean state
+      await TokenStorage.clearAll();
       return rejectWithValue(error.message || 'Failed to initialize auth');
     }
   }
@@ -224,15 +250,29 @@ const authSlice = createSlice({
     builder.addCase(initializeAuth.fulfilled, (state, action) => {
       state.isLoading = false;
       if (action.payload) {
+        // Valid tokens found - set authenticated state
         state.user = action.payload.user;
         state.accessToken = action.payload.accessToken;
         state.refreshToken = action.payload.refreshToken;
         state.isAuthenticated = true;
+        state.error = null;
+      } else {
+        // No valid tokens found - clear authenticated state
+        state.user = null;
+        state.accessToken = null;
+        state.refreshToken = null;
+        state.isAuthenticated = false;
+        state.error = null;
       }
     });
     builder.addCase(initializeAuth.rejected, (state, action) => {
       state.isLoading = false;
       state.error = action.payload as string;
+      // Clear authenticated state on initialization failure
+      state.user = null;
+      state.accessToken = null;
+      state.refreshToken = null;
+      state.isAuthenticated = false;
     });
 
     // Login
@@ -394,6 +434,37 @@ const authSlice = createSlice({
       state.isLoading = false;
       state.error = action.payload as string;
     });
+
+    // Handle Redux Persist rehydration
+    builder.addMatcher(
+      (action) => action.type === REHYDRATE,
+      (state, action: any) => {
+        console.log('🔄 Redux Persist: Rehydrating auth state');
+        
+        // If rehydrating, don't trust the persisted isAuthenticated flag
+        // It will be properly set by initializeAuth after token validation
+        if (action.payload?.auth) {
+          const rehydratedAuth = action.payload.auth;
+          console.log('🔄 Redux Persist: Rehydrated auth state:', {
+            isAuthenticated: rehydratedAuth.isAuthenticated,
+            hasUser: !!rehydratedAuth.user,
+            hasAccessToken: !!rehydratedAuth.accessToken,
+            hasRefreshToken: !!rehydratedAuth.refreshToken
+          });
+          
+          // Always set isAuthenticated to false on rehydration
+          // Let initializeAuth determine the actual authentication state
+          state.isAuthenticated = false;
+          state.isLoading = true; // Will be handled by initializeAuth
+          state.error = null;
+          
+          // Preserve user data and tokens for initializeAuth to validate
+          state.user = rehydratedAuth.user;
+          state.accessToken = rehydratedAuth.accessToken;
+          state.refreshToken = rehydratedAuth.refreshToken;
+        }
+      }
+    );
   },
 });
 

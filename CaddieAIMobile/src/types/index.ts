@@ -30,7 +30,7 @@ export interface User {
   lastName: string;
   fullName: string;
   handicap?: number;
-  skillLevel: SkillLevel;
+  skillLevelId: SkillLevel;
   preferences?: Record<string, any>;
   playingStyle?: Record<string, any>;
   status: UserStatus;
@@ -55,7 +55,7 @@ export interface RegisterRequest {
   firstName: string;
   lastName: string;
   handicap?: number;
-  skillLevel: SkillLevel;
+  skillLevelId: SkillLevel;
   preferences?: Record<string, any>;
   playingStyle?: Record<string, any>;
 }

@@ -12,16 +12,28 @@ const Stack = createStackNavigator<RootStackParamList>();
 
 export const AppNavigator: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { isAuthenticated, isLoading } = useAppSelector((state) => state.auth);
+  const { isAuthenticated, isLoading, user, error } = useAppSelector((state) => state.auth);
 
   useEffect(() => {
     // Initialize authentication state when app starts
     dispatch(initializeAuth());
   }, [dispatch]);
 
+  // Debug authentication state
+  useEffect(() => {
+    console.log('🔍 AppNavigator: Auth state changed:', {
+      isAuthenticated,
+      isLoading,
+      hasUser: !!user,
+      error
+    });
+  }, [isAuthenticated, isLoading, user, error]);
+
   if (isLoading) {
     return <LoadingSpinner message="Loading..." />;
   }
+
+  console.log('🚀 AppNavigator: Rendering navigator, isAuthenticated:', isAuthenticated);
 
   return (
     <NavigationContainer>
