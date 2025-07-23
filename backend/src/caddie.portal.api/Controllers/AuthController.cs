@@ -29,7 +29,7 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Register a new user account
+    /// Register a new user account to Caddie
     /// </summary>
     /// <param name="request">Registration details</param>
     /// <returns>Authentication result with tokens</returns>
