@@ -49,10 +49,13 @@ class CourseApiService {
   }
 
   // Get paginated courses
-  async getCourses(page = 1, pageSize = 20): Promise<PaginatedResponse<CourseListItem>> {
-    const response: AxiosResponse<ApiResponse<PaginatedResponse<CourseListItem>>> = await this.api.get(
-      `/courses?page=${page}&pageSize=${pageSize}`
-    );
+  async getCourses(page = 1, pageSize = 20, searchTerm?: string): Promise<PaginatedResponse<CourseListItem>> {
+    let url = `/course?page=${page}&pageSize=${pageSize}`;
+    if (searchTerm) {
+      url += `&searchTerm=${encodeURIComponent(searchTerm)}`;
+    }
+    
+    const response: AxiosResponse<ApiResponse<PaginatedResponse<CourseListItem>>> = await this.api.get(url);
     
     if (response.data.success && response.data.data) {
       return response.data.data;
@@ -64,7 +67,7 @@ class CourseApiService {
   // Get course by ID with full details
   async getCourseById(courseId: number): Promise<Course> {
     const response: AxiosResponse<ApiResponse<Course>> = await this.api.get(
-      `/courses/${courseId}`
+      `/course/${courseId}`
     );
     
     if (response.data.success && response.data.data) {
@@ -74,24 +77,19 @@ class CourseApiService {
     throw new Error(response.data.message || 'Failed to fetch course details');
   }
 
-  // Search courses with filters
+  // Search courses with filters - now uses getCourses with query
   async searchCourses(searchRequest: CourseSearchRequest): Promise<PaginatedResponse<CourseListItem>> {
-    const response: AxiosResponse<ApiResponse<PaginatedResponse<CourseListItem>>> = await this.api.post(
-      '/courses/search',
-      searchRequest
+    return this.getCourses(
+      searchRequest.page || 1,
+      searchRequest.pageSize || 20,
+      searchRequest.query
     );
-    
-    if (response.data.success && response.data.data) {
-      return response.data.data;
-    }
-    
-    throw new Error(response.data.message || 'Failed to search courses');
   }
 
   // Get nearby courses based on location
   async getNearby(nearbyRequest: NearbyCoursesRequest): Promise<CourseListItem[]> {
     const response: AxiosResponse<ApiResponse<CourseListItem[]>> = await this.api.post(
-      '/courses/nearby',
+      '/course/nearby',
       nearbyRequest
     );
     
@@ -105,7 +103,7 @@ class CourseApiService {
   // Check if user is within course boundaries
   async checkWithinBounds(courseId: number, latitude: number, longitude: number): Promise<boolean> {
     const response: AxiosResponse<ApiResponse<boolean>> = await this.api.post(
-      `/courses/${courseId}/check-bounds`,
+      `/course/${courseId}/check-location`,
       { latitude, longitude }
     );
     
@@ -117,29 +115,19 @@ class CourseApiService {
   }
 
   // Get course suggestions based on user preferences
-  async getSuggestions(limit = 5): Promise<CourseListItem[]> {
-    const response: AxiosResponse<ApiResponse<CourseListItem[]>> = await this.api.get(
-      `/courses/suggestions?limit=${limit}`
-    );
-    
-    if (response.data.success && response.data.data) {
-      return response.data.data;
-    }
-    
-    throw new Error(response.data.message || 'Failed to fetch course suggestions');
+  // TODO: Backend implementation needed
+  async getSuggestions(_limit = 5): Promise<CourseListItem[]> {
+    // For now, return empty array until backend implements this endpoint
+    console.warn('Course suggestions endpoint not implemented in backend yet');
+    return [];
   }
 
-  // Get course weather information
-  async getCourseWeather(courseId: number): Promise<any> {
-    const response: AxiosResponse<ApiResponse<any>> = await this.api.get(
-      `/courses/${courseId}/weather`
-    );
-    
-    if (response.data.success && response.data.data) {
-      return response.data.data;
-    }
-    
-    throw new Error(response.data.message || 'Failed to fetch course weather');
+  // Get course weather information  
+  // TODO: Backend implementation needed
+  async getCourseWeather(_courseId: number): Promise<any> {
+    // For now, return null until backend implements this endpoint
+    console.warn('Course weather endpoint not implemented in backend yet');
+    return null;
   }
 }
 
