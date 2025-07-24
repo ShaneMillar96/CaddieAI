@@ -50,7 +50,7 @@ export const Button: React.FC<ButtonProps> = ({
     >
       {loading ? (
         <ActivityIndicator
-          color={variant === 'primary' ? '#fff' : '#007AFF'}
+          color={variant === 'primary' ? '#fff' : '#2c5530'}
           size="small"
         />
       ) : (
@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   primary: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#2c5530',
   },
   secondary: {
     backgroundColor: '#f8f9fa',
@@ -78,7 +78,7 @@ const styles = StyleSheet.create({
   outline: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: '#007AFF',
+    borderColor: '#2c5530',
   },
   disabled: {
     opacity: 0.5,
@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   outlineText: {
-    color: '#007AFF',
+    color: '#2c5530',
   },
   disabledText: {
     color: '#999',
