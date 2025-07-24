@@ -12,7 +12,6 @@ import {
   CreateRoundRequest,
   UpdateRoundRequest,
   HoleScore,
-  RoundStatus,
   // Statistics types
   StatisticsRequest,
   PerformanceAnalysisResponse,

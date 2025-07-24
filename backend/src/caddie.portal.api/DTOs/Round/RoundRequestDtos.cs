@@ -93,3 +93,16 @@ public class CompleteRoundRequestDto
     [MaxLength(1000)]
     public string? Notes { get; set; }
 }
+
+public class UpdateCurrentHoleRequestDto
+{
+    [Required]
+    [Range(1, 18)]
+    public int HoleNumber { get; set; }
+}
+
+public class AbandonRoundRequestDto
+{
+    [MaxLength(500)]
+    public string? Reason { get; set; }
+}

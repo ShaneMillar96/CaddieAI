@@ -52,7 +52,7 @@ class RoundApiService {
   // Create a new round
   async createRound(roundData: CreateRoundRequest): Promise<Round> {
     const response: AxiosResponse<ApiResponse<Round>> = await this.api.post(
-      '/rounds',
+      '/round',
       roundData
     );
     
@@ -66,7 +66,7 @@ class RoundApiService {
   // Get round by ID
   async getRoundById(roundId: number): Promise<Round> {
     const response: AxiosResponse<ApiResponse<Round>> = await this.api.get(
-      `/rounds/${roundId}`
+      `/round/${roundId}`
     );
     
     if (response.data.success && response.data.data) {
@@ -79,7 +79,7 @@ class RoundApiService {
   // Update round details
   async updateRound(roundId: number, updateData: UpdateRoundRequest): Promise<Round> {
     const response: AxiosResponse<ApiResponse<Round>> = await this.api.put(
-      `/rounds/${roundId}`,
+      `/round/${roundId}`,
       updateData
     );
     
@@ -93,7 +93,7 @@ class RoundApiService {
   // Start a round (update status to InProgress)
   async startRound(roundId: number): Promise<Round> {
     const response: AxiosResponse<ApiResponse<Round>> = await this.api.put(
-      `/rounds/${roundId}/start`
+      `/round/${roundId}/start`
     );
     
     if (response.data.success && response.data.data) {
@@ -103,10 +103,24 @@ class RoundApiService {
     throw new Error(response.data.message || 'Failed to start round');
   }
 
+  // Create and start a new round
+  async createAndStartRound(courseId: number): Promise<Round> {
+    const response: AxiosResponse<ApiResponse<Round>> = await this.api.post(
+      '/round/start',
+      { courseId }
+    );
+    
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    
+    throw new Error(response.data.message || 'Failed to create and start round');
+  }
+
   // Pause a round
   async pauseRound(roundId: number): Promise<Round> {
-    const response: AxiosResponse<ApiResponse<Round>> = await this.api.put(
-      `/rounds/${roundId}/pause`
+    const response: AxiosResponse<ApiResponse<Round>> = await this.api.post(
+      `/round/${roundId}/pause`
     );
     
     if (response.data.success && response.data.data) {
@@ -119,7 +133,7 @@ class RoundApiService {
   // Resume a round
   async resumeRound(roundId: number): Promise<Round> {
     const response: AxiosResponse<ApiResponse<Round>> = await this.api.put(
-      `/rounds/${roundId}/resume`
+      `/round/${roundId}/resume`
     );
     
     if (response.data.success && response.data.data) {
@@ -132,7 +146,7 @@ class RoundApiService {
   // Complete a round
   async completeRound(roundId: number): Promise<Round> {
     const response: AxiosResponse<ApiResponse<Round>> = await this.api.put(
-      `/rounds/${roundId}/complete`
+      `/round/${roundId}/complete`
     );
     
     if (response.data.success && response.data.data) {
@@ -145,7 +159,7 @@ class RoundApiService {
   // Abandon a round
   async abandonRound(roundId: number): Promise<Round> {
     const response: AxiosResponse<ApiResponse<Round>> = await this.api.put(
-      `/rounds/${roundId}/abandon`
+      `/round/${roundId}/abandon`
     );
     
     if (response.data.success && response.data.data) {
@@ -158,7 +172,7 @@ class RoundApiService {
   // Get user's round history with pagination
   async getRoundHistory(page = 1, pageSize = 20): Promise<PaginatedResponse<Round>> {
     const response: AxiosResponse<ApiResponse<PaginatedResponse<Round>>> = await this.api.get(
-      `/rounds/history?page=${page}&pageSize=${pageSize}`
+      `/round/history?page=${page}&pageSize=${pageSize}`
     );
     
     if (response.data.success && response.data.data) {
@@ -171,7 +185,7 @@ class RoundApiService {
   // Get active round for user
   async getActiveRound(): Promise<Round | null> {
     const response: AxiosResponse<ApiResponse<Round | null>> = await this.api.get(
-      '/rounds/active'
+      '/round/active'
     );
     
     if (response.data.success) {
@@ -184,7 +198,7 @@ class RoundApiService {
   // Get rounds by status
   async getRoundsByStatus(status: RoundStatus, page = 1, pageSize = 20): Promise<PaginatedResponse<Round>> {
     const response: AxiosResponse<ApiResponse<PaginatedResponse<Round>>> = await this.api.get(
-      `/rounds/status/${status}?page=${page}&pageSize=${pageSize}`
+      `/round/status/${status}?page=${page}&pageSize=${pageSize}`
     );
     
     if (response.data.success && response.data.data) {
@@ -197,7 +211,7 @@ class RoundApiService {
   // Add hole score to round
   async addHoleScore(roundId: number, holeScore: Omit<HoleScore, 'id' | 'roundId'>): Promise<HoleScore> {
     const response: AxiosResponse<ApiResponse<HoleScore>> = await this.api.post(
-      `/rounds/${roundId}/hole-scores`,
+      `/round/${roundId}/hole-scores`,
       holeScore
     );
     
@@ -211,7 +225,7 @@ class RoundApiService {
   // Update hole score
   async updateHoleScore(roundId: number, holeScoreId: number, holeScore: Partial<HoleScore>): Promise<HoleScore> {
     const response: AxiosResponse<ApiResponse<HoleScore>> = await this.api.put(
-      `/rounds/${roundId}/hole-scores/${holeScoreId}`,
+      `/round/${roundId}/hole-scores/${holeScoreId}`,
       holeScore
     );
     
@@ -225,7 +239,7 @@ class RoundApiService {
   // Get hole scores for a round
   async getHoleScores(roundId: number): Promise<HoleScore[]> {
     const response: AxiosResponse<ApiResponse<HoleScore[]>> = await this.api.get(
-      `/rounds/${roundId}/hole-scores`
+      `/round/${roundId}/hole-scores`
     );
     
     if (response.data.success && response.data.data) {
@@ -238,7 +252,7 @@ class RoundApiService {
   // Delete a round (soft delete)
   async deleteRound(roundId: number): Promise<void> {
     const response: AxiosResponse<ApiResponse> = await this.api.delete(
-      `/rounds/${roundId}`
+      `/round/${roundId}`
     );
     
     if (!response.data.success) {
@@ -249,7 +263,7 @@ class RoundApiService {
   // Get round statistics
   async getRoundStatistics(roundId: number): Promise<any> {
     const response: AxiosResponse<ApiResponse<any>> = await this.api.get(
-      `/rounds/${roundId}/statistics`
+      `/round/${roundId}/statistics`
     );
     
     if (response.data.success && response.data.data) {

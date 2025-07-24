@@ -5,7 +5,6 @@ import {
   User,
   LoginRequest,
   RegisterRequest,
-  LoginResponse
 } from '../../types';
 import authApi from '../../services/authApi';
 import TokenStorage from '../../services/tokenStorage';

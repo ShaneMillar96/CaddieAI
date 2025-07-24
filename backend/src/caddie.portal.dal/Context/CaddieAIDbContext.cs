@@ -756,14 +756,40 @@ public partial class CaddieAIDbContext : DbContext
             entity.Property(e => e.WindSpeedKmh)
                 .HasPrecision(4, 1)
                 .HasColumnName("wind_speed_kmh");
+            entity.Property(e => e.StatusId).HasColumnName("status_id");
 
             entity.HasOne(d => d.Course).WithMany(p => p.Rounds)
                 .HasForeignKey(d => d.CourseId)
                 .HasConstraintName("rounds_course_id_fkey");
 
+            entity.HasOne(d => d.Status).WithMany(p => p.Rounds)
+                .HasForeignKey(d => d.StatusId)
+                .HasConstraintName("fk_rounds_status");
+
             entity.HasOne(d => d.User).WithMany(p => p.Rounds)
                 .HasForeignKey(d => d.UserId)
                 .HasConstraintName("rounds_user_id_fkey");
+        });
+
+        modelBuilder.Entity<RoundStatus>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("roundstatuses_pkey");
+
+            entity.ToTable("roundstatuses");
+
+            entity.HasIndex(e => e.Name, "idx_round_statuses_name");
+
+            entity.HasIndex(e => e.Name, "roundstatuses_name_key").IsUnique();
+
+            entity.Property(e => e.Id)
+                .ValueGeneratedNever()
+                .HasColumnName("id");
+            entity.Property(e => e.Description)
+                .HasMaxLength(255)
+                .HasColumnName("description");
+            entity.Property(e => e.Name)
+                .HasMaxLength(50)
+                .HasColumnName("name");
         });
 
         modelBuilder.Entity<SkillLevel>(entity =>

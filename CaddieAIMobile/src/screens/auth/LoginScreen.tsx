@@ -52,7 +52,7 @@ export const LoginScreen: React.FC = () => {
     if (error) {
       dispatch(clearError());
     }
-  }, []);
+  }, [dispatch, error]);
 
   const validateForm = (): boolean => {
     const errors: typeof formErrors = {};

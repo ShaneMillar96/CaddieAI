@@ -891,4 +891,11 @@ export interface RoundState {
   isCompleting: boolean;
   error: string | null;
   lastSyncTime: string | null;
+  dashboardState: {
+    currentHole: number;
+    showScoreModal: boolean;
+    isLocationTracking: boolean;
+    lastLocationUpdate: string | null;
+    roundTimer: string | null;
+  };
 }

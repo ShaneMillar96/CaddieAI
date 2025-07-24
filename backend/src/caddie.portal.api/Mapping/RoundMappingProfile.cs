@@ -22,7 +22,7 @@ public class RoundMappingProfile : Profile
         CreateMap<RoundStatisticsModel, RoundStatisticsResponseDto>();
         
         CreateMap<PaginatedResult<RoundModel>, PaginatedRoundResponseDto>()
-            .ForMember(dest => dest.Data, opt => opt.MapFrom(src => src.Data.Select(r => MapToRoundListResponse(r))));
+            .ForMember(dest => dest.Items, opt => opt.MapFrom(src => src.Data.Select(r => MapToRoundListResponse(r))));
     }
 
     private static RoundListResponseDto MapToRoundListResponse(RoundModel round)

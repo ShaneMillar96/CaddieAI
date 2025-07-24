@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Alert,
   RefreshControl,
-  Image,
 } from 'react-native';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -16,7 +15,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import { AppDispatch, RootState } from '../../store';
 import { fetchCourseById } from '../../store/slices/courseSlice';
-import { Course, WeatherData } from '../../types/golf';
+import { WeatherData } from '../../types/golf';
 import { LoadingSpinner } from '../../components/auth/LoadingSpinner';
 import { ErrorMessage } from '../../components/auth/ErrorMessage';
 import HoleCard from '../../components/common/HoleCard';
@@ -117,15 +116,26 @@ export const CourseDetailScreen: React.FC = () => {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Start Round',
-          onPress: () => {
-            // TODO: Implement round creation and navigation
-            console.log('Starting round at:', selectedCourse.name);
-            Alert.alert('Coming Soon', 'Round management is not yet implemented.');
+          onPress: async () => {
+            try {
+              const roundApi = (await import('../../services/roundApi')).default;
+              const newRound = await roundApi.createAndStartRound(selectedCourse.id);
+              
+              // Navigate to Active Round screen
+              navigation.navigate('ActiveRound' as never);
+            } catch (error) {
+              console.error('Failed to start round:', error);
+              Alert.alert(
+                'Error',
+                'Failed to start round. Please try again.',
+                [{ text: 'OK' }]
+              );
+            }
           },
         },
       ]
     );
-  }, [selectedCourse]);
+  }, [selectedCourse, navigation]);
 
   // Handle retry
   const handleRetry = useCallback(() => {
