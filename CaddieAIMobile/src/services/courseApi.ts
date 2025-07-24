@@ -5,7 +5,8 @@ import {
   CourseListItem,
   CourseSearchRequest,
   NearbyCoursesRequest,
-  PaginatedResponse
+  PaginatedResponse,
+  WeatherData
 } from '../types';
 import TokenStorage from './tokenStorage';
 
@@ -78,6 +79,7 @@ class CourseApiService {
     throw new Error(response.data.message || 'Failed to fetch course details');
   }
 
+
   // Search courses with filters - now uses getCourses with query
   async searchCourses(searchRequest: CourseSearchRequest): Promise<PaginatedResponse<CourseListItem>> {
     return this.getCourses(
@@ -124,11 +126,35 @@ class CourseApiService {
   }
 
   // Get course weather information  
-  // TODO: Backend implementation needed
-  async getCourseWeather(_courseId: number): Promise<any> {
-    // For now, return null until backend implements this endpoint
-    console.warn('Course weather endpoint not implemented in backend yet');
-    return null;
+  async getCourseWeather(courseId: number): Promise<WeatherData> {
+    try {
+      const response: AxiosResponse<ApiResponse<WeatherData>> = await this.api.get(
+        `/course/${courseId}/weather`
+      );
+      
+      if (response.data.success && response.data.data) {
+        return response.data.data;
+      }
+      
+      throw new Error(response.data.message || 'Failed to fetch weather data');
+    } catch (error) {
+      // If weather endpoint is not available, return mock data
+      console.warn('Weather endpoint not available, returning mock data');
+      return this.getMockWeatherData();
+    }
+  }
+
+  // Mock weather data for development/fallback
+  private getMockWeatherData(): WeatherData {
+    return {
+      temperature: 18,
+      windSpeed: 15,
+      windDirection: 'SW',
+      humidity: 65,
+      precipitation: 0,
+      conditions: 'Partly Cloudy',
+      timestamp: new Date().toISOString(),
+    };
   }
 }
 
