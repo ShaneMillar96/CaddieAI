@@ -8,6 +8,8 @@ import {
   Text,
   StatusBar,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../../store';
 import { 
@@ -21,8 +23,12 @@ import { CourseSearchBar } from '../../components/common/CourseSearchBar';
 import { LoadingSpinner } from '../../components/auth/LoadingSpinner';
 import { ErrorMessage } from '../../components/auth/ErrorMessage';
 import { CourseListItem } from '../../types/golf';
+import { CoursesStackParamList } from '../../navigation/CoursesNavigator';
+
+type CoursesScreenNavigationProp = StackNavigationProp<CoursesStackParamList, 'CoursesList'>;
 
 export const CoursesScreen: React.FC = () => {
+  const navigation = useNavigation<CoursesScreenNavigationProp>();
   const dispatch = useDispatch<AppDispatch>();
   const {
     courses,
@@ -151,18 +157,11 @@ export const CoursesScreen: React.FC = () => {
 
   // Handle course details
   const handleCoursePress = useCallback((course: CourseListItem) => {
-    Alert.alert(
-      'Course Details',
-      `View detailed information about ${course.name}`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'View Details', onPress: () => {
-          // TODO: Navigate to course details screen
-          console.log('Viewing details for:', course.name);
-        }},
-      ]
-    );
-  }, []);
+    navigation.navigate('CourseDetail', { 
+      courseId: course.id, 
+      courseName: course.name 
+    });
+  }, [navigation]);
 
   // Handle error retry
   const handleRetry = useCallback(() => {

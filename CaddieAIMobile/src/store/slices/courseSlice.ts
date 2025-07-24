@@ -48,6 +48,7 @@ export const fetchCourseById = createAsyncThunk(
   }
 );
 
+
 export const searchCourses = createAsyncThunk(
   'courses/searchCourses',
   async (searchRequest: CourseSearchRequest, { rejectWithValue }) => {
@@ -96,17 +97,6 @@ export const fetchCourseSuggestions = createAsyncThunk(
   }
 );
 
-export const fetchCourseWeather = createAsyncThunk(
-  'courses/fetchWeather',
-  async (courseId: number, { rejectWithValue }) => {
-    try {
-      const weather = await courseApi.getCourseWeather(courseId);
-      return { courseId, weather };
-    } catch (error: any) {
-      return rejectWithValue(error.message || 'Failed to fetch course weather');
-    }
-  }
-);
 
 const courseSlice = createSlice({
   name: 'courses',
@@ -178,12 +168,55 @@ const courseSlice = createSlice({
     });
     builder.addCase(fetchCourseById.fulfilled, (state, action) => {
       state.isLoading = false;
-      state.selectedCourse = action.payload;
+      // Create a new course object to avoid immutability issues
+      const courseData = action.payload;
+      state.selectedCourse = {
+        id: courseData.id,
+        name: courseData.name,
+        description: courseData.description,
+        address: courseData.address,
+        city: courseData.city,
+        state: courseData.state,
+        country: courseData.country,
+        phone: courseData.phone,
+        website: courseData.website,
+        email: courseData.email,
+        totalHoles: courseData.totalHoles,
+        parTotal: courseData.parTotal,
+        slopeRating: courseData.slopeRating,
+        courseRating: courseData.courseRating,
+        yardageTotal: courseData.yardageTotal,
+        greenFeeRange: courseData.greenFeeRange,
+        timezone: courseData.timezone,
+        isActive: courseData.isActive,
+        amenities: courseData.amenities ? { ...courseData.amenities } : undefined,
+        latitude: courseData.latitude,
+        longitude: courseData.longitude,
+        holes: courseData.holes ? courseData.holes.map(hole => ({
+          id: hole.id,
+          holeNumber: hole.holeNumber,
+          par: hole.par,
+          yardageMen: hole.yardageMen,
+          yardageWomen: hole.yardageWomen,
+          handicap: hole.handicap,
+          description: hole.description,
+          courseId: courseData.id,
+          teeBoxLocation: hole.teeBoxLocation,
+          pinLocation: hole.pinLocation,
+          hazards: hole.hazards,
+          playingTips: hole.playingTips,
+          isActive: hole.isActive
+        })) : [],
+        createdAt: courseData.createdAt,
+        updatedAt: courseData.updatedAt,
+        distance: courseData.distance
+      };
     });
     builder.addCase(fetchCourseById.rejected, (state, action) => {
       state.isLoading = false;
       state.error = action.payload as string;
     });
+
 
     // Search courses
     builder.addCase(searchCourses.pending, (state) => {
@@ -252,19 +285,6 @@ const courseSlice = createSlice({
       state.error = action.payload as string;
     });
 
-    // Fetch course weather
-    builder.addCase(fetchCourseWeather.fulfilled, (state, action) => {
-      // Update the selected course with weather info if it matches
-      if (state.selectedCourse && state.selectedCourse.id === action.payload.courseId) {
-        state.selectedCourse = {
-          ...state.selectedCourse,
-          weather: action.payload.weather,
-        } as any; // Type assertion since weather is not in the Course interface
-      }
-    });
-    builder.addCase(fetchCourseWeather.rejected, (state, action) => {
-      state.error = action.payload as string;
-    });
   },
 });
 

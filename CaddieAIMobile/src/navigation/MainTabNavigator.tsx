@@ -4,11 +4,11 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { MainTabParamList } from '../types';
 import {
   HomeScreen,
-  CoursesScreen,
   ActiveRoundScreen,
   AIChatScreen,
   ProfileScreen,
 } from '../screens/main';
+import CoursesNavigator from './CoursesNavigator';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -70,10 +70,11 @@ export const MainTabNavigator: React.FC = () => {
       />
       <Tab.Screen
         name="Courses"
-        component={CoursesScreen}
+        component={CoursesNavigator}
         options={{
           title: 'Courses',
           tabBarIcon: CoursesIcon,
+          headerShown: false,
         }}
       />
       <Tab.Screen

@@ -90,7 +90,7 @@ export interface GeoBounds {
 // =============================================================================
 
 /**
- * Hole interface (matches backend HoleDto)
+ * Hole interface (matches backend HoleResponseDto)
  */
 export interface Hole {
   id: number;
@@ -100,7 +100,7 @@ export interface Hole {
   yardageMen?: number;
   yardageWomen?: number;
   handicap?: number;
-  description?: string;
+  description?: string | null;
   teeBoxLocation?: any; // GeoJSON point
   pinLocation?: any; // GeoJSON point
   hazards?: string[];
@@ -109,38 +109,38 @@ export interface Hole {
 }
 
 /**
- * Course interface (matches backend CourseDto)
+ * Course interface (matches backend CourseResponseDto)
  */
 export interface Course {
   id: number;
   name: string;
-  description?: string;
-  address?: string;
-  city?: string;
-  state?: string;
+  description?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
   country: string;
-  postalCode?: string;
-  phone?: string;
-  website?: string;
-  email?: string;
+  phone?: string | null;
+  website?: string | null;
+  email?: string | null;
   totalHoles: number;
   parTotal: number;
-  slopeRating?: number;
-  courseRating?: number;
-  yardageTotal?: number;
-  greenFeeRange?: string;
-  timezone?: string;
-  isActive?: boolean;
-  amenities?: Record<string, any>;
-  latitude?: number;
-  longitude?: number;
-  courseBoundary?: any; // GeoJSON polygon
-  createdAt?: string;
-  updatedAt?: string;
+  slopeRating?: number | null;
+  courseRating?: number | null;
+  yardageTotal?: number | null;
+  greenFeeRange?: string | null;
+  timezone?: string | null;
+  isActive?: boolean | null;
+  amenities?: Record<string, any> | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  holes: Hole[]; // Included in CourseResponseDto
+  createdAt?: string | null;
+  updatedAt?: string | null;
   distance?: number; // Distance from user location (added dynamically)
 }
 
 /**
+ * @deprecated Use Course interface instead - backend CourseResponseDto already includes holes
  * Course detail interface (matches backend CourseDetailDto)
  */
 export interface CourseDetail extends Course {
