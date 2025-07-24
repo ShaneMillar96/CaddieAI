@@ -8,6 +8,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -123,6 +124,11 @@ export const LoginScreen: React.FC = () => {
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.header}>
+          <Image 
+            source={require('../../assets/CaddieAI.png')} 
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Text style={styles.title}>Welcome Back</Text>
           <Text style={styles.subtitle}>Sign in to your CaddieAI account</Text>
         </View>
@@ -203,10 +209,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 40,
   },
+  logo: {
+    width: 80,
+    height: 80,
+    marginBottom: 20,
+  },
   title: {
     fontSize: 32,
     fontWeight: '700',
-    color: '#333',
+    color: '#2c5530',
     marginBottom: 8,
   },
   subtitle: {
@@ -232,7 +243,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   forgotPasswordText: {
-    color: '#007AFF',
+    color: '#2c5530',
     fontSize: 14,
     fontWeight: '600',
   },

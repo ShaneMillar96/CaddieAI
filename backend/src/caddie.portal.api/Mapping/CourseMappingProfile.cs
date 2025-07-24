@@ -19,7 +19,8 @@ public class CourseMappingProfile : Profile
         CreateMap<HoleModel, HoleResponseDto>();
         
         CreateMap<PaginatedResult<CourseModel>, PaginatedCourseResponseDto>()
-            .ForMember(dest => dest.Data, opt => opt.MapFrom(src => src.Data.Select(c => MapToCourseListResponse(c))));
+            .ForMember(dest => dest.Items, opt => opt.MapFrom(src => src.Data.Select(c => MapToCourseListResponse(c))))
+            .ForMember(dest => dest.PageNumber, opt => opt.MapFrom(src => src.Page));
     }
 
     private static CourseListResponseDto MapToCourseListResponse(CourseModel course)

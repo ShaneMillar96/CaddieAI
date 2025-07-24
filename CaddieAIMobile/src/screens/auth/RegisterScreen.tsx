@@ -8,6 +8,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -190,6 +191,11 @@ export const RegisterScreen: React.FC = () => {
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.header}>
+          <Image 
+            source={require('../../assets/CaddieAI.png')} 
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Text style={styles.title}>Create Account</Text>
           <Text style={styles.subtitle}>Join CaddieAI and improve your golf game</Text>
         </View>
@@ -307,10 +313,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 40,
   },
+  logo: {
+    width: 80,
+    height: 80,
+    marginBottom: 20,
+  },
   title: {
     fontSize: 32,
     fontWeight: '700',
-    color: '#333',
+    color: '#2c5530',
     marginBottom: 8,
   },
   subtitle: {
@@ -353,7 +364,7 @@ const styles = StyleSheet.create({
   },
   loginLink: {
     fontSize: 14,
-    color: '#007AFF',
+    color: '#2c5530',
     fontWeight: '600',
   },
 });

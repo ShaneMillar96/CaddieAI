@@ -54,6 +54,7 @@ class CourseApiService {
     if (searchTerm) {
       url += `&searchTerm=${encodeURIComponent(searchTerm)}`;
     }
+    console.log(url);
     
     const response: AxiosResponse<ApiResponse<PaginatedResponse<CourseListItem>>> = await this.api.get(url);
     

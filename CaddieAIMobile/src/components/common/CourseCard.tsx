@@ -183,7 +183,7 @@ const styles = StyleSheet.create({
     color: '#4a7c59',
   },
   selectButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#2c5530',
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 8,
