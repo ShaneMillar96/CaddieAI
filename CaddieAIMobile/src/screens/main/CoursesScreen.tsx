@@ -143,17 +143,29 @@ export const CoursesScreen: React.FC = () => {
   // Handle course selection
   const handleCourseSelect = useCallback((course: CourseListItem) => {
     Alert.alert(
-      'Course Selected',
-      `You selected ${course.name}. This will start a new round.`,
+      'Start New Round',
+      `Start a new round at ${course.name}?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Start Round', onPress: () => {
-          // TODO: Navigate to round setup or start round
-          console.log('Starting round at:', course.name);
+        { text: 'Start Round', onPress: async () => {
+          try {
+            const roundApi = (await import('../../services/roundApi')).default;
+            const newRound = await roundApi.createAndStartRound(course.id);
+            
+            // Navigate to Active Round screen
+            navigation.navigate('ActiveRound');
+          } catch (error) {
+            console.error('Failed to start round:', error);
+            Alert.alert(
+              'Error',
+              'Failed to start round. Please try again.',
+              [{ text: 'OK' }]
+            );
+          }
         }},
       ]
     );
-  }, []);
+  }, [navigation]);
 
   // Handle course details
   const handleCoursePress = useCallback((course: CourseListItem) => {

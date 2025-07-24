@@ -1,12 +1,10 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import {
   RoundState,
-  Round,
   CreateRoundRequest,
   UpdateRoundRequest,
   HoleScore,
   RoundStatus,
-  PaginatedResponse
 } from '../../types';
 import roundApi from '../../services/roundApi';
 
@@ -20,6 +18,14 @@ const initialState: RoundState = {
   isCompleting: false,
   error: null,
   lastSyncTime: null,
+  // Dashboard-specific state
+  dashboardState: {
+    currentHole: 1,
+    showScoreModal: false,
+    isLocationTracking: false,
+    lastLocationUpdate: null,
+    roundTimer: null,
+  },
 };
 
 // Async thunks
@@ -126,6 +132,10 @@ export const fetchActiveRound = createAsyncThunk(
       const round = await roundApi.getActiveRound();
       return round;
     } catch (error: any) {
+      // If it's a 404 or "no active round" error, treat it as success with null result
+      if (error.message?.includes('404') || error.message?.includes('No active round') || error.response?.status === 404) {
+        return null;
+      }
       return rejectWithValue(error.message || 'Failed to fetch active round');
     }
   }
@@ -232,6 +242,29 @@ const roundSlice = createSlice({
       state.isCompleting = false;
       state.error = null;
       state.lastSyncTime = null;
+      state.dashboardState = {
+        currentHole: 1,
+        showScoreModal: false,
+        isLocationTracking: false,
+        lastLocationUpdate: null,
+        roundTimer: null,
+      };
+    },
+    // Dashboard-specific actions
+    setCurrentHole: (state, action: PayloadAction<number>) => {
+      state.dashboardState.currentHole = action.payload;
+    },
+    setShowScoreModal: (state, action: PayloadAction<boolean>) => {
+      state.dashboardState.showScoreModal = action.payload;
+    },
+    setLocationTracking: (state, action: PayloadAction<boolean>) => {
+      state.dashboardState.isLocationTracking = action.payload;
+    },
+    setLastLocationUpdate: (state, action: PayloadAction<string>) => {
+      state.dashboardState.lastLocationUpdate = action.payload;
+    },
+    setRoundTimer: (state, action: PayloadAction<string>) => {
+      state.dashboardState.roundTimer = action.payload;
     },
     // Optimistic update for hole score (for offline support)
     optimisticUpdateHoleScore: (state, action: PayloadAction<{ roundId: number; holeScore: HoleScore }>) => {
@@ -542,6 +575,11 @@ export const {
   setLastSyncTime,
   resetRoundState,
   optimisticUpdateHoleScore,
+  setCurrentHole,
+  setShowScoreModal,
+  setLocationTracking,
+  setLastLocationUpdate,
+  setRoundTimer,
 } = roundSlice.actions;
 
 export default roundSlice.reducer;

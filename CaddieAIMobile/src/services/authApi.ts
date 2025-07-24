@@ -4,11 +4,6 @@ import {
   LoginRequest,
   LoginResponse,
   RegisterRequest,
-  RefreshTokenRequest,
-  ForgotPasswordRequest,
-  ResetPasswordRequest,
-  ChangePasswordRequest,
-  VerifyEmailRequest,
   User
 } from '../types';
 import TokenStorage from './tokenStorage';

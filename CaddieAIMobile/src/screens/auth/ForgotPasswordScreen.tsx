@@ -37,7 +37,7 @@ export const ForgotPasswordScreen: React.FC = () => {
     if (error) {
       dispatch(clearError());
     }
-  }, []);
+  }, [dispatch, error]);
 
   const validateEmail = (): boolean => {
     if (!email.trim()) {

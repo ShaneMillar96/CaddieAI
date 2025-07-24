@@ -1,11 +1,8 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import {
   CourseState,
-  Course,
-  CourseListItem,
   CourseSearchRequest,
   NearbyCoursesRequest,
-  PaginatedResponse
 } from '../../types';
 import courseApi from '../../services/courseApi';
 
@@ -260,7 +257,7 @@ const courseSlice = createSlice({
     });
 
     // Check within course bounds
-    builder.addCase(checkWithinCourseBounds.fulfilled, (state, action) => {
+    builder.addCase(checkWithinCourseBounds.fulfilled, (state) => {
       // You might want to update the selected course or store this info somewhere
       // For now, just clear any errors
       state.error = null;

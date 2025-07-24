@@ -49,7 +49,7 @@ export const RegisterScreen: React.FC = () => {
     handicap?: string;
   }>({});
 
-  const [emailCheckLoading, setEmailCheckLoading] = useState(false);
+  const [, setEmailCheckLoading] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -63,7 +63,7 @@ export const RegisterScreen: React.FC = () => {
     if (error) {
       dispatch(clearError());
     }
-  }, []);
+  }, [dispatch, error]);
 
   const validateForm = (): boolean => {
     const errors: typeof formErrors = {};

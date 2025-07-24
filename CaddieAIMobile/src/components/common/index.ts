@@ -6,3 +6,7 @@ export { HoleCard } from './HoleCard';
 export { default as HoleCardDefault } from './HoleCard';
 export { WeatherWidget } from './WeatherWidget';
 export { default as WeatherWidgetDefault } from './WeatherWidget';
+export { default as RoundProgressCard } from './RoundProgressCard';
+export { default as ScorecardComponent } from './ScorecardComponent';
+export { default as RoundStatsWidget } from './RoundStatsWidget';
+export { default as HoleNavigator } from './HoleNavigator';
