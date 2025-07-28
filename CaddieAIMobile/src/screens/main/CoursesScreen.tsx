@@ -8,7 +8,7 @@ import {
   Text,
   StatusBar,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useDispatch, useSelector } from 'react-redux';
 import { AppDispatch, RootState } from '../../store';
@@ -18,6 +18,11 @@ import {
   fetchNearbyCourses,
   clearError 
 } from '../../store/slices/courseSlice';
+import { 
+  fetchActiveRound,
+  abandonRound,
+  completeRound 
+} from '../../store/slices/roundSlice';
 import { CourseCard } from '../../components/common/CourseCard';
 import { CourseSearchBar } from '../../components/common/CourseSearchBar';
 import { LoadingSpinner } from '../../components/auth/LoadingSpinner';
@@ -26,9 +31,11 @@ import { CourseListItem } from '../../types/golf';
 import { CoursesStackParamList } from '../../navigation/CoursesNavigator';
 
 type CoursesScreenNavigationProp = StackNavigationProp<CoursesStackParamList, 'CoursesList'>;
+type CoursesScreenRouteProp = RouteProp<CoursesStackParamList, 'CoursesList'>;
 
 export const CoursesScreen: React.FC = () => {
   const navigation = useNavigation<CoursesScreenNavigationProp>();
+  const route = useRoute<CoursesScreenRouteProp>();
   const dispatch = useDispatch<AppDispatch>();
   const {
     courses,
@@ -40,6 +47,9 @@ export const CoursesScreen: React.FC = () => {
     error,
     pagination,
   } = useSelector((state: RootState) => state.courses);
+
+  // Check if user came from "Start New Round" flow
+  const fromActiveRound = route.params?.fromActiveRound || false;
 
   const hasMore = pagination?.hasNextPage ?? false;
 
@@ -140,32 +150,114 @@ export const CoursesScreen: React.FC = () => {
     }));
   }, [dispatch, hasMore, isLoading, showingNearby, searchTerm, courses.length, pagination]);
 
-  // Handle course selection
+  // Handle active round cleanup
+  const handleCleanupActiveRound = useCallback(async (activeRound: any, onComplete: () => void) => {
+    Alert.alert(
+      'Active Round Detected',
+      `You have an active round in progress at ${activeRound.course?.name || 'Unknown Course'}. What would you like to do?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Complete Round',
+          onPress: async () => {
+            try {
+              await dispatch(completeRound(activeRound.id)).unwrap();
+              Alert.alert('Round Completed', 'Your previous round has been completed.', [
+                { text: 'OK', onPress: onComplete }
+              ]);
+            } catch (error) {
+              Alert.alert('Error', 'Failed to complete previous round. Please try again.');
+            }
+          }
+        },
+        {
+          text: 'Abandon Round',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await dispatch(abandonRound(activeRound.id)).unwrap();
+              Alert.alert('Round Abandoned', 'Your previous round has been abandoned.', [
+                { text: 'OK', onPress: onComplete }
+              ]);
+            } catch (error) {
+              Alert.alert('Error', 'Failed to abandon previous round. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  }, [dispatch]);
+
+  // Handle course selection with proper validation and error handling
   const handleCourseSelect = useCallback((course: CourseListItem) => {
+    const startNewRound = async () => {
+      try {
+        // Pre-flight validation
+        const roundApi = (await import('../../services/roundApi')).default;
+        const validation = await roundApi.validateRoundCreation(course.id);
+        
+        if (!validation.canCreate) {
+          if (validation.activeRound) {
+            // Handle existing active round
+            handleCleanupActiveRound(validation.activeRound, () => startNewRound());
+            return;
+          } else {
+            // Generic validation failure
+            Alert.alert('Unable to Start Round', validation.reason || 'Please try again later.');
+            return;
+          }
+        }
+
+        // Proceed with round creation
+        const newRound = await roundApi.createAndStartRound(course.id);
+        
+        // Update Redux state
+        await dispatch(fetchActiveRound());
+        
+        // Navigate to Active Round screen
+        navigation.navigate('ActiveRound' as never);
+        
+      } catch (error: any) {
+        console.error('Failed to start round:', error);
+        
+        // Handle specific error types
+        if (error.response?.status === 409) {
+          // 409 Conflict - likely existing active round
+          Alert.alert(
+            'Round Creation Conflict',
+            'You may already have an active round. Please check your active round or try again.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Check Active Round', onPress: () => navigation.navigate('ActiveRound' as never) }
+            ]
+          );
+        } else if (error.response?.status >= 500) {
+          // Server error
+          Alert.alert(
+            'Server Error',
+            'There was a problem with the server. Please try again later.',
+            [{ text: 'OK' }]
+          );
+        } else {
+          // Generic error
+          Alert.alert(
+            'Error Starting Round',
+            error.message || 'Failed to start round. Please try again.',
+            [{ text: 'OK' }]
+          );
+        }
+      }
+    };
+
     Alert.alert(
       'Start New Round',
       `Start a new round at ${course.name}?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Start Round', onPress: async () => {
-          try {
-            const roundApi = (await import('../../services/roundApi')).default;
-            const newRound = await roundApi.createAndStartRound(course.id);
-            
-            // Navigate to Active Round screen
-            navigation.navigate('ActiveRound');
-          } catch (error) {
-            console.error('Failed to start round:', error);
-            Alert.alert(
-              'Error',
-              'Failed to start round. Please try again.',
-              [{ text: 'OK' }]
-            );
-          }
-        }},
+        { text: 'Start Round', onPress: startNewRound }
       ]
     );
-  }, [navigation]);
+  }, [navigation, dispatch, handleCleanupActiveRound]);
 
   // Handle course details
   const handleCoursePress = useCallback((course: CourseListItem) => {
@@ -260,6 +352,15 @@ export const CoursesScreen: React.FC = () => {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#f8f9fa" />
       
+      {/* Contextual Header for Start New Round Flow */}
+      {fromActiveRound && (
+        <View style={styles.contextualHeader}>
+          <Text style={styles.contextualHeaderText}>
+            Select a course below to start your new round
+          </Text>
+        </View>
+      )}
+      
       {/* Search Bar */}
       <CourseSearchBar
         onSearch={handleSearch}
@@ -299,6 +400,19 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
+  },
+  contextualHeader: {
+    backgroundColor: '#e8f5e8',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#c3e6c3',
+  },
+  contextualHeaderText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2c5530',
+    textAlign: 'center',
   },
   emptyContainer: {
     flex: 1,

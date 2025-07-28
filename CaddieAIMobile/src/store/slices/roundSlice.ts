@@ -213,6 +213,34 @@ export const deleteRound = createAsyncThunk(
   }
 );
 
+export const createAndStartRound = createAsyncThunk(
+  'rounds/createAndStartRound',
+  async (courseId: number, { rejectWithValue }) => {
+    try {
+      // Pre-flight validation
+      const validation = await roundApi.validateRoundCreation(courseId);
+      
+      if (!validation.canCreate) {
+        return rejectWithValue({
+          message: validation.reason || 'Cannot create new round',
+          code: 409,
+          activeRound: validation.activeRound
+        });
+      }
+
+      // Proceed with round creation
+      const round = await roundApi.createAndStartRound(courseId);
+      return round;
+    } catch (error: any) {
+      const errorPayload = {
+        message: error.message || 'Failed to create and start round',
+        code: error.response?.status || 500
+      };
+      return rejectWithValue(errorPayload);
+    }
+  }
+);
+
 const roundSlice = createSlice({
   name: 'rounds',
   initialState,
@@ -249,6 +277,31 @@ const roundSlice = createSlice({
         lastLocationUpdate: null,
         roundTimer: null,
       };
+    },
+    // Enhanced error handling actions
+    setErrorWithContext: (state, action: PayloadAction<{ error: string; context?: string; errorCode?: number }>) => {
+      const { error, context, errorCode } = action.payload;
+      state.error = context ? `${context}: ${error}` : error;
+      
+      // Handle specific error codes
+      if (errorCode === 409) {
+        // Conflict error - likely active round exists, trigger refresh
+        state.error = 'Active round conflict detected. Please refresh and try again.';
+      } else if (errorCode && errorCode >= 500) {
+        state.error = 'Server error occurred. Please try again later.';
+      }
+    },
+    clearErrorAndRefresh: (state) => {
+      state.error = null;
+      state.isLoading = false;
+      state.isStarting = false;
+      state.isUpdating = false;
+      state.isCompleting = false;
+    },
+    // Force refresh active round state
+    forceRefreshActiveRound: (state) => {
+      state.isLoading = true;
+      state.error = null;
     },
     // Dashboard-specific actions
     setCurrentHole: (state, action: PayloadAction<number>) => {
@@ -372,13 +425,19 @@ const roundSlice = createSlice({
     });
 
     // Resume round
+    builder.addCase(resumeRound.pending, (state) => {
+      state.isUpdating = true;
+      state.error = null;
+    });
     builder.addCase(resumeRound.fulfilled, (state, action) => {
+      state.isUpdating = false;
       const updatedRound = action.payload;
       if (state.activeRound && state.activeRound.id === updatedRound.id) {
         state.activeRound = updatedRound;
       }
     });
     builder.addCase(resumeRound.rejected, (state, action) => {
+      state.isUpdating = false;
       state.error = action.payload as string;
     });
 
@@ -408,7 +467,12 @@ const roundSlice = createSlice({
     });
 
     // Abandon round
+    builder.addCase(abandonRound.pending, (state) => {
+      state.isUpdating = true;
+      state.error = null;
+    });
     builder.addCase(abandonRound.fulfilled, (state, action) => {
+      state.isUpdating = false;
       const abandonedRound = action.payload;
       
       // Clear active round
@@ -425,6 +489,7 @@ const roundSlice = createSlice({
       }
     });
     builder.addCase(abandonRound.rejected, (state, action) => {
+      state.isUpdating = false;
       state.error = action.payload as string;
     });
 
@@ -564,6 +629,29 @@ const roundSlice = createSlice({
     builder.addCase(deleteRound.rejected, (state, action) => {
       state.error = action.payload as string;
     });
+
+    // Create and start round (enhanced)
+    builder.addCase(createAndStartRound.pending, (state) => {
+      state.isStarting = true;
+      state.error = null;
+    });
+    builder.addCase(createAndStartRound.fulfilled, (state, action) => {
+      state.isStarting = false;
+      state.activeRound = action.payload;
+      state.error = null;
+    });
+    builder.addCase(createAndStartRound.rejected, (state, action) => {
+      state.isStarting = false;
+      const payload = action.payload as any;
+      
+      if (payload?.code === 409) {
+        state.error = 'You already have an active round. Please complete or abandon it first.';
+      } else if (payload?.code && payload.code >= 500) {
+        state.error = 'Server error occurred. Please try again later.';
+      } else {
+        state.error = payload?.message || 'Failed to create and start round';
+      }
+    });
   },
 });
 
@@ -574,6 +662,9 @@ export const {
   clearRoundHistory,
   setLastSyncTime,
   resetRoundState,
+  setErrorWithContext,
+  clearErrorAndRefresh,
+  forceRefreshActiveRound,
   optimisticUpdateHoleScore,
   setCurrentHole,
   setShowScoreModal,

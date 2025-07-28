@@ -15,6 +15,11 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import { AppDispatch, RootState } from '../../store';
 import { fetchCourseById } from '../../store/slices/courseSlice';
+import { 
+  fetchActiveRound,
+  abandonRound,
+  completeRound 
+} from '../../store/slices/roundSlice';
 import { WeatherData } from '../../types/golf';
 import { LoadingSpinner } from '../../components/auth/LoadingSpinner';
 import { ErrorMessage } from '../../components/auth/ErrorMessage';
@@ -105,37 +110,116 @@ export const CourseDetailScreen: React.FC = () => {
     ]).finally(() => setRefreshing(false));
   }, [dispatch, courseId, loadWeather]);
 
-  // Handle start round
+  // Handle active round cleanup
+  const handleCleanupActiveRound = useCallback(async (activeRound: any, onComplete: () => void) => {
+    Alert.alert(
+      'Active Round Detected',
+      `You have an active round in progress at ${activeRound.course?.name || 'Unknown Course'}. What would you like to do?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Complete Round',
+          onPress: async () => {
+            try {
+              await dispatch(completeRound(activeRound.id)).unwrap();
+              Alert.alert('Round Completed', 'Your previous round has been completed.', [
+                { text: 'OK', onPress: onComplete }
+              ]);
+            } catch (error) {
+              Alert.alert('Error', 'Failed to complete previous round. Please try again.');
+            }
+          }
+        },
+        {
+          text: 'Abandon Round',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await dispatch(abandonRound(activeRound.id)).unwrap();
+              Alert.alert('Round Abandoned', 'Your previous round has been abandoned.', [
+                { text: 'OK', onPress: onComplete }
+              ]);
+            } catch (error) {
+              Alert.alert('Error', 'Failed to abandon previous round. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  }, [dispatch]);
+
+  // Handle start round with proper validation and error handling
   const handleStartRound = useCallback(() => {
     if (!selectedCourse) return;
+
+    const startNewRound = async () => {
+      try {
+        // Pre-flight validation
+        const roundApi = (await import('../../services/roundApi')).default;
+        const validation = await roundApi.validateRoundCreation(selectedCourse.id);
+        
+        if (!validation.canCreate) {
+          if (validation.activeRound) {
+            // Handle existing active round
+            handleCleanupActiveRound(validation.activeRound, () => startNewRound());
+            return;
+          } else {
+            // Generic validation failure
+            Alert.alert('Unable to Start Round', validation.reason || 'Please try again later.');
+            return;
+          }
+        }
+
+        // Proceed with round creation
+        const newRound = await roundApi.createAndStartRound(selectedCourse.id);
+        
+        // Update Redux state
+        await dispatch(fetchActiveRound());
+        
+        // Navigate to Active Round screen
+        navigation.navigate('ActiveRound' as never);
+        
+      } catch (error: any) {
+        console.error('Failed to start round:', error);
+        
+        // Handle specific error types
+        if (error.response?.status === 409) {
+          // 409 Conflict - likely existing active round
+          Alert.alert(
+            'Round Creation Conflict',
+            'You may already have an active round. Please check your active round or try again.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Check Active Round', onPress: () => navigation.navigate('ActiveRound' as never) }
+            ]
+          );
+        } else if (error.response?.status >= 500) {
+          // Server error
+          Alert.alert(
+            'Server Error',
+            'There was a problem with the server. Please try again later.',
+            [{ text: 'OK' }]
+          );
+        } else {
+          // Generic error
+          Alert.alert(
+            'Error Starting Round',
+            error.message || 'Failed to start round. Please try again.',
+            [{ text: 'OK' }]
+          );
+        }
+      }
+    };
 
     Alert.alert(
       'Start New Round',
       `Start a new round at ${selectedCourse.name}?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Start Round',
-          onPress: async () => {
-            try {
-              const roundApi = (await import('../../services/roundApi')).default;
-              const newRound = await roundApi.createAndStartRound(selectedCourse.id);
-              
-              // Navigate to Active Round screen
-              navigation.navigate('ActiveRound' as never);
-            } catch (error) {
-              console.error('Failed to start round:', error);
-              Alert.alert(
-                'Error',
-                'Failed to start round. Please try again.',
-                [{ text: 'OK' }]
-              );
-            }
-          },
-        },
+        { text: 'Start Round', onPress: startNewRound }
       ]
     );
-  }, [selectedCourse, navigation]);
+  }, [selectedCourse, navigation, dispatch, handleCleanupActiveRound]);
 
   // Handle retry
   const handleRetry = useCallback(() => {

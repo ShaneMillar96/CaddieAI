@@ -3,7 +3,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { CoursesScreen, CourseDetailScreen } from '../screens/main';
 
 export type CoursesStackParamList = {
-  CoursesList: undefined;
+  CoursesList: { fromActiveRound?: boolean } | undefined;
   CourseDetail: { courseId: number; courseName?: string };
 };
 
