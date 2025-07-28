@@ -33,6 +33,7 @@ import HoleNavigator from '../../components/common/HoleNavigator';
 // Navigation types
 type MainStackParamList = {
   Home: undefined;
+  Courses: undefined;
   CourseDetail: { courseId: number; courseName?: string };
   AIChat: undefined;
 };
@@ -214,7 +215,10 @@ export const ActiveRoundScreen: React.FC = () => {
           </Text>
           <TouchableOpacity
             style={styles.startRoundButton}
-            onPress={() => navigation.navigate('Home')}
+            onPress={() => navigation.navigate('Courses', { 
+              screen: 'CoursesList', 
+              params: { fromActiveRound: true } 
+            })}
           >
             <Icon name="play-arrow" size={24} color="#fff" />
             <Text style={styles.startRoundButtonText}>Start New Round</Text>

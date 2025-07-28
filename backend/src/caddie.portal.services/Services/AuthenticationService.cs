@@ -69,7 +69,7 @@ public class AuthenticationService : IAuthenticationService
                 Handicap = model.Handicap,
                 SkillLevelId = model.SkillLevelId,
                 StatusId = 1, // Active
-                EmailVerified = !_authSettings.RequireEmailVerification
+                EmailVerified = _authSettings.RequireEmailVerification
             };
 
             // Set preferences and playing style if provided

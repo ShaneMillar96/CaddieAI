@@ -44,7 +44,24 @@ class RoundApiService {
           // Handle unauthorized - could trigger token refresh
           await TokenStorage.clearAll();
         }
-        return Promise.reject(error);
+        
+        // Enhanced error context for debugging
+        const enhancedError = new Error(
+          error.response?.data?.message || 
+          error.message || 
+          `HTTP ${error.response?.status || 'Unknown'} Error`
+        );
+        
+        // Add additional context for common errors
+        if (error.response?.status === 405) {
+          enhancedError.message = `Method not allowed: ${error.config?.method?.toUpperCase()} ${error.config?.url}. Check API endpoint configuration.`;
+        }
+        
+        // Attach original error for debugging
+        (enhancedError as any).originalError = error;
+        (enhancedError as any).status = error.response?.status;
+        
+        return Promise.reject(enhancedError);
       }
     );
   }
@@ -117,6 +134,46 @@ class RoundApiService {
     throw new Error(response.data.message || 'Failed to create and start round');
   }
 
+  // Check if user has an active round (validation method)
+  async hasActiveRound(): Promise<boolean> {
+    try {
+      const activeRound = await this.getActiveRound();
+      return activeRound !== null;
+    } catch (error) {
+      // If error is 404 or "no active round", return false
+      if (error instanceof Error && (error.message?.includes('404') || error.message?.includes('No active round'))) {
+        return false;
+      }
+      // For other errors, throw them up
+      throw error;
+    }
+  }
+
+  // Validate round creation (pre-flight check)
+  async validateRoundCreation(_courseId: number): Promise<{ canCreate: boolean; reason?: string; activeRound?: Round }> {
+    try {
+      const activeRound = await this.getActiveRound();
+      if (activeRound) {
+        return {
+          canCreate: false,
+          reason: 'You already have an active round in progress',
+          activeRound: activeRound
+        };
+      }
+      return { canCreate: true };
+    } catch (error) {
+      // If no active round found, creation is allowed
+      if (error instanceof Error && (error.message?.includes('404') || error.message?.includes('No active round'))) {
+        return { canCreate: true };
+      }
+      // For other errors, assume creation is not safe
+      return {
+        canCreate: false,
+        reason: 'Unable to validate round creation. Please try again.'
+      };
+    }
+  }
+
   // Pause a round
   async pauseRound(roundId: number): Promise<Round> {
     const response: AxiosResponse<ApiResponse<Round>> = await this.api.post(
@@ -132,7 +189,7 @@ class RoundApiService {
 
   // Resume a round
   async resumeRound(roundId: number): Promise<Round> {
-    const response: AxiosResponse<ApiResponse<Round>> = await this.api.put(
+    const response: AxiosResponse<ApiResponse<Round>> = await this.api.post(
       `/round/${roundId}/resume`
     );
     
@@ -140,12 +197,12 @@ class RoundApiService {
       return response.data.data;
     }
     
-    throw new Error(response.data.message || 'Failed to resume round');
+    throw new Error(response.data.message || `Failed to resume round ${roundId}`);
   }
 
   // Complete a round
   async completeRound(roundId: number): Promise<Round> {
-    const response: AxiosResponse<ApiResponse<Round>> = await this.api.put(
+    const response: AxiosResponse<ApiResponse<Round>> = await this.api.post(
       `/round/${roundId}/complete`
     );
     
@@ -153,12 +210,12 @@ class RoundApiService {
       return response.data.data;
     }
     
-    throw new Error(response.data.message || 'Failed to complete round');
+    throw new Error(response.data.message || `Failed to complete round ${roundId}`);
   }
 
   // Abandon a round
   async abandonRound(roundId: number): Promise<Round> {
-    const response: AxiosResponse<ApiResponse<Round>> = await this.api.put(
+    const response: AxiosResponse<ApiResponse<Round>> = await this.api.post(
       `/round/${roundId}/abandon`
     );
     
@@ -166,7 +223,7 @@ class RoundApiService {
       return response.data.data;
     }
     
-    throw new Error(response.data.message || 'Failed to abandon round');
+    throw new Error(response.data.message || `Failed to abandon round ${roundId}`);
   }
 
   // Get user's round history with pagination
