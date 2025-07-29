@@ -1,3 +1,5 @@
+using caddie.portal.api.DTOs.Course;
+
 namespace caddie.portal.api.DTOs.Round;
 
 public class RoundResponseDto
@@ -20,6 +22,10 @@ public class RoundResponseDto
     public string? RoundMetadata { get; set; }
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    
+    // Navigation properties
+    public CourseResponseDto? Course { get; set; }
+    public List<HoleScoreResponseDto> HoleScores { get; set; } = new();
 }
 
 public class RoundListResponseDto

@@ -28,6 +28,8 @@ public partial class CaddieAIDbContext : DbContext
 
     public virtual DbSet<Hole> Holes { get; set; }
 
+    public virtual DbSet<HoleScore> HoleScores { get; set; }
+
     public virtual DbSet<Location> Locations { get; set; }
 
     public virtual DbSet<PasswordResetToken> PasswordResetTokens { get; set; }

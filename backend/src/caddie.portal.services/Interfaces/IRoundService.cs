@@ -27,4 +27,16 @@ public interface IRoundService
     Task<IEnumerable<RoundModel>> GetRecentRoundsAsync(int userId, int count = 10);
     Task<PaginatedResult<RoundModel>> GetPaginatedRoundsAsync(int page, int pageSize, int? userId = null, RoundStatus? status = null);
     Task<RoundStatisticsModel?> GetRoundStatisticsAsync(int userId, DateOnly? startDate = null, DateOnly? endDate = null);
+
+    // Hole Score Management
+    Task<HoleScoreModel?> GetHoleScoreByIdAsync(int id);
+    Task<HoleScoreModel?> GetHoleScoreByRoundAndHoleAsync(int roundId, int holeNumber);
+    Task<IEnumerable<HoleScoreModel>> GetHoleScoresByRoundIdAsync(int roundId);
+    Task<HoleScoreSummaryModel> GetHoleScoreSummaryAsync(int roundId);
+    Task<HoleScoreModel> CreateHoleScoreAsync(int roundId, CreateHoleScoreModel model);
+    Task<HoleScoreModel> UpdateHoleScoreAsync(int id, UpdateHoleScoreModel model);
+    Task<bool> DeleteHoleScoreAsync(int id);
+    Task<bool> InitializeHoleScoresForRoundAsync(int roundId);
+    Task<bool> ValidateHoleScoreAsync(int roundId, int holeNumber, CreateHoleScoreModel model);
+    Task<bool> HoleScoreExistsAsync(int roundId, int holeNumber);
 }

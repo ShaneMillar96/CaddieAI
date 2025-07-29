@@ -51,7 +51,15 @@ public class RoundService : IRoundService
         try
         {
             var round = await _roundRepository.GetByIdWithDetailsAsync(id);
-            return round == null ? null : MapToRoundModel(round);
+            if (round == null) return null;
+
+            var roundModel = MapToRoundModel(round);
+            
+            // Load hole scores for detailed round view
+            var holeScores = await GetHoleScoresByRoundIdAsync(id);
+            roundModel.HoleScores = holeScores.ToList();
+            
+            return roundModel;
         }
         catch (Exception ex)
         {
@@ -141,7 +149,15 @@ public class RoundService : IRoundService
         try
         {
             var round = await _roundRepository.GetActiveRoundByUserIdAsync(userId);
-            return round == null ? null : MapToRoundModel(round);
+            if (round == null) return null;
+
+            var roundModel = MapToRoundModel(round);
+            
+            // Load hole scores for active round
+            var holeScores = await GetHoleScoresByRoundIdAsync(round.Id);
+            roundModel.HoleScores = holeScores.ToList();
+            
+            return roundModel;
         }
         catch (Exception ex)
         {
@@ -300,8 +316,13 @@ public class RoundService : IRoundService
                 existingRound.StartTime = DateTime.UtcNow;
                 await _roundRepository.UpdateAsync(existingRound);
                 
+                // Note: Hole scores will be created manually by user, not auto-populated
+                // This supports the manual score entry workflow and future AI integration
+                
                 _logger.LogInformation("Round started successfully: ID {RoundId}", round.Id);
-                return MapToRoundModel(existingRound);
+                
+                // Return the round with course details loaded (but no hole scores yet)
+                return await GetRoundWithDetailsAsync(round.Id) ?? MapToRoundModel(existingRound);
             }
 
             return round;
@@ -707,5 +728,326 @@ public class RoundService : IRoundService
         var status = await _context.RoundStatuses
             .FirstOrDefaultAsync(s => s.Name == statusName);
         return status?.Id ?? 1; // Default to "not_started" if not found
+    }
+
+    // Hole Score Management Implementation
+    public async Task<HoleScoreModel?> GetHoleScoreByIdAsync(int id)
+    {
+        try
+        {
+            var holeScore = await _context.HoleScores
+                .Include(hs => hs.Hole)
+                .FirstOrDefaultAsync(hs => hs.Id == id);
+            
+            return holeScore == null ? null : MapToHoleScoreModel(holeScore);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting hole score by ID {HoleScoreId}", id);
+            throw;
+        }
+    }
+
+    public async Task<HoleScoreModel?> GetHoleScoreByRoundAndHoleAsync(int roundId, int holeNumber)
+    {
+        try
+        {
+            var holeScore = await _context.HoleScores
+                .Include(hs => hs.Hole)
+                .FirstOrDefaultAsync(hs => hs.RoundId == roundId && hs.HoleNumber == holeNumber);
+            
+            return holeScore == null ? null : MapToHoleScoreModel(holeScore);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting hole score for round {RoundId} hole {HoleNumber}", roundId, holeNumber);
+            throw;
+        }
+    }
+
+    public async Task<IEnumerable<HoleScoreModel>> GetHoleScoresByRoundIdAsync(int roundId)
+    {
+        try
+        {
+            var holeScores = await _context.HoleScores
+                .Include(hs => hs.Hole)
+                .Where(hs => hs.RoundId == roundId)
+                .OrderBy(hs => hs.HoleNumber)
+                .ToListAsync();
+            
+            return holeScores.Select(MapToHoleScoreModel);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting hole scores for round {RoundId}", roundId);
+            throw;
+        }
+    }
+
+    public async Task<HoleScoreSummaryModel> GetHoleScoreSummaryAsync(int roundId)
+    {
+        try
+        {
+            var holeScores = await GetHoleScoresByRoundIdAsync(roundId);
+            return HoleScoreSummaryModel.FromHoleScores(roundId, holeScores);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting hole score summary for round {RoundId}", roundId);
+            throw;
+        }
+    }
+
+    public async Task<HoleScoreModel> CreateHoleScoreAsync(int roundId, CreateHoleScoreModel model)
+    {
+        try
+        {
+            // Validate the round exists and user has access
+            var round = await _context.Rounds.FirstOrDefaultAsync(r => r.Id == roundId);
+            if (round == null)
+            {
+                throw new InvalidOperationException($"Round with ID {roundId} not found");
+            }
+
+            // Get the hole information
+            var hole = await _context.Holes
+                .FirstOrDefaultAsync(h => h.CourseId == round.CourseId && h.HoleNumber == model.HoleNumber);
+            if (hole == null)
+            {
+                throw new InvalidOperationException($"Hole {model.HoleNumber} not found for course");
+            }
+
+            // Check if hole score already exists
+            var existingScore = await _context.HoleScores
+                .FirstOrDefaultAsync(hs => hs.RoundId == roundId && hs.HoleNumber == model.HoleNumber);
+            if (existingScore != null)
+            {
+                throw new InvalidOperationException($"Hole score already exists for hole {model.HoleNumber}");
+            }
+
+            var holeScore = new caddie.portal.dal.Models.HoleScore
+            {
+                RoundId = roundId,
+                HoleId = hole.Id,
+                HoleNumber = model.HoleNumber,
+                Score = model.Score,
+                Putts = model.Putts,
+                FairwayHit = model.FairwayHit,
+                GreenInRegulation = model.GreenInRegulation,
+                UpAndDown = model.UpAndDown,
+                SandSave = model.SandSave,
+                PenaltyStrokes = model.PenaltyStrokes,
+                DistanceToPinYards = model.DistanceToPinYards,
+                ClubUsed = model.ClubUsed,
+                LiePosition = model.LiePosition,
+                ShotNotes = model.ShotNotes,
+                PerformanceNotes = model.PerformanceNotes,
+                HoleMetadata = model.HoleMetadata != null ? System.Text.Json.JsonSerializer.Serialize(model.HoleMetadata) : null,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _context.HoleScores.Add(holeScore);
+            await _context.SaveChangesAsync();
+
+            // Reload with hole information
+            await _context.Entry(holeScore).Reference(hs => hs.Hole).LoadAsync();
+            
+            return MapToHoleScoreModel(holeScore);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating hole score for round {RoundId} hole {HoleNumber}", roundId, model.HoleNumber);
+            throw;
+        }
+    }
+
+    public async Task<HoleScoreModel> UpdateHoleScoreAsync(int id, UpdateHoleScoreModel model)
+    {
+        try
+        {
+            var holeScore = await _context.HoleScores
+                .Include(hs => hs.Hole)
+                .FirstOrDefaultAsync(hs => hs.Id == id);
+            
+            if (holeScore == null)
+            {
+                throw new InvalidOperationException($"Hole score with ID {id} not found");
+            }
+
+            // Update fields
+            if (model.Score.HasValue) holeScore.Score = model.Score;
+            if (model.Putts.HasValue) holeScore.Putts = model.Putts;
+            if (model.FairwayHit.HasValue) holeScore.FairwayHit = model.FairwayHit;
+            if (model.GreenInRegulation.HasValue) holeScore.GreenInRegulation = model.GreenInRegulation;
+            if (model.UpAndDown.HasValue) holeScore.UpAndDown = model.UpAndDown;
+            if (model.SandSave.HasValue) holeScore.SandSave = model.SandSave;
+            if (model.PenaltyStrokes.HasValue) holeScore.PenaltyStrokes = model.PenaltyStrokes;
+            if (model.DistanceToPinYards.HasValue) holeScore.DistanceToPinYards = model.DistanceToPinYards;
+            if (model.ClubUsed != null) holeScore.ClubUsed = model.ClubUsed;
+            if (model.LiePosition != null) holeScore.LiePosition = model.LiePosition;
+            if (model.ShotNotes != null) holeScore.ShotNotes = model.ShotNotes;
+            if (model.PerformanceNotes != null) holeScore.PerformanceNotes = model.PerformanceNotes;
+            if (model.HoleMetadata != null) holeScore.HoleMetadata = System.Text.Json.JsonSerializer.Serialize(model.HoleMetadata);
+            
+            holeScore.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+            
+            return MapToHoleScoreModel(holeScore);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating hole score {HoleScoreId}", id);
+            throw;
+        }
+    }
+
+    public async Task<bool> DeleteHoleScoreAsync(int id)
+    {
+        try
+        {
+            var holeScore = await _context.HoleScores.FirstOrDefaultAsync(hs => hs.Id == id);
+            if (holeScore == null)
+            {
+                return false;
+            }
+
+            _context.HoleScores.Remove(holeScore);
+            await _context.SaveChangesAsync();
+            
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting hole score {HoleScoreId}", id);
+            throw;
+        }
+    }
+
+    public async Task<bool> InitializeHoleScoresForRoundAsync(int roundId)
+    {
+        try
+        {
+            var round = await _context.Rounds.FirstOrDefaultAsync(r => r.Id == roundId);
+            if (round == null)
+            {
+                return false;
+            }
+
+            // Call the database function to create default hole scores
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT create_default_hole_scores({roundId}, {round.CourseId})");
+            
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error initializing hole scores for round {RoundId}", roundId);
+            throw;
+        }
+    }
+
+    public async Task<bool> ValidateHoleScoreAsync(int roundId, int holeNumber, CreateHoleScoreModel model)
+    {
+        try
+        {
+            // Basic validation
+            if (holeNumber < 1 || holeNumber > 18) return false;
+            if (model.Score.HasValue && (model.Score < 1 || model.Score > 15)) return false;
+            if (model.Putts.HasValue && (model.Putts < 0 || model.Putts > 10)) return false;
+            if (model.PenaltyStrokes.HasValue && (model.PenaltyStrokes < 0 || model.PenaltyStrokes > 5)) return false;
+
+            // Business logic validation
+            if (model.Score.HasValue && model.Putts.HasValue && model.Putts > model.Score) return false;
+
+            // Check if round and hole exist
+            var round = await _context.Rounds.FirstOrDefaultAsync(r => r.Id == roundId);
+            if (round == null) return false;
+
+            var hole = await _context.Holes
+                .FirstOrDefaultAsync(h => h.CourseId == round.CourseId && h.HoleNumber == holeNumber);
+            if (hole == null) return false;
+
+            // Par 3 holes can't have fairway hits
+            if (model.FairwayHit == true && hole.Par == 3) return false;
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating hole score for round {RoundId} hole {HoleNumber}", roundId, holeNumber);
+            return false;
+        }
+    }
+
+    public async Task<bool> HoleScoreExistsAsync(int roundId, int holeNumber)
+    {
+        try
+        {
+            return await _context.HoleScores
+                .AnyAsync(hs => hs.RoundId == roundId && hs.HoleNumber == holeNumber);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking if hole score exists for round {RoundId} hole {HoleNumber}", roundId, holeNumber);
+            throw;
+        }
+    }
+
+    private HoleScoreModel MapToHoleScoreModel(caddie.portal.dal.Models.HoleScore holeScore)
+    {
+        Dictionary<string, object>? metadata = null;
+        if (!string.IsNullOrEmpty(holeScore.HoleMetadata))
+        {
+            try
+            {
+                metadata = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(holeScore.HoleMetadata);
+            }
+            catch
+            {
+                // If deserialization fails, leave metadata as null
+            }
+        }
+
+        var model = new HoleScoreModel
+        {
+            Id = holeScore.Id,
+            RoundId = holeScore.RoundId,
+            HoleId = holeScore.HoleId,
+            HoleNumber = holeScore.HoleNumber,
+            Score = holeScore.Score,
+            Putts = holeScore.Putts,
+            FairwayHit = holeScore.FairwayHit,
+            GreenInRegulation = holeScore.GreenInRegulation,
+            UpAndDown = holeScore.UpAndDown,
+            SandSave = holeScore.SandSave,
+            PenaltyStrokes = holeScore.PenaltyStrokes,
+            DistanceToPinYards = holeScore.DistanceToPinYards,
+            ClubUsed = holeScore.ClubUsed,
+            LiePosition = holeScore.LiePosition,
+            ShotNotes = holeScore.ShotNotes,
+            PerformanceNotes = holeScore.PerformanceNotes,
+            HoleMetadata = metadata,
+            CreatedAt = holeScore.CreatedAt,
+            UpdatedAt = holeScore.UpdatedAt
+        };
+
+        // Add hole information if available
+        if (holeScore.Hole != null)
+        {
+            model.Hole = new HoleModel
+            {
+                Id = holeScore.Hole.Id,
+                CourseId = holeScore.Hole.CourseId,
+                HoleNumber = holeScore.Hole.HoleNumber,
+                Par = holeScore.Hole.Par,
+                YardageWhite = holeScore.Hole.YardageWhite,
+                StrokeIndex = holeScore.Hole.StrokeIndex,
+                Description = holeScore.Hole.HoleDescription
+            };
+        }
+
+        return model;
     }
 }

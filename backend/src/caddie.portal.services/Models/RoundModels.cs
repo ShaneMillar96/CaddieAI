@@ -33,6 +33,7 @@ public class RoundModel
     // Navigation properties
     public UserModel? User { get; set; }
     public CourseModel? Course { get; set; }
+    public List<HoleScoreModel> HoleScores { get; set; } = new();
 }
 
 public class CreateRoundModel
