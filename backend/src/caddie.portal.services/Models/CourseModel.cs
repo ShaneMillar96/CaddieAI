@@ -33,11 +33,14 @@ public class CourseModel
 public class HoleModel
 {
     public int Id { get; set; }
+    public int CourseId { get; set; }
     public int HoleNumber { get; set; }
     public int Par { get; set; }
     public int? YardageMen { get; set; }
     public int? YardageWomen { get; set; }
+    public int? YardageWhite { get; set; }
     public int? Handicap { get; set; }
+    public int? StrokeIndex { get; set; }
     public string? Description { get; set; }
 }
 
