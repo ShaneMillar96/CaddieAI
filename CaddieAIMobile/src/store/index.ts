@@ -4,19 +4,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import authReducer from './slices/authSlice';
 import courseReducer from './slices/courseSlice';
 import roundReducer from './slices/roundSlice';
+import voiceReducer from './slices/voiceSlice';
 
 // Root reducer combining all slices
 const rootReducer = combineReducers({
   auth: authReducer,
   courses: courseReducer,
   rounds: roundReducer,
+  voice: voiceReducer,
 });
 
 const persistConfig = {
   key: 'root',
   storage: AsyncStorage,
   whitelist: ['auth', 'rounds'], // Persist auth and rounds (for active round state)
-  blacklist: ['courses'], // Don't persist course data (it can be refetched)
+  blacklist: ['courses', 'voice'], // Don't persist course data or voice state (real-time data)
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);

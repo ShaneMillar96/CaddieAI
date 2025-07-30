@@ -1,4 +1,5 @@
 using caddie.portal.dal.Models;
+using caddie.portal.services.Models;
 using DalChatMessage = caddie.portal.dal.Models.ChatMessage;
 using DalClubRecommendation = caddie.portal.dal.Models.ClubRecommendation;
 
@@ -100,15 +101,6 @@ public class HoleContext
     public string? Strategy { get; set; }
 }
 
-public class LocationContext
-{
-    public double Latitude { get; set; }
-    public double Longitude { get; set; }
-    public double? DistanceToPin { get; set; }
-    public double? DistanceToTee { get; set; }
-    public string? PositionOnHole { get; set; } // "tee", "fairway", "rough", "green", etc.
-    public DateTime Timestamp { get; set; }
-}
 
 public class WeatherContext
 {

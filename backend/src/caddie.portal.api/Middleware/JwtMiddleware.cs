@@ -78,7 +78,7 @@ public class JwtMiddleware
                 {
                     // Optionally verify user still exists and is active
                     var user = await authService.GetUserAsync(userId);
-                    if (user != null && user.Status.Name == "Active")
+                    if (user != null && user.Status?.Name == "Active")
                     {
                         context.User = principal;
                         context.Items["UserId"] = userId;

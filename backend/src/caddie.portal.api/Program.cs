@@ -84,6 +84,7 @@ builder.Services.AddScoped<ILocationRepository, LocationRepository>();
 builder.Services.AddScoped<IChatSessionRepository, ChatSessionRepository>();
 builder.Services.AddScoped<IChatMessageRepository, ChatMessageRepository>();
 builder.Services.AddScoped<IClubRecommendationRepository, ClubRecommendationRepository>();
+builder.Services.AddScoped<IHoleRepository, HoleRepository>();
 
 // Register Services
 builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
@@ -111,6 +112,7 @@ builder.Services.AddHttpClient("OpenAI", client =>
 builder.Services.AddScoped<IOpenAIService, OpenAIService>();
 builder.Services.AddScoped<IGolfContextService, GolfContextService>();
 builder.Services.AddScoped<IGolfStatisticsService, GolfStatisticsService>();
+builder.Services.AddScoped<IAIScoreService, AIScoreService>();
 
 // Add AutoMapper
 builder.Services.AddAutoMapper(typeof(AuthMappingProfile), typeof(CourseMappingProfile), typeof(RoundMappingProfile), typeof(ChatMappingProfile), typeof(ClubRecommendationMappingProfile), typeof(StatisticsMappingProfile));

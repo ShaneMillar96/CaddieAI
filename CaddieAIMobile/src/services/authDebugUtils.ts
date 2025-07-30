@@ -114,7 +114,7 @@ export class AuthDebugUtils {
       
       // Get all keys and find persist keys
       const allKeys = await AsyncStorage.getAllKeys();
-      const persistKeys = allKeys.filter(key => 
+      const persistKeys = allKeys.filter((key: string) => 
         key.startsWith('persist:') || 
         key === 'root' ||
         key.includes('redux')

@@ -6,7 +6,7 @@ namespace caddie.portal.dal.Models;
 /// <summary>
 /// HoleScore DAL model representing individual hole performance data
 /// </summary>
-[Table("holescores")]
+[Table("hole_scores")]
 public class HoleScore
 {
     [Key]

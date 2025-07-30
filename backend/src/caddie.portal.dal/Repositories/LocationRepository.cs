@@ -84,6 +84,22 @@ public class LocationRepository : ILocationRepository
         }
     }
 
+    public async Task<IEnumerable<Location>> GetByRoundIdSinceAsync(int roundId, DateTime since)
+    {
+        try
+        {
+            return await _context.Locations
+                .Where(l => l.RoundId == roundId && l.Timestamp >= since)
+                .OrderBy(l => l.Timestamp)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting locations by round ID {RoundId} since {Since}", roundId, since);
+            throw;
+        }
+    }
+
     public async Task<IEnumerable<Location>> GetByCourseIdAsync(int courseId)
     {
         try

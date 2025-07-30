@@ -2,7 +2,7 @@
 -- Insert accurate Faughan Valley Golf Centre data with enhanced fields
 
 -- Insert accurate Faughan Valley Golf Centre course data
-INSERT INTO Courses (
+INSERT INTO courses (
     name,
     description,
     address,
@@ -51,7 +51,7 @@ INSERT INTO Courses (
 );
 
 -- Insert accurate Faughan Valley Golf Club hole data with enhanced fields
-INSERT INTO Holes (
+INSERT INTO holes (
     course_id, hole_number, name, par, hole_type, yardage_white, yardage_black, yardage_blue, yardage_red,
     stroke_index, ladies_yardage, ladies_par, ladies_stroke_index, hole_tips, simple_hazards, hole_metadata,
     created_at, updated_at
@@ -100,6 +100,6 @@ SELECT
     COUNT(*) as total_holes,
     SUM(par) as total_par,
     SUM(yardage_white) as total_yardage
-FROM Holes h
-JOIN Courses c ON h.course_id = c.id
+FROM holes h
+JOIN courses c ON h.course_id = c.id
 WHERE c.name = 'Faughan Valley Golf Centre';
