@@ -10,6 +10,7 @@ public interface ILocationRepository
     Task<Location?> GetByIdWithDetailsAsync(int id);
     Task<IEnumerable<Location>> GetByUserIdAsync(int userId);
     Task<IEnumerable<Location>> GetByRoundIdAsync(int roundId);
+    Task<IEnumerable<Location>> GetByRoundIdSinceAsync(int roundId, DateTime since);
     Task<IEnumerable<Location>> GetByCourseIdAsync(int courseId);
     Task<Location> CreateAsync(Location location);
     Task<Location> UpdateAsync(Location location);

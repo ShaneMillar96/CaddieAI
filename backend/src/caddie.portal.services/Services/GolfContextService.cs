@@ -2,8 +2,10 @@ using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using caddie.portal.services.Configuration;
 using caddie.portal.services.Interfaces;
+using caddie.portal.services.Models;
 using caddie.portal.dal.Repositories.Interfaces;
 using caddie.portal.dal.Models;
+using LocationContext = caddie.portal.services.Models.LocationContext;
 
 namespace caddie.portal.services.Services;
 
@@ -106,8 +108,8 @@ public class GolfContextService : IGolfContextService
             {
                 context.Location = new LocationContext
                 {
-                    Latitude = (double)location.Latitude,
-                    Longitude = (double)location.Longitude,
+                    Latitude = (decimal)location.Latitude,
+                    Longitude = (decimal)location.Longitude,
                     Timestamp = location.Timestamp ?? DateTime.UtcNow
                 };
 
@@ -115,7 +117,7 @@ public class GolfContextService : IGolfContextService
                 if (context.CurrentHole != null)
                 {
                     // This would integrate with distance calculation service
-                    context.Location.DistanceToPin = CalculateDistanceToPin(location, context.CurrentHole);
+                    context.Location.DistanceToPinMeters = (decimal?)CalculateDistanceToPin(location, context.CurrentHole);
                 }
             }
 

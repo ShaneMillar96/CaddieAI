@@ -17,6 +17,7 @@ public interface IRoundRepository
     Task<bool> DeleteAsync(int id);
     Task<bool> ExistsAsync(int id);
     Task<bool> UpdateStatusAsync(int id, string status);
+    Task<bool> UpdateHoleScoreAsync(int roundId, int holeNumber, int score);
     Task<bool> UserHasActiveRoundAsync(int userId);
     Task<IEnumerable<Round>> GetRecentRoundsAsync(int userId, int count = 10);
     Task<IEnumerable<Round>> GetPaginatedAsync(int page, int pageSize, int? userId = null, string? status = null);

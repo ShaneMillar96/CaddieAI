@@ -323,7 +323,7 @@ export const CourseDetailScreen: React.FC = () => {
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionTitle}>Amenities</Text>
           <View style={styles.amenitiesContainer}>
-            {Object.entries(selectedCourse.amenities).map(([key, value]) => (
+            {Object.entries(selectedCourse.amenities).map(([key, value]: [string, any]) => (
               value && (
                 <View key={key} style={styles.amenityItem}>
                   <Icon name="check-circle" size={16} color="#4CAF50" />
@@ -344,8 +344,8 @@ export const CourseDetailScreen: React.FC = () => {
             Hole-by-Hole Layout ({selectedCourse.holes.length} holes)
           </Text>
           {selectedCourse.holes
-            .sort((a, b) => a.holeNumber - b.holeNumber)
-            .map((hole) => (
+            .sort((a: any, b: any) => a.holeNumber - b.holeNumber)
+            .map((hole: any) => (
               <HoleCard key={hole.id} hole={hole} />
             ))}
         </View>

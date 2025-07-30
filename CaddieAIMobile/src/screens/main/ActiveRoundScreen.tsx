@@ -23,12 +23,20 @@ import {
   abandonRound,
   fetchHoleScores,
 } from '../../store/slices/roundSlice';
+import {
+  toggleVoiceInterface,
+  startVoiceSession,
+  endVoiceSession,
+  updateCurrentLocation,
+} from '../../store/slices/voiceSlice';
 import { LoadingSpinner } from '../../components/auth/LoadingSpinner';
 import { ErrorMessage } from '../../components/auth/ErrorMessage';
 import RoundProgressCard from '../../components/common/RoundProgressCard';
 import ScorecardComponent from '../../components/common/ScorecardComponent';
 import RoundStatsWidget from '../../components/common/RoundStatsWidget';
 import HoleNavigator from '../../components/common/HoleNavigator';
+import VoiceAIInterface, { ConversationMessage } from '../../components/voice/VoiceAIInterface';
+import { golfLocationService, LocationData } from '../../services/LocationService';
 
 // Navigation types
 type MainStackParamList = {
@@ -53,9 +61,19 @@ export const ActiveRoundScreen: React.FC = () => {
     error,
   } = useSelector((state: RootState) => state.rounds);
 
+  const {
+    isVoiceInterfaceVisible,
+    currentLocation,
+    conversationHistory,
+  } = useSelector((state: RootState) => state.voice);
+
+  const { user } = useSelector((state: RootState) => state.auth);
+
   // Local state
   const [refreshing, setRefreshing] = useState(false);
   const [currentHole, setCurrentHole] = useState<number>(1);
+  const [isLocationTracking, setIsLocationTracking] = useState(false);
+  const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
 
   // Load active round and hole scores on component mount
   useEffect(() => {
@@ -66,6 +84,14 @@ export const ActiveRoundScreen: React.FC = () => {
           setCurrentHole(result.currentHole || 1);
           // Load hole scores for the active round
           dispatch(fetchHoleScores(result.id));
+          
+          // Start voice session for this round
+          if (user?.id) {
+            dispatch(startVoiceSession({ roundId: result.id }));
+            
+            // Start location tracking
+            await startLocationTracking(result.id, result.courseId);
+          }
         }
       } catch (error) {
         console.log('Error loading active round:', error);
@@ -73,7 +99,102 @@ export const ActiveRoundScreen: React.FC = () => {
     };
 
     loadRoundData();
+    
+    // Cleanup on unmount
+    return () => {
+      if (activeRound?.id) {
+        dispatch(endVoiceSession());
+        stopLocationTracking();
+      }
+    };
+  }, [dispatch, user?.id]);
+
+  // Start location tracking for the round
+  const startLocationTracking = async (roundId: number, courseId: number) => {
+    try {
+      const hasPermission = await golfLocationService.requestLocationPermissions();
+      if (!hasPermission) {
+        setLocationPermissionGranted(false);
+        return;
+      }
+
+      setLocationPermissionGranted(true);
+      
+      const trackingStarted = await golfLocationService.startRoundTracking(roundId, courseId);
+      if (trackingStarted) {
+        setIsLocationTracking(true);
+        
+        // Subscribe to location updates
+        const unsubscribeLocation = golfLocationService.onLocationUpdate(handleLocationUpdate);
+        const unsubscribeContext = golfLocationService.onContextUpdate(handleContextUpdate);
+        const unsubscribeShots = golfLocationService.onShotDetection(handleShotDetection);
+        
+        // Store unsubscribe functions for cleanup
+        return () => {
+          unsubscribeLocation();
+          unsubscribeContext();
+          unsubscribeShots();
+        };
+      }
+    } catch (error) {
+      console.error('Error starting location tracking:', error);
+      Alert.alert('Location Error', 'Failed to start GPS tracking. Some features may not work properly.');
+    }
+  };
+
+  // Stop location tracking
+  const stopLocationTracking = () => {
+    golfLocationService.stopRoundTracking();
+    setIsLocationTracking(false);
+  };
+
+  // Handle location updates from GPS service
+  const handleLocationUpdate = useCallback((location: LocationData) => {
+    // Update Redux state with current location
+    dispatch(updateCurrentLocation({
+      latitude: location.latitude,
+      longitude: location.longitude,
+      accuracy: location.accuracy,
+    }));
   }, [dispatch]);
+
+  // Handle course context updates (hole detection, distances)
+  const handleContextUpdate = useCallback((context: any) => {
+    // Update current hole if detected
+    if (context.currentHole && context.currentHole !== currentHole) {
+      setCurrentHole(context.currentHole);
+    }
+    
+    // Update location context in Redux
+    dispatch(updateCurrentLocation({
+      latitude: currentLocation?.latitude || 0,
+      longitude: currentLocation?.longitude || 0,
+      currentHole: context.currentHole,
+      distanceToPin: context.distanceToPin,
+      distanceToTee: context.distanceToTee,
+      positionOnHole: context.positionOnHole,
+    }));
+  }, [dispatch, currentHole, currentLocation]);
+
+  // Handle shot detection events
+  const handleShotDetection = useCallback((shotData: any) => {
+    if (shotData.detected) {
+      console.log('Shot detected:', shotData);
+      // Could show a notification or update UI to reflect shot
+      Alert.alert(
+        'Shot Detected',
+        `Detected a ${shotData.distance?.toFixed(0)}m shot with ${shotData.estimatedClub}`,
+        [{ text: 'OK' }]
+      );
+    }
+  }, []);
+
+  // Handle voice conversation updates
+  const handleConversationUpdate = useCallback((conversation: ConversationMessage[]) => {
+    // Conversation is already managed by the VoiceAIInterface component
+    // and stored in Redux state
+    console.log('Conversation updated:', conversation.length, 'messages');
+  }, []);
 
   // Handle refresh
   const handleRefresh = useCallback(async () => {
@@ -181,6 +302,11 @@ export const ActiveRoundScreen: React.FC = () => {
     navigation.navigate('AIChat');
   }, [navigation]);
 
+  // Toggle voice interface
+  const handleVoiceToggle = useCallback(() => {
+    dispatch(toggleVoiceInterface());
+  }, [dispatch]);
+
   // Loading state
   if (isLoading) {
     return (
@@ -215,7 +341,7 @@ export const ActiveRoundScreen: React.FC = () => {
           </Text>
           <TouchableOpacity
             style={styles.startRoundButton}
-            onPress={() => navigation.navigate('Courses', { 
+            onPress={() => navigation.navigate('Courses' as any, { 
               screen: 'CoursesList', 
               params: { fromActiveRound: true } 
             })}
@@ -294,13 +420,27 @@ export const ActiveRoundScreen: React.FC = () => {
             <Text style={styles.headerSubtitle}>
               {activeRound.course?.name || 'Unknown Course'}
             </Text>
+            {/* Location Status */}
+            {currentLocation && (
+              <Text style={styles.locationStatus}>
+                📍 {currentLocation.distanceToPin ? `${currentLocation.distanceToPin.toFixed(0)}m to pin` : 'GPS Active'}
+              </Text>
+            )}
           </View>
-          <TouchableOpacity
-            style={styles.aiChatButton}
-            onPress={handleAIChatPress}
-          >
-            <Icon name="chat" size={24} color="#4a7c59" />
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity
+              style={[styles.headerButton, isVoiceInterfaceVisible && styles.activeButton]}
+              onPress={handleVoiceToggle}
+            >
+              <Icon name="mic" size={24} color={isVoiceInterfaceVisible ? "#fff" : "#4a7c59"} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={handleAIChatPress}
+            >
+              <Icon name="chat" size={24} color="#4a7c59" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Round Progress Card */}
@@ -337,6 +477,18 @@ export const ActiveRoundScreen: React.FC = () => {
         {/* Bottom spacing */}
         <View style={styles.bottomSpacing} />
       </ScrollView>
+
+      {/* Voice AI Interface */}
+      {activeRound && user && (
+        <VoiceAIInterface
+          userId={Number(user.id)}
+          roundId={activeRound.id}
+          currentHole={currentHole}
+          isVisible={isVoiceInterfaceVisible}
+          onToggle={handleVoiceToggle}
+          onConversationUpdate={handleConversationUpdate}
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -405,7 +557,17 @@ const styles = StyleSheet.create({
     color: '#4a7c59',
     fontWeight: '500',
   },
-  aiChatButton: {
+  locationStatus: {
+    fontSize: 14,
+    color: '#28a745',
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  headerButton: {
     padding: 12,
     borderRadius: 8,
     backgroundColor: '#fff',
@@ -416,6 +578,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  activeButton: {
+    backgroundColor: '#4a7c59',
+    borderColor: '#4a7c59',
   },
   controlsContainer: {
     flexDirection: 'row',

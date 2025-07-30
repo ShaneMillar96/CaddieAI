@@ -197,6 +197,205 @@ if (currentStatus == ServiceRoundStatus.InProgress)
 - **Refactoring**: Easy to rename and track usage across codebase
 - **Validation**: Automatic validation of valid enum values
 
+### Entity Framework DAL Model Standards
+
+**IMPORTANT**: All DAL models use Data Annotations for self-documenting, maintainable code. The DbContext OnModelCreating method is minimal and contains only PostgreSQL-specific configurations.
+
+#### Data Annotations Pattern
+All entity models must follow this comprehensive Data Annotations pattern:
+
+```csharp
+using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using NetTopologySuite.Geometries; // Only for PostGIS models
+
+namespace caddie.portal.dal.Models;
+
+/// <summary>
+/// Model documentation
+/// </summary>
+[Table("table_name")] // Always underscore_case
+public partial class ModelName
+{
+    [Key]
+    [Column("id")]
+    public int Id { get; set; }
+
+    [Required]
+    [Column("required_field")]
+    [StringLength(255)]
+    public string RequiredField { get; set; } = null!;
+
+    [Column("optional_field")]
+    [StringLength(100)]
+    public string? OptionalField { get; set; }
+
+    // Foreign keys
+    [Column("foreign_key_id")]
+    public int ForeignKeyId { get; set; }
+
+    // JSONB columns
+    [Column("json_data", TypeName = "jsonb")]
+    public string? JsonData { get; set; }
+
+    // PostGIS geometry columns
+    [Column("location", TypeName = "geometry(Point,4326)")]
+    public Point? Location { get; set; }
+
+    // Decimal precision
+    [Column("decimal_value", TypeName = "decimal(10,2)")]
+    public decimal? DecimalValue { get; set; }
+
+    // Timestamps
+    [Column("created_at")]
+    public DateTime? CreatedAt { get; set; }
+
+    [Column("updated_at")]
+    public DateTime? UpdatedAt { get; set; }
+
+    // Navigation properties
+    [ForeignKey("ForeignKeyId")]
+    public virtual RelatedModel RelatedModel { get; set; } = null!;
+
+    // Inverse properties
+    [InverseProperty("ModelName")]
+    public virtual ICollection<RelatedModel> RelatedModels { get; set; } = new List<RelatedModel>();
+}
+```
+
+#### Naming Conventions for DAL Models
+
+**Table Names**: Always use `underscore_case`
+- ✅ `[Table("user_sessions")]`
+- ✅ `[Table("chat_messages")]`
+- ✅ `[Table("club_recommendations")]`
+- ❌ `[Table("UserSessions")]`
+- ❌ `[Table("chatmessages")]`
+
+**Column Names**: Always use `underscore_case`
+- ✅ `[Column("created_at")]`
+- ✅ `[Column("user_id")]`
+- ✅ `[Column("hole_number")]`
+- ❌ `[Column("CreatedAt")]`
+- ❌ `[Column("userId")]`
+
+#### Required Data Annotations
+
+**Every model must include:**
+1. `[Table("table_name")]` - Database table mapping
+2. `[Key]` and `[Column("id")]` - Primary key mapping
+3. `[Column("column_name")]` - All property column mappings
+4. `[Required]` - Non-nullable database columns
+5. `[StringLength(n)]` - String column maximum lengths
+6. `[ForeignKey("PropertyName")]` - Foreign key relationships
+
+#### PostgreSQL-Specific Configurations
+
+**JSONB Columns:**
+```csharp
+[Column("metadata", TypeName = "jsonb")]
+public string? Metadata { get; set; }
+```
+
+**PostGIS Geometry Types:**
+```csharp
+// Point geometry
+[Column("location", TypeName = "geometry(Point,4326)")]
+public Point? Location { get; set; }
+
+// Polygon geometry
+[Column("boundary", TypeName = "geometry(Polygon,4326)")]
+public Polygon? Boundary { get; set; }
+
+// LineString geometry
+[Column("path", TypeName = "geometry(LineString,4326)")]
+public LineString? Path { get; set; }
+```
+
+**Decimal Precision:**
+```csharp
+[Column("latitude", TypeName = "decimal(10,7)")]
+public decimal Latitude { get; set; }
+
+[Column("confidence_score", TypeName = "decimal(3,2)")]
+public decimal? ConfidenceScore { get; set; }
+```
+
+#### Lookup Table Pattern
+
+For lookup tables (statuses, levels, types):
+
+```csharp
+[Table("round_statuses")]
+public partial class RoundStatus
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.None)]
+    [Column("id")]
+    public int Id { get; set; }
+
+    [Required]
+    [Column("name")]
+    [StringLength(50)]
+    public string Name { get; set; } = null!;
+
+    [Column("description")]
+    [StringLength(255)]
+    public string? Description { get; set; }
+
+    public virtual ICollection<Round> Rounds { get; set; } = new List<Round>();
+}
+```
+
+#### DbContext Configuration
+
+The `CaddieAIDbContext.cs` OnModelCreating method should be minimal:
+
+```csharp
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    // Configure PostgreSQL-specific enums
+    modelBuilder
+        .HasPostgresEnum("round_status", new[] { "not_started", "in_progress", "paused", "completed", "abandoned" })
+        .HasPostgresEnum("message_type", new[] { "user_message", "ai_response", "system_message", "error_message" });
+
+    // Configure PostgreSQL extensions
+    modelBuilder
+        .HasPostgresExtension("postgis")
+        .HasPostgresExtension("uuid-ossp");
+
+    // All entity configuration is now handled via Data Annotations on model classes
+    // This significantly improves code maintainability and self-documentation
+
+    OnModelCreatingPartial(modelBuilder);
+}
+```
+
+#### Adding New DAL Models
+
+When creating new DAL models:
+
+1. **Follow the Data Annotations pattern** exactly as shown above
+2. **Add the DbSet** to `CaddieAIDbContext.cs`:
+   ```csharp
+   public virtual DbSet<NewModel> NewModels { get; set; }
+   ```
+3. **Use underscore_case** for all table and column names
+4. **Include proper navigation properties** with `[ForeignKey]` and `[InverseProperty]`
+5. **Add validation attributes** (`[Required]`, `[StringLength]`, `[Range]`)
+6. **Test the build** to ensure Data Annotations are correct
+
+#### Benefits of Data Annotations Approach
+
+- **Self-Documenting**: Entity mappings visible directly in model classes
+- **Maintainable**: No need to navigate to DbContext to understand entity configuration
+- **IntelliSense Support**: IDE autocompletion for all mappings
+- **Reduced Complexity**: OnModelCreating method reduced from 940+ lines to ~20 lines
+- **Type Safety**: Compile-time validation of mappings
+- **Clean Architecture**: Follows project's SOLID principles and separation of concerns
+
 ### Error Handling
 - Use specific exception types for different error scenarios
 - Implement global exception handling middleware

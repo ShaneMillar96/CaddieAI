@@ -15,10 +15,10 @@ public class AuthMappingProfile : Profile
 
         // Service Models to Response DTOs
         CreateMap<UserModel, UserDto>()
-            .ForMember(dest => dest.SkillLevelId, opt => opt.MapFrom(src => src.SkillLevel.Id))
-            .ForMember(dest => dest.SkillLevelName, opt => opt.MapFrom(src => src.SkillLevel.Name))
-            .ForMember(dest => dest.StatusId, opt => opt.MapFrom(src => src.Status.Id))
-            .ForMember(dest => dest.StatusName, opt => opt.MapFrom(src => src.Status.Name));
+            .ForMember(dest => dest.SkillLevelId, opt => opt.MapFrom(src => src.SkillLevel != null ? src.SkillLevel.Id : (int?)null))
+            .ForMember(dest => dest.SkillLevelName, opt => opt.MapFrom(src => src.SkillLevel != null ? src.SkillLevel.Name : null))
+            .ForMember(dest => dest.StatusId, opt => opt.MapFrom(src => src.Status != null ? src.Status.Id : (int?)null))
+            .ForMember(dest => dest.StatusName, opt => opt.MapFrom(src => src.Status != null ? src.Status.Name : null));
         CreateMap<TokenResponse, LoginResponseDto>();
         CreateMap<AuthenticationResult, LoginResponseDto>()
             .ForMember(dest => dest.AccessToken, opt => opt.MapFrom(src => src.TokenResponse!.AccessToken))

@@ -165,6 +165,44 @@ public class RoundRepository : IRoundRepository
         return true;
     }
 
+    public async Task<bool> UpdateHoleScoreAsync(int roundId, int holeNumber, int score)
+    {
+        var round = await _context.Rounds
+            .Include(r => r.HoleScores)
+            .FirstOrDefaultAsync(r => r.Id == roundId);
+        if (round == null) return false;
+
+        // Get the hole information to get the HoleId
+        var hole = await _context.Holes
+            .FirstOrDefaultAsync(h => h.CourseId == round.CourseId && h.HoleNumber == holeNumber);
+        if (hole == null) return false;
+
+        var existingScore = round.HoleScores?.FirstOrDefault(s => s.HoleNumber == holeNumber);
+        if (existingScore != null)
+        {
+            // Update existing score
+            existingScore.Score = score;
+            existingScore.UpdatedAt = DateTime.UtcNow;
+        }
+        else
+        {
+            // Create new hole score
+            var holeScore = new HoleScore
+            {
+                RoundId = roundId,
+                HoleId = hole.Id,
+                HoleNumber = holeNumber,
+                Score = score,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            _context.HoleScores.Add(holeScore);
+        }
+
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
     public async Task<bool> UserHasActiveRoundAsync(int userId)
     {
         return await _context.Rounds

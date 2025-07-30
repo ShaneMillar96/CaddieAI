@@ -10,10 +10,10 @@ public class UserModel
     public string LastName { get; set; } = string.Empty;
     public string FullName { get; set; } = string.Empty;
     public decimal? Handicap { get; set; }
-    public SkillLevel SkillLevel { get; set; }
+    public SkillLevel? SkillLevel { get; set; }
     public Dictionary<string, object>? Preferences { get; set; }
     public Dictionary<string, object>? PlayingStyle { get; set; }
-    public UserStatus Status { get; set; }
+    public UserStatus? Status { get; set; }
     public bool EmailVerified { get; set; }
     public DateTime? LastLoginAt { get; set; }
     public DateTime? CreatedAt { get; set; }

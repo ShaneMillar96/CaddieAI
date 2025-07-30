@@ -352,4 +352,261 @@ public class OpenAIService : IOpenAIService
         }
     }
 
+    // Voice AI Integration Methods Implementation
+
+    public async Task<string> GenerateVoiceGolfAdviceAsync(int userId, int roundId, string userInput, object locationContext, IEnumerable<DalChatMessage>? conversationHistory = null)
+    {
+        try
+        {
+            // Generate voice-optimized golf context
+            var golfContext = await _golfContextService.GenerateContextAsync(userId, roundId);
+            
+            // Build voice-specific system prompt
+            var voiceSystemPrompt = await BuildVoiceSystemPromptAsync(userId, roundId, golfContext.Course?.CourseId ?? 0, golfContext.CurrentHole?.HoleNumber ?? 1, locationContext);
+            
+            // Prepare conversation history
+            var messages = new List<OpenAIChatMessage>
+            {
+                OpenAIChatMessage.CreateSystemMessage(voiceSystemPrompt)
+            };
+
+            // Add recent conversation history if provided (limit to last 6 messages for voice context)
+            if (conversationHistory != null && conversationHistory.Any())
+            {
+                var recentHistory = conversationHistory
+                    .OrderByDescending(m => m.CreatedAt)
+                    .Take(6)
+                    .OrderBy(m => m.CreatedAt);
+
+                foreach (var msg in recentHistory)
+                {
+                    OpenAIChatMessage message = msg.OpenaiRole switch
+                    {
+                        "user" => OpenAIChatMessage.CreateUserMessage(msg.MessageContent),
+                        "assistant" => OpenAIChatMessage.CreateAssistantMessage(msg.MessageContent),
+                        _ => OpenAIChatMessage.CreateUserMessage(msg.MessageContent)
+                    };
+                    messages.Add(message);
+                }
+            }
+
+            // Add current user input
+            messages.Add(OpenAIChatMessage.CreateUserMessage(userInput));
+
+            // Call OpenAI API with voice-optimized settings
+            var chatClient = _openAIClient.GetChatClient(_openAISettings.Model);
+            var response = await chatClient.CompleteChatAsync(
+                messages,
+                new ChatCompletionOptions
+                {
+                    Temperature = 0.7f, // Slightly higher for conversational tone
+                    MaxOutputTokenCount = 150, // Shorter responses for voice
+                    FrequencyPenalty = 0.1f, // Reduce repetition
+                    PresencePenalty = 0.1f // Encourage variety
+                });
+
+            if (response?.Value?.Content == null || response.Value.Content.Count == 0)
+            {
+                throw new InvalidOperationException("No response received from OpenAI");
+            }
+
+            var responseContent = string.Join("", response.Value.Content.Select(c => c.Text));
+
+            _logger.LogInformation("Generated voice golf advice for user {UserId}, round {RoundId}, used {TokenCount} tokens", 
+                userId, roundId, response.Value.Usage?.TotalTokenCount);
+
+            return responseContent;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating voice golf advice for user {UserId}, round {RoundId}", userId, roundId);
+            throw;
+        }
+    }
+
+    public async Task UpdateLocationContextAsync(int userId, int roundId, decimal latitude, decimal longitude, int? currentHole = null, decimal? distanceToPin = null)
+    {
+        try
+        {
+            // Get active session for this round
+            var session = await _chatSessionRepository.GetActiveSessionForRoundAsync(userId, roundId);
+            if (session == null)
+            {
+                _logger.LogWarning("No active chat session found for user {UserId}, round {RoundId}", userId, roundId);
+                return;
+            }
+
+            // Update context with location data
+            var locationContext = new
+            {
+                Latitude = latitude,
+                Longitude = longitude,
+                CurrentHole = currentHole,
+                DistanceToPin = distanceToPin,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            // Merge with existing context
+            var existingContext = string.IsNullOrEmpty(session.ContextData) 
+                ? new Dictionary<string, object>() 
+                : JsonSerializer.Deserialize<Dictionary<string, object>>(session.ContextData) ?? new Dictionary<string, object>();
+
+            existingContext["LocationContext"] = locationContext;
+            
+            session.ContextData = JsonSerializer.Serialize(existingContext);
+            await _chatSessionRepository.UpdateAsync(session);
+
+            _logger.LogDebug("Updated location context for user {UserId}, round {RoundId}", userId, roundId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating location context for user {UserId}, round {RoundId}", userId, roundId);
+            throw;
+        }
+    }
+
+    public async Task<string> GenerateHoleCompletionCommentaryAsync(int userId, int roundId, int holeNumber, int score, int par, object? shotData = null)
+    {
+        try
+        {
+            var golfContext = await _golfContextService.GenerateContextAsync(userId, roundId);
+            
+            var commentaryPrompt = $@"
+You are CaddieAI providing encouraging hole completion commentary. Keep it brief and positive for voice delivery.
+
+Hole Information:
+- Hole {holeNumber} (Par {par})
+- Player Score: {score}
+- Result: {GetScoreDescription(score, par)}
+
+Course Context: {golfContext.Course?.Name ?? "Unknown Course"}
+
+Provide a brief, encouraging comment about the hole performance. Maximum 2 sentences. Be conversational and supportive.
+
+Examples:
+- ""Nice par on hole 3! That approach shot set you up perfectly.""
+- ""Tough break on the water hazard, but great recovery for bogey. Shake it off and focus on the next hole.""
+- ""Excellent birdie! Your putting has been spot on today.""
+";
+
+            var messages = new List<OpenAIChatMessage>
+            {
+                OpenAIChatMessage.CreateSystemMessage(commentaryPrompt)
+            };
+
+            var chatClient = _openAIClient.GetChatClient(_openAISettings.Model);
+            var response = await chatClient.CompleteChatAsync(
+                messages,
+                new ChatCompletionOptions
+                {
+                    Temperature = 0.8f, // Higher creativity for commentary
+                    MaxOutputTokenCount = 100 // Very brief for voice
+                });
+
+            if (response?.Value?.Content == null || response.Value.Content.Count == 0)
+            {
+                return GetDefaultHoleCommentary(score, par);
+            }
+
+            var commentary = string.Join("", response.Value.Content.Select(c => c.Text));
+            
+            _logger.LogInformation("Generated hole completion commentary for user {UserId}, round {RoundId}, hole {HoleNumber}", 
+                userId, roundId, holeNumber);
+
+            return commentary;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating hole completion commentary for user {UserId}, round {RoundId}, hole {HoleNumber}", 
+                userId, roundId, holeNumber);
+            
+            // Return default commentary on error
+            return GetDefaultHoleCommentary(score, par);
+        }
+    }
+
+    public async Task<string> BuildVoiceSystemPromptAsync(int userId, int roundId, int courseId, int? currentHole = null, object? locationContext = null)
+    {
+        try
+        {
+            var golfContext = await _golfContextService.GenerateContextAsync(userId, roundId, courseId);
+            
+            // Get user skill level for appropriate prompt
+            var userSkillLevel = golfContext.User?.SkillLevel ?? "intermediate";
+            
+            // Build voice-optimized system prompt using existing SystemPrompts
+            var basePrompt = Configuration.SystemPrompts.GetPromptForContext(
+                userSkillLevel, 
+                golfContext.User?.PlayingStyle, 
+                null
+            );
+
+            // Add voice-specific enhancements
+            var voiceEnhancements = @"
+
+VOICE INTERACTION GUIDELINES:
+- Keep responses under 30 seconds of speech (approximately 75-100 words)
+- Use conversational, natural language as if speaking to a friend
+- Provide specific, actionable advice without overwhelming detail
+- Acknowledge the player's situation and location context
+- Be encouraging and supportive, especially during challenges
+- Use appropriate golf terminology but explain when necessary
+- Ask clarifying questions if context is unclear
+
+CURRENT ROUND CONTEXT:";
+
+            // Add current context information
+            var contextInfo = $@"
+Course: {golfContext.Course?.Name ?? "Unknown Course"}
+Current Hole: {currentHole ?? golfContext.CurrentHole?.HoleNumber ?? 1}
+Round Status: {golfContext.Round?.Status ?? "Unknown"}
+Weather: {golfContext.Weather?.Conditions ?? "Unknown"}";
+
+            // Add location context if provided
+            if (locationContext != null)
+            {
+                var locationJson = JsonSerializer.Serialize(locationContext);
+                contextInfo += $@"
+Location Context: {locationJson}";
+            }
+
+            return basePrompt + voiceEnhancements + contextInfo;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error building voice system prompt for user {UserId}, round {RoundId}", userId, roundId);
+            
+            // Return default voice prompt on error
+            return Configuration.SystemPrompts.Golf.EncouragingCaddie + @"
+
+VOICE INTERACTION: Keep responses brief and conversational for voice delivery. Provide specific golf advice in under 30 seconds.";
+        }
+    }
+
+    private static string GetScoreDescription(int score, int par)
+    {
+        return (score - par) switch
+        {
+            -2 => "Eagle",
+            -1 => "Birdie",
+            0 => "Par",
+            1 => "Bogey",
+            2 => "Double Bogey",
+            3 => "Triple Bogey",
+            _ when score - par > 3 => $"{score - par} over par",
+            _ => $"{par - score} under par"
+        };
+    }
+
+    private static string GetDefaultHoleCommentary(int score, int par)
+    {
+        return (score - par) switch
+        {
+            <= -1 => "Great job on that hole! Keep up the excellent play.",
+            0 => "Nice par! Solid golf right there.",
+            1 => "Good bogey. Stay positive and focus on the next hole.",
+            _ => "Tough hole, but that's golf! Let's bounce back on the next one."
+        };
+    }
+
 }
