@@ -3,11 +3,10 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   Alert,
-  RefreshControl,
   SafeAreaView,
+  Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -28,15 +27,24 @@ import {
   startVoiceSession,
   endVoiceSession,
   updateCurrentLocation,
+  setTargetPin,
+  clearTargetPin,
+  setMapType,
+  setCourseRegion,
 } from '../../store/slices/voiceSlice';
 import { LoadingSpinner } from '../../components/auth/LoadingSpinner';
 import { ErrorMessage } from '../../components/auth/ErrorMessage';
-import RoundProgressCard from '../../components/common/RoundProgressCard';
-import ScorecardComponent from '../../components/common/ScorecardComponent';
-import RoundStatsWidget from '../../components/common/RoundStatsWidget';
-import HoleNavigator from '../../components/common/HoleNavigator';
 import VoiceAIInterface, { ConversationMessage } from '../../components/voice/VoiceAIInterface';
-import { golfLocationService, LocationData } from '../../services/LocationService';
+import GolfCourseMap from '../../components/map/GolfCourseMap';
+import MapOverlay from '../../components/map/MapOverlay';
+import { 
+  golfLocationService, 
+  LocationData, 
+  MapLocationContext,
+  isLocationServiceAvailable, 
+  safeLocationServiceCall 
+} from '../../services/LocationService';
+import { DistanceCalculator, Coordinate, DistanceResult } from '../../utils/DistanceCalculator';
 
 // Navigation types
 type MainStackParamList = {
@@ -65,15 +73,17 @@ export const ActiveRoundScreen: React.FC = () => {
     isVoiceInterfaceVisible,
     currentLocation,
     conversationHistory,
+    mapState,
   } = useSelector((state: RootState) => state.voice);
 
   const { user } = useSelector((state: RootState) => state.auth);
 
   // Local state
-  const [refreshing, setRefreshing] = useState(false);
   const [currentHole, setCurrentHole] = useState<number>(1);
   const [isLocationTracking, setIsLocationTracking] = useState(false);
   const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
+  const [targetDistance, setTargetDistance] = useState<DistanceResult | null>(null);
+  const [showRoundControls, setShowRoundControls] = useState(false);
 
   // Load active round and hole scores on component mount
   useEffect(() => {
@@ -112,7 +122,21 @@ export const ActiveRoundScreen: React.FC = () => {
   // Start location tracking for the round
   const startLocationTracking = async (roundId: number, courseId: number) => {
     try {
-      const hasPermission = await golfLocationService.requestLocationPermissions();
+      if (!isLocationServiceAvailable()) {
+        console.warn('Location service not available in ActiveRoundScreen');
+        setLocationPermissionGranted(false);
+        Alert.alert(
+          'Location Service Unavailable', 
+          'GPS tracking is currently unavailable. Please ensure location permissions are granted and restart the app.'
+        );
+        return;
+      }
+
+      const hasPermission = await safeLocationServiceCall(
+        (service) => service.requestLocationPermissions(),
+        false
+      );
+      
       if (!hasPermission) {
         setLocationPermissionGranted(false);
         return;
@@ -120,20 +144,28 @@ export const ActiveRoundScreen: React.FC = () => {
 
       setLocationPermissionGranted(true);
       
-      const trackingStarted = await golfLocationService.startRoundTracking(roundId, courseId);
+      const trackingStarted = await safeLocationServiceCall(
+        (service) => service.startRoundTracking(roundId, courseId),
+        false
+      );
+      
       if (trackingStarted) {
         setIsLocationTracking(true);
         
-        // Subscribe to location updates
+        // Subscribe to location updates with safe calls
         const unsubscribeLocation = golfLocationService.onLocationUpdate(handleLocationUpdate);
         const unsubscribeContext = golfLocationService.onContextUpdate(handleContextUpdate);
         const unsubscribeShots = golfLocationService.onShotDetection(handleShotDetection);
         
         // Store unsubscribe functions for cleanup
         return () => {
-          unsubscribeLocation();
-          unsubscribeContext();
-          unsubscribeShots();
+          try {
+            unsubscribeLocation();
+            unsubscribeContext();
+            unsubscribeShots();
+          } catch (error) {
+            console.error('Error unsubscribing from location updates:', error);
+          }
         };
       }
     } catch (error) {
@@ -144,8 +176,15 @@ export const ActiveRoundScreen: React.FC = () => {
 
   // Stop location tracking
   const stopLocationTracking = () => {
-    golfLocationService.stopRoundTracking();
-    setIsLocationTracking(false);
+    try {
+      if (isLocationServiceAvailable()) {
+        golfLocationService.stopRoundTracking();
+      }
+      setIsLocationTracking(false);
+    } catch (error) {
+      console.error('Error stopping location tracking:', error);
+      setIsLocationTracking(false);
+    }
   };
 
   // Handle location updates from GPS service
@@ -196,20 +235,44 @@ export const ActiveRoundScreen: React.FC = () => {
     console.log('Conversation updated:', conversation.length, 'messages');
   }, []);
 
-  // Handle refresh
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const result = await dispatch(fetchActiveRound()).unwrap();
-      if (result) {
-        dispatch(fetchHoleScores(result.id));
-      }
-    } catch (error) {
-      console.log('Error refreshing round data');
-    } finally {
-      setRefreshing(false);
+  // Handle target selection on map
+  const handleTargetSelected = useCallback((coordinate: Coordinate, distance: DistanceResult) => {
+    setTargetDistance(distance);
+    
+    // Update Redux state with target pin data
+    const bearing = currentLocation ? DistanceCalculator.calculateBearing(
+      { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
+      coordinate
+    ) : 0;
+
+    dispatch(setTargetPin({
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
+      distanceYards: distance.yards,
+      bearing,
+    }));
+
+    // Update location service
+    if (isLocationServiceAvailable()) {
+      golfLocationService.setMapTargetPin(
+        coordinate.latitude,
+        coordinate.longitude,
+        distance.yards,
+        bearing
+      );
     }
-  }, [dispatch]);
+  }, [dispatch, currentLocation]);
+
+  // Handle map location updates
+  const handleMapLocationUpdate = useCallback((coordinate: Coordinate) => {
+    // Update Redux with current map location
+    dispatch(updateCurrentLocation({
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude,
+      accuracy: currentLocation?.accuracy,
+      currentHole,
+    }));
+  }, [dispatch, currentLocation, currentHole]);
 
   // Handle round control actions
   const handlePauseRound = useCallback(async () => {
@@ -307,6 +370,18 @@ export const ActiveRoundScreen: React.FC = () => {
     dispatch(toggleVoiceInterface());
   }, [dispatch]);
 
+  // Handle settings press (could open a settings modal)
+  const handleSettingsPress = useCallback(() => {
+    // For now, just toggle map type between satellite and standard
+    const newMapType = mapState.mapType === 'satellite' ? 'standard' : 'satellite';
+    dispatch(setMapType(newMapType));
+  }, [mapState.mapType, dispatch]);
+
+  // Handle round controls press
+  const handleRoundControlsPress = useCallback(() => {
+    setShowRoundControls(!showRoundControls);
+  }, [showRoundControls]);
+
   // Loading state
   if (isLoading) {
     return (
@@ -354,131 +429,107 @@ export const ActiveRoundScreen: React.FC = () => {
     );
   }
 
-  // Round control buttons based on status
-  const renderRoundControls = () => {
-    const isPaused = activeRound.status === 'Paused';
-    const isInProgress = activeRound.status === 'InProgress';
-
-    return (
-      <View style={styles.controlsContainer}>
-        {isPaused && (
-          <TouchableOpacity
-            style={[styles.controlButton, styles.resumeButton]}
-            onPress={handleResumeRound}
-            disabled={isUpdating}
-          >
-            <Icon name="play-arrow" size={20} color="#fff" />
-            <Text style={styles.controlButtonText}>Resume</Text>
-          </TouchableOpacity>
-        )}
-
-        {isInProgress && (
-          <TouchableOpacity
-            style={[styles.controlButton, styles.pauseButton]}
-            onPress={handlePauseRound}
-            disabled={isUpdating}
-          >
-            <Icon name="pause" size={20} color="#fff" />
-            <Text style={styles.controlButtonText}>Pause</Text>
-          </TouchableOpacity>
-        )}
-
-        <TouchableOpacity
-          style={[styles.controlButton, styles.completeButton]}
-          onPress={handleCompleteRound}
-          disabled={isCompleting}
-        >
-          <Icon name="check" size={20} color="#fff" />
-          <Text style={styles.controlButtonText}>Complete</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.controlButton, styles.abandonButton]}
-          onPress={handleAbandonRound}
-          disabled={isUpdating}
-        >
-          <Icon name="close" size={20} color="#fff" />
-          <Text style={styles.controlButtonText}>Abandon</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  };
+  // Get course region for map initialization
+  const getCourseRegion = useCallback(() => {
+    if (mapState.courseRegion) {
+      return mapState.courseRegion;
+    }
+    
+    // Default to Faughan Valley Golf Centre coordinates
+    return {
+      latitude: 54.9783,
+      longitude: -7.2054,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    };
+  }, [mapState.courseRegion]);
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        style={styles.scrollContainer}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-        }
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerInfo}>
-            <Text style={styles.headerTitle}>Round Dashboard</Text>
-            <Text style={styles.headerSubtitle}>
-              {activeRound.course?.name || 'Unknown Course'}
-            </Text>
-            {/* Location Status */}
-            {currentLocation && (
-              <Text style={styles.locationStatus}>
-                📍 {currentLocation.distanceToPin ? `${currentLocation.distanceToPin.toFixed(0)}m to pin` : 'GPS Active'}
-              </Text>
+      {/* Map View - Full Screen */}
+      <GolfCourseMap
+        currentLocation={currentLocation}
+        onTargetSelected={handleTargetSelected}
+        onLocationUpdate={handleMapLocationUpdate}
+        courseId={activeRound?.courseId}
+        courseName={activeRound?.course?.name}
+        initialRegion={getCourseRegion()}
+        mapType={mapState.mapType}
+        enableTargetPin={true}
+      />
+
+      {/* Map Overlay - Floating UI Controls */}
+      <MapOverlay
+        courseName={activeRound?.course?.name}
+        currentHole={currentHole}
+        currentLocation={currentLocation}
+        targetDistance={targetDistance}
+        isLocationTracking={isLocationTracking}
+        isVoiceInterfaceVisible={isVoiceInterfaceVisible}
+        onVoiceToggle={handleVoiceToggle}
+        onSettingsPress={handleSettingsPress}
+        onRoundControlsPress={handleRoundControlsPress}
+        roundStatus={activeRound?.status}
+        gpsAccuracy={currentLocation?.accuracy}
+      />
+
+      {/* Round Controls Modal (when requested) */}
+      {showRoundControls && (
+        <View style={styles.roundControlsModal}>
+          <View style={styles.roundControlsContent}>
+            <Text style={styles.roundControlsTitle}>Round Controls</Text>
+            
+            {activeRound?.status === 'Paused' && (
+              <TouchableOpacity
+                style={[styles.modalButton, styles.resumeButton]}
+                onPress={handleResumeRound}
+                disabled={isUpdating}
+              >
+                <Icon name="play-arrow" size={20} color="#fff" />
+                <Text style={styles.modalButtonText}>Resume Round</Text>
+              </TouchableOpacity>
             )}
-          </View>
-          <View style={styles.headerButtons}>
+
+            {activeRound?.status === 'InProgress' && (
+              <TouchableOpacity
+                style={[styles.modalButton, styles.pauseButton]}
+                onPress={handlePauseRound}
+                disabled={isUpdating}
+              >
+                <Icon name="pause" size={20} color="#fff" />
+                <Text style={styles.modalButtonText}>Pause Round</Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
-              style={[styles.headerButton, isVoiceInterfaceVisible && styles.activeButton]}
-              onPress={handleVoiceToggle}
+              style={[styles.modalButton, styles.completeButton]}
+              onPress={handleCompleteRound}
+              disabled={isCompleting}
             >
-              <Icon name="mic" size={24} color={isVoiceInterfaceVisible ? "#fff" : "#4a7c59"} />
+              <Icon name="check" size={20} color="#fff" />
+              <Text style={styles.modalButtonText}>Complete Round</Text>
             </TouchableOpacity>
+
             <TouchableOpacity
-              style={styles.headerButton}
-              onPress={handleAIChatPress}
+              style={[styles.modalButton, styles.abandonButton]}
+              onPress={handleAbandonRound}
+              disabled={isUpdating}
             >
-              <Icon name="chat" size={24} color="#4a7c59" />
+              <Icon name="close" size={20} color="#fff" />
+              <Text style={styles.modalButtonText}>Abandon Round</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.modalButton, styles.cancelButton]}
+              onPress={() => setShowRoundControls(false)}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
+      )}
 
-        {/* Round Progress Card */}
-        <RoundProgressCard
-          round={activeRound}
-          currentHole={currentHole}
-          onHolePress={handleHoleChange}
-        />
-
-        {/* Hole Navigator */}
-        <HoleNavigator
-          totalHoles={18}
-          currentHole={currentHole}
-          onHoleSelect={handleHoleChange}
-          holeScores={activeRound.holeScores || []}
-        />
-
-        {/* Current Hole Scorecard */}
-        <ScorecardComponent
-          round={activeRound}
-          currentHole={currentHole}
-          holeScores={activeRound.holeScores || []}
-        />
-
-        {/* Round Statistics */}
-        <RoundStatsWidget
-          round={activeRound}
-          holeScores={activeRound.holeScores || []}
-        />
-
-        {/* Round Controls */}
-        {renderRoundControls()}
-
-        {/* Bottom spacing */}
-        <View style={styles.bottomSpacing} />
-      </ScrollView>
-
-      {/* Voice AI Interface */}
+      {/* Voice AI Interface - Positioned by the interface itself */}
       {activeRound && user && (
         <VoiceAIInterface
           userId={Number(user.id)}
@@ -493,19 +544,19 @@ export const ActiveRoundScreen: React.FC = () => {
   );
 };
 
+const { width, height } = Dimensions.get('window');
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-  scrollContainer: {
-    flex: 1,
+    backgroundColor: '#000', // Black background for map
   },
   emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+    backgroundColor: '#f8f9fa',
   },
   emptyTitle: {
     fontSize: 28,
@@ -536,72 +587,51 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  
+  // Round Controls Modal Styles
+  roundControlsModal: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    paddingBottom: 10,
+    zIndex: 1000,
   },
-  headerInfo: {
-    flex: 1,
+  roundControlsContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 24,
+    width: width - 40,
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  headerTitle: {
-    fontSize: 24,
+  roundControlsTitle: {
+    fontSize: 20,
     fontWeight: '700',
     color: '#2c5530',
-    marginBottom: 4,
+    marginBottom: 20,
+    textAlign: 'center',
   },
-  headerSubtitle: {
-    fontSize: 16,
-    color: '#4a7c59',
-    fontWeight: '500',
-  },
-  locationStatus: {
-    fontSize: 14,
-    color: '#28a745',
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  headerButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  headerButton: {
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  activeButton: {
-    backgroundColor: '#4a7c59',
-    borderColor: '#4a7c59',
-  },
-  controlsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-    gap: 10,
-  },
-  controlButton: {
-    flex: 1,
+  modalButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 6,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginBottom: 12,
+    gap: 8,
   },
-  controlButtonText: {
-    color: '#fff',
-    fontSize: 14,
+  modalButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
     fontWeight: '600',
   },
   resumeButton: {
@@ -616,8 +646,16 @@ const styles = StyleSheet.create({
   abandonButton: {
     backgroundColor: '#dc3545',
   },
-  bottomSpacing: {
-    height: 20,
+  cancelButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#6c757d',
+    marginTop: 8,
+  },
+  cancelButtonText: {
+    color: '#6c757d',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

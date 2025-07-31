@@ -10,8 +10,8 @@ CREATE TABLE round_statuses (
 
 -- Insert round status data
 INSERT INTO round_statuses (id, name, description) VALUES 
-(1, 'not started', 'Round has not been started yet'),
-(2, 'in progress', 'Round is currently being played'),
+(1, 'not_started', 'Round has not been started yet'),
+(2, 'in_progress', 'Round is currently being played'),
 (3, 'paused', 'Round is temporarily paused'),
 (4, 'completed', 'Round has been completed'),
 (5, 'abandoned', 'Round was abandoned before completion');
@@ -23,8 +23,8 @@ ADD COLUMN status_id INTEGER DEFAULT 1;
 -- Update existing data - map enum values to integer IDs
 UPDATE rounds SET 
     status_id = CASE 
-        WHEN status::text = 'not started' THEN 1
-        WHEN status::text = 'in progress' THEN 2
+        WHEN status::text = 'not_started' THEN 1
+        WHEN status::text = 'in_progress' THEN 2
         WHEN status::text = 'paused' THEN 3
         WHEN status::text = 'completed' THEN 4
         WHEN status::text = 'abandoned' THEN 5

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,14 @@ import Tts from 'react-native-tts';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { check, request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import { voiceAIApiService, VoiceAIRequest } from '../../services/voiceAIApi';
-import { golfLocationService, LocationData } from '../../services/LocationService';
+import { 
+  golfLocationService, 
+  LocationData, 
+  MapLocationContext,
+  isLocationServiceAvailable, 
+  safeLocationServiceCall 
+} from '../../services/LocationService';
+import { DistanceCalculator, formatGolfDistance } from '../../utils/DistanceCalculator';
 
 const { width, height } = Dimensions.get('window');
 
@@ -53,6 +60,7 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
   const [lastResponse, setLastResponse] = useState('');
   const [conversationHistory, setConversationHistory] = useState<ConversationMessage[]>([]);
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
+  const [mapLocationContext, setMapLocationContext] = useState<MapLocationContext | null>(null);
   const [hasPermissions, setHasPermissions] = useState(false);
 
   // Animation values
@@ -90,6 +98,17 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
 
   const initializeVoiceServices = async () => {
     try {
+      // Check if react-native-permissions module is available
+      if (!check || !request || !PERMISSIONS || !RESULTS) {
+        console.warn('react-native-permissions module not available, skipping permission check');
+        Alert.alert(
+          'Voice Features Unavailable',
+          'Voice features require app rebuild after installing permissions. Voice functionality will be limited.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
       // Request microphone permissions
       const microphonePermission = Platform.OS === 'ios' 
         ? PERMISSIONS.IOS.MICROPHONE 
@@ -108,44 +127,105 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
 
       setHasPermissions(true);
 
-      // Initialize Voice
-      Voice.onSpeechStart = onSpeechStart;
-      Voice.onSpeechRecognized = onSpeechRecognized;
-      Voice.onSpeechEnd = onSpeechEnd;
-      Voice.onSpeechError = onSpeechError;
-      Voice.onSpeechResults = onSpeechResults;
-      Voice.onSpeechPartialResults = onSpeechPartialResults;
+      // Initialize Voice with error handling
+      if (Voice) {
+        Voice.onSpeechStart = onSpeechStart;
+        Voice.onSpeechRecognized = onSpeechRecognized;
+        Voice.onSpeechEnd = onSpeechEnd;
+        Voice.onSpeechError = onSpeechError;
+        Voice.onSpeechResults = onSpeechResults;
+        Voice.onSpeechPartialResults = onSpeechPartialResults;
+      } else {
+        console.warn('Voice module not available');
+      }
 
-      // Initialize TTS
-      Tts.addEventListener('tts-start', onTtsStart);
-      Tts.addEventListener('tts-finish', onTtsFinish);
-      Tts.addEventListener('tts-cancel', onTtsCancel);
+      // Initialize TTS with error handling
+      if (Tts) {
+        Tts.addEventListener('tts-start', onTtsStart);
+        Tts.addEventListener('tts-finish', onTtsFinish);
+        Tts.addEventListener('tts-cancel', onTtsCancel);
 
-      // Set TTS options
-      await Tts.setDefaultRate(0.5);
-      await Tts.setDefaultPitch(1.0);
+        // Set TTS options
+        await Tts.setDefaultRate(0.5);
+        await Tts.setDefaultPitch(1.0);
+      } else {
+        console.warn('TTS module not available');
+      }
 
       console.log('Voice services initialized successfully');
     } catch (error) {
       console.error('Error initializing voice services:', error);
       setVoiceState('error');
+      
+      // Show user-friendly error message
+      Alert.alert(
+        'Voice Setup Error',
+        'There was an issue setting up voice features. Please restart the app or contact support if the issue persists.',
+        [{ text: 'OK' }]
+      );
     }
   };
 
   const setupLocationTracking = () => {
-    const unsubscribe = golfLocationService.onLocationUpdate((location: LocationData) => {
-      setCurrentLocation(location);
-    });
+    try {
+      // Check if location service modules are available
+      if (!isLocationServiceAvailable) {
+        console.warn('Location service function not available - module may not be properly linked');
+        return () => {}; // Return empty unsubscribe function
+      }
 
-    return unsubscribe;
+      if (!isLocationServiceAvailable()) {
+        console.warn('Location service not available in VoiceAIInterface');
+        return () => {}; // Return empty unsubscribe function
+      }
+      
+      // Check if golfLocationService is available
+      if (!golfLocationService || typeof golfLocationService.onLocationUpdate !== 'function') {
+        console.warn('GolfLocationService not properly initialized');
+        return () => {}; // Return empty unsubscribe function
+      }
+
+      // Subscribe to both regular location updates and enhanced map context
+      const unsubscribeLocation = golfLocationService.onLocationUpdate((location: LocationData) => {
+        setCurrentLocation(location);
+      });
+
+      const unsubscribeMapContext = golfLocationService.onMapLocationUpdate((context: MapLocationContext) => {
+        setMapLocationContext(context);
+        setCurrentLocation(context.userLocation);
+      });
+
+      return () => {
+        unsubscribeLocation();
+        unsubscribeMapContext();
+      };
+    } catch (error) {
+      console.error('Error setting up location tracking in VoiceAIInterface:', error);
+      
+      // Show user-friendly warning for location issues
+      if (error instanceof Error && error.message && error.message.includes('geolocation')) {
+        Alert.alert(
+          'Location Service Warning',
+          'Location tracking may not work properly. Please restart the app after ensuring location permissions are granted.',
+          [{ text: 'OK' }]
+        );
+      }
+      
+      return () => {}; // Return empty unsubscribe function
+    }
   };
 
   const cleanupVoiceServices = async () => {
     try {
-      await Voice.destroy();
-      Tts.removeAllListeners('tts-start');
-      Tts.removeAllListeners('tts-finish');
-      Tts.removeAllListeners('tts-cancel');
+      if (Voice && typeof Voice.destroy === 'function') {
+        await Voice.destroy();
+      }
+      
+      if (Tts && typeof Tts.removeAllListeners === 'function') {
+        Tts.removeAllListeners('tts-start');
+        Tts.removeAllListeners('tts-finish');
+        Tts.removeAllListeners('tts-cancel');
+      }
     } catch (error) {
       console.error('Error cleaning up voice services:', error);
     }
@@ -219,6 +299,58 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
     setVoiceState('idle');
   };
 
+  // Build enhanced location context for AI
+  const buildEnhancedLocationContext = useCallback(() => {
+    if (!currentLocation) return undefined;
+
+    const baseContext = {
+      latitude: currentLocation.latitude,
+      longitude: currentLocation.longitude,
+      accuracyMeters: currentLocation.accuracy || 10,
+      currentHole,
+      movementSpeedMps: currentLocation.speed,
+      withinCourseBoundaries: true, // This would come from location service
+      timestamp: new Date(currentLocation.timestamp).toISOString(),
+    };
+
+    // Add enhanced context from map if available
+    if (mapLocationContext) {
+      const enhancedContext = {
+        ...baseContext,
+        // Add target pin information
+        targetPin: mapLocationContext.targetPin ? {
+          latitude: mapLocationContext.targetPin.coordinate.latitude,
+          longitude: mapLocationContext.targetPin.coordinate.longitude,
+          distanceYards: mapLocationContext.targetPin.distanceYards,
+          bearing: mapLocationContext.targetPin.bearing,
+          recommendedClub: DistanceCalculator.recommendClub(mapLocationContext.targetPin.distanceYards),
+          formattedDistance: formatGolfDistance({
+            yards: mapLocationContext.targetPin.distanceYards,
+            meters: mapLocationContext.targetPin.distanceYards / 1.09361,
+            feet: mapLocationContext.targetPin.distanceYards * 3,
+            kilometers: mapLocationContext.targetPin.distanceYards / 1093.61,
+            miles: mapLocationContext.targetPin.distanceYards / 1760,
+          }),
+        } : undefined,
+        // Add course features if available
+        courseFeatures: mapLocationContext.courseFeatures ? {
+          nearbyHazards: mapLocationContext.courseFeatures.nearbyHazards,
+          distanceToGreen: mapLocationContext.courseFeatures.distanceToGreen,
+          distanceToTee: mapLocationContext.courseFeatures.distanceToTee,
+        } : undefined,
+        // Add GPS accuracy assessment
+        gpsQuality: DistanceCalculator.validateGPSAccuracy(
+          currentLocation.accuracy || 10,
+          { latitude: currentLocation.latitude, longitude: currentLocation.longitude }
+        ),
+      };
+
+      return enhancedContext;
+    }
+
+    return baseContext;
+  }, [currentLocation, mapLocationContext, currentHole]);
+
   // Process voice input with AI
   const processVoiceInput = async (spokenText: string) => {
     try {
@@ -236,20 +368,14 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
       const updatedHistory = [...conversationHistory, userMessage];
       setConversationHistory(updatedHistory);
 
-      // Prepare request
+      // Prepare enhanced request with map context
+      const enhancedLocationContext = buildEnhancedLocationContext();
+      
       const request: VoiceAIRequest = {
         userId,
         roundId,
         voiceInput: spokenText,
-        locationContext: currentLocation ? {
-          latitude: currentLocation.latitude,
-          longitude: currentLocation.longitude,
-          accuracyMeters: currentLocation.accuracy,
-          currentHole,
-          movementSpeedMps: currentLocation.speed,
-          withinCourseBoundaries: true, // This would come from location service
-          timestamp: new Date(currentLocation.timestamp).toISOString(),
-        } : undefined,
+        locationContext: enhancedLocationContext,
         conversationHistory: conversationHistory.slice(-6).map(msg => ({
           content: msg.content,
           role: msg.role,
@@ -294,7 +420,12 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
   // Speak AI response using TTS
   const speakResponse = async (text: string) => {
     try {
-      await Tts.speak(text);
+      if (Tts && typeof Tts.speak === 'function') {
+        await Tts.speak(text);
+      } else {
+        console.warn('TTS module not available, skipping speech');
+        setVoiceState('idle');
+      }
     } catch (error) {
       console.error('Error speaking response:', error);
       setVoiceState('idle');
@@ -309,6 +440,11 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
         return;
       }
 
+      if (!Voice || typeof Voice.start !== 'function') {
+        Alert.alert('Voice Recognition Unavailable', 'Voice recognition module is not available. Please restart the app.');
+        return;
+      }
+
       setRecognizedText('');
       setVoiceState('listening');
       
@@ -316,13 +452,21 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
     } catch (error) {
       console.error('Error starting voice recognition:', error);
       setVoiceState('error');
+      
+      Alert.alert(
+        'Voice Recognition Error',
+        'Unable to start voice recognition. Please check your microphone permissions and try again.',
+        [{ text: 'OK' }]
+      );
     }
   };
 
   // Stop voice recognition
   const stopListening = async () => {
     try {
-      await Voice.stop();
+      if (Voice && typeof Voice.stop === 'function') {
+        await Voice.stop();
+      }
       setIsListening(false);
     } catch (error) {
       console.error('Error stopping voice recognition:', error);
@@ -332,7 +476,9 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
   // Stop TTS
   const stopSpeaking = async () => {
     try {
-      await Tts.stop();
+      if (Tts && typeof Tts.stop === 'function') {
+        await Tts.stop();
+      }
       setVoiceState('idle');
     } catch (error) {
       console.error('Error stopping TTS:', error);

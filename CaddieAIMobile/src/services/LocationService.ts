@@ -41,6 +41,30 @@ export interface LocationProcessingResult {
   processedAt: Date;
 }
 
+export interface MapTargetData {
+  coordinate: {
+    latitude: number;
+    longitude: number;
+  };
+  distanceYards: number;
+  bearing: number;
+  timestamp: number;
+}
+
+export interface MapLocationContext {
+  userLocation: LocationData;
+  targetPin?: MapTargetData;
+  courseFeatures?: {
+    nearbyHazards: Array<{
+      type: string;
+      distance: number;
+      bearing: number;
+    }>;
+    distanceToGreen?: number;
+    distanceToTee?: number;
+  };
+}
+
 // Location service for GPS tracking during golf rounds
 export class GolfLocationService {
   private watchId: number | null = null;
@@ -50,6 +74,11 @@ export class GolfLocationService {
   private updateCallbacks: Array<(location: LocationData) => void> = [];
   private contextUpdateCallbacks: Array<(context: CourseLocationContext) => void> = [];
   private shotDetectionCallbacks: Array<(shotData: any) => void> = [];
+  
+  // Map-specific state
+  private mapTargetPin: MapTargetData | null = null;
+  private mapLocationCallbacks: Array<(context: MapLocationContext) => void> = [];
+  private lastMapUpdate: number = 0;
 
   // Default GPS options optimized for golf course tracking
   private defaultOptions: LocationUpdateOptions = {
@@ -210,6 +239,9 @@ export class GolfLocationService {
 
       // Analyze for potential shots
       await this.analyzeForShotDetection(locationData, roundId);
+
+      // Update map location context for map interface
+      this.updateMapLocationContext();
 
     } catch (error) {
       console.error('Error handling location update:', error);
@@ -452,6 +484,179 @@ export class GolfLocationService {
     });
   }
 
+  // Map-specific methods
+
+  /**
+   * Set target pin for distance measurement
+   */
+  setMapTargetPin(
+    latitude: number,
+    longitude: number,
+    distanceYards: number,
+    bearing: number
+  ): void {
+    this.mapTargetPin = {
+      coordinate: { latitude, longitude },
+      distanceYards,
+      bearing,
+      timestamp: Date.now(),
+    };
+
+    // Trigger map location context update
+    this.updateMapLocationContext();
+  }
+
+  /**
+   * Clear target pin
+   */
+  clearMapTargetPin(): void {
+    this.mapTargetPin = null;
+    this.updateMapLocationContext();
+  }
+
+  /**
+   * Get current map target pin
+   */
+  getMapTargetPin(): MapTargetData | null {
+    return this.mapTargetPin;
+  }
+
+  /**
+   * Subscribe to map location context updates
+   */
+  onMapLocationUpdate(callback: (context: MapLocationContext) => void): () => void {
+    this.mapLocationCallbacks.push(callback);
+    
+    // Immediately send current context if available
+    if (this.currentLocation) {
+      this.updateMapLocationContext();
+    }
+    
+    return () => {
+      const index = this.mapLocationCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.mapLocationCallbacks.splice(index, 1);
+      }
+    };
+  }
+
+  /**
+   * Update map location context and notify subscribers
+   */
+  private updateMapLocationContext(): void {
+    if (!this.currentLocation) return;
+
+    const now = Date.now();
+    // Throttle updates to every 500ms for map performance
+    if (now - this.lastMapUpdate < 500) return;
+
+    const context: MapLocationContext = {
+      userLocation: this.currentLocation,
+      targetPin: this.mapTargetPin || undefined,
+      courseFeatures: this.getCourseFeatures(),
+    };
+
+    this.mapLocationCallbacks.forEach(callback => {
+      try {
+        callback(context);
+      } catch (error) {
+        console.error('Error in map location callback:', error);
+      }
+    });
+
+    this.lastMapUpdate = now;
+  }
+
+  /**
+   * Get nearby course features for map context
+   */
+  private getCourseFeatures(): MapLocationContext['courseFeatures'] {
+    // This would ideally integrate with course data from backend
+    // For now, return basic structure that can be populated later
+    return {
+      nearbyHazards: [],
+      distanceToGreen: undefined,
+      distanceToTee: undefined,
+    };
+  }
+
+  /**
+   * Calculate distance between current location and map coordinates
+   */
+  calculateDistanceToMapCoordinate(
+    targetLatitude: number,
+    targetLongitude: number
+  ): { meters: number; yards: number } | null {
+    if (!this.currentLocation) return null;
+
+    const distance = this.calculateDistance(
+      this.currentLocation.latitude,
+      this.currentLocation.longitude,
+      targetLatitude,
+      targetLongitude
+    );
+
+    return {
+      meters: distance,
+      yards: distance * 1.09361, // Convert meters to yards
+    };
+  }
+
+  /**
+   * Enhanced shot detection for map interface
+   */
+  detectShotFromMapMovement(
+    newLocation: LocationData,
+    targetPin?: MapTargetData
+  ): boolean {
+    if (this.locationHistory.length < 2) return false;
+
+    const previousLocation = this.locationHistory[this.locationHistory.length - 1];
+    const distance = this.calculateDistance(
+      previousLocation.latitude,
+      previousLocation.longitude,
+      newLocation.latitude,
+      newLocation.longitude
+    );
+
+    const timeDiff = (newLocation.timestamp - previousLocation.timestamp) / 1000;
+    const speed = timeDiff > 0 ? distance / timeDiff : 0;
+
+    // Enhanced shot detection with target pin context
+    let shotDetected = false;
+    
+    if (distance > 30 && timeDiff < 10 && speed > 5) {
+      shotDetected = true;
+      
+      // If we have a target pin, check if we're moving toward it
+      if (targetPin) {
+        const bearingToTarget = this.calculateBearingBetweenPoints(
+          newLocation.latitude,
+          newLocation.longitude,
+          targetPin.coordinate.latitude,
+          targetPin.coordinate.longitude
+        );
+        
+        const movementBearing = this.calculateBearingBetweenPoints(
+          previousLocation.latitude,
+          previousLocation.longitude,
+          newLocation.latitude,
+          newLocation.longitude
+        );
+        
+        // If movement is roughly toward target (within 45 degrees), it's likely intentional
+        const bearingDiff = Math.abs(bearingToTarget - movementBearing);
+        const normalizedDiff = Math.min(bearingDiff, 360 - bearingDiff);
+        
+        if (normalizedDiff <= 45) {
+          console.log('Shot detected toward target pin');
+        }
+      }
+    }
+
+    return shotDetected;
+  }
+
   // Private helper methods
 
   private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -468,6 +673,26 @@ export class GolfLocationService {
 
   private toRadians(degrees: number): number {
     return degrees * (Math.PI / 180);
+  }
+
+  private toDegrees(radians: number): number {
+    return radians * (180 / Math.PI);
+  }
+
+  private calculateBearingBetweenPoints(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const lat1Rad = this.toRadians(lat1);
+    const lat2Rad = this.toRadians(lat2);
+    const deltaLonRad = this.toRadians(lon2 - lon1);
+
+    const y = Math.sin(deltaLonRad) * Math.cos(lat2Rad);
+    const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+              Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(deltaLonRad);
+
+    const bearingRad = Math.atan2(y, x);
+    const bearingDeg = this.toDegrees(bearingRad);
+
+    // Normalize to 0-360 degrees
+    return (bearingDeg + 360) % 360;
   }
 
   private estimateClubFromDistance(distance: number): string {
@@ -497,4 +722,43 @@ export class GolfLocationService {
 }
 
 // Export singleton instance
-export const golfLocationService = new GolfLocationService();
+let _golfLocationService: GolfLocationService | null = null;
+
+export const getGolfLocationService = (): GolfLocationService => {
+  if (!_golfLocationService) {
+    _golfLocationService = new GolfLocationService();
+  }
+  return _golfLocationService;
+};
+
+// Export singleton instance for backward compatibility
+export const golfLocationService = getGolfLocationService();
+
+// Helper function to check if service is available
+export const isLocationServiceAvailable = (): boolean => {
+  try {
+    const service = getGolfLocationService();
+    return service != null;
+  } catch (error) {
+    console.error('Location service is not available:', error);
+    return false;
+  }
+};
+
+// Safe wrapper for location service operations
+export const safeLocationServiceCall = async <T>(
+  operation: (service: GolfLocationService) => Promise<T>,
+  fallback: T
+): Promise<T> => {
+  try {
+    if (!isLocationServiceAvailable()) {
+      console.warn('Location service not available, using fallback');
+      return fallback;
+    }
+    const service = getGolfLocationService();
+    return await operation(service);
+  } catch (error) {
+    console.error('Error in location service operation:', error);
+    return fallback;
+  }
+};

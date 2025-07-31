@@ -117,3 +117,14 @@ dependencies {
         implementation jscFlavor
     }
 }
+
+// Force resolution of AndroidX libraries to avoid conflicts with legacy support libraries
+configurations.all {
+    resolutionStrategy {
+        force 'androidx.core:core:1.13.1'
+        force 'androidx.lifecycle:lifecycle-process:2.8.4'
+        force 'androidx.startup:startup-runtime:1.1.1'
+    }
+    
+    exclude group: 'com.android.support'
+}
