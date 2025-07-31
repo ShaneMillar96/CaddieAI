@@ -1,7 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import TokenStorage from './tokenStorage';
-
-const API_BASE_URL = 'http://localhost:5277/api';
+import { API_BASE_URL, API_TIMEOUT } from '../config/api';
 
 // Types for Voice AI API
 export interface VoiceAIRequest {
@@ -25,6 +24,11 @@ export interface VoiceAIRequest {
     role: string;
     timestamp: string;
   }[];
+  golfContext?: {
+    hasActiveTarget: boolean;
+    currentHole?: number;
+    shotType: string;
+  };
   metadata?: Record<string, any>;
 }
 

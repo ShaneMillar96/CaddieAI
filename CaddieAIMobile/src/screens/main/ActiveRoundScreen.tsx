@@ -45,6 +45,8 @@ import {
   safeLocationServiceCall 
 } from '../../services/LocationService';
 import { DistanceCalculator, Coordinate, DistanceResult } from '../../utils/DistanceCalculator';
+import ErrorBoundary, { MapErrorBoundary, VoiceErrorBoundary } from '../../components/common/ErrorBoundary';
+import { testApiConnection } from '../../config/api';
 
 // Navigation types
 type MainStackParamList = {
@@ -87,10 +89,17 @@ export const ActiveRoundScreen: React.FC = () => {
 
   // Load active round and hole scores on component mount
   useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    let isActiveEffect = true; // Track if effect is still active
+    
     const loadRoundData = async () => {
       try {
+        // Test API connection first for debugging
+        const apiStatus = await testApiConnection();
+        console.log('🟡 ActiveRoundScreen: API Connection Status:', apiStatus);
+        
         const result = await dispatch(fetchActiveRound()).unwrap();
-        if (result) {
+        if (result && isActiveEffect) { // Only proceed if effect is still active
           setCurrentHole(result.currentHole || 1);
           // Load hole scores for the active round
           dispatch(fetchHoleScores(result.id));
@@ -99,12 +108,16 @@ export const ActiveRoundScreen: React.FC = () => {
           if (user?.id) {
             dispatch(startVoiceSession({ roundId: result.id }));
             
-            // Start location tracking
-            await startLocationTracking(result.id, result.courseId);
+            // Start location tracking only if effect is still active
+            if (isActiveEffect) {
+              console.log('🟡 ActiveRoundScreen: About to start location tracking...');
+              cleanup = await startLocationTracking(result.id, result.courseId);
+              console.log('🟡 ActiveRoundScreen: Location tracking setup completed, cleanup function:', cleanup);
+            }
           }
         }
       } catch (error) {
-        console.log('Error loading active round:', error);
+        console.log('🔴 ActiveRoundScreen: Error loading active round:', error);
       }
     };
 
@@ -112,22 +125,38 @@ export const ActiveRoundScreen: React.FC = () => {
     
     // Cleanup on unmount
     return () => {
+      isActiveEffect = false; // Mark effect as inactive
+      console.log('🟡 ActiveRoundScreen: useEffect cleanup triggered');
+      
+      if (cleanup) {
+        console.log('🟡 ActiveRoundScreen: Executing location tracking cleanup...');
+        try {
+          cleanup();
+        } catch (error) {
+          console.error('🔴 ActiveRoundScreen: Error during cleanup:', error);
+        }
+      }
+      
       if (activeRound?.id) {
         dispatch(endVoiceSession());
         stopLocationTracking();
       }
     };
-  }, [dispatch, user?.id]);
+  }, [dispatch, user?.id]); // Removed activeRound dependency to prevent re-runs
 
-  // Start location tracking for the round
-  const startLocationTracking = async (roundId: number, courseId: number) => {
+  // Start location tracking for the round with enhanced permission flow
+  const startLocationTracking = async (roundId: number, courseId: number): Promise<(() => void) | undefined> => {
     try {
       if (!isLocationServiceAvailable()) {
         console.warn('Location service not available in ActiveRoundScreen');
         setLocationPermissionGranted(false);
         Alert.alert(
           'Location Service Unavailable', 
-          'GPS tracking is currently unavailable. Please ensure location permissions are granted and restart the app.'
+          'GPS tracking is currently unavailable. Please ensure location permissions are granted and restart the app.',
+          [
+            { text: 'OK' },
+            { text: 'Try Again', onPress: () => startLocationTracking(roundId, courseId) }
+          ]
         );
         return;
       }
@@ -139,6 +168,14 @@ export const ActiveRoundScreen: React.FC = () => {
       
       if (!hasPermission) {
         setLocationPermissionGranted(false);
+        Alert.alert(
+          'Location Permission Required',
+          'GPS tracking enhances your golf experience with accurate distance measurements and shot analysis. Please grant location permission to continue.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Retry', onPress: () => startLocationTracking(roundId, courseId) }
+          ]
+        );
         return;
       }
 
@@ -151,26 +188,65 @@ export const ActiveRoundScreen: React.FC = () => {
       
       if (trackingStarted) {
         setIsLocationTracking(true);
+        console.log(`🟡 ActiveRoundScreen: Location tracking started successfully for round ${roundId}`);
         
-        // Subscribe to location updates with safe calls
+        // Subscribe to location updates with safe calls and detailed logging
+        console.log('🟡 ActiveRoundScreen: Subscribing to location updates...');
         const unsubscribeLocation = golfLocationService.onLocationUpdate(handleLocationUpdate);
+        console.log('🟡 ActiveRoundScreen: Location update subscription completed, unsubscribe function:', unsubscribeLocation);
+        
+        console.log('🟡 ActiveRoundScreen: Subscribing to context updates...');  
         const unsubscribeContext = golfLocationService.onContextUpdate(handleContextUpdate);
+        console.log('🟡 ActiveRoundScreen: Context update subscription completed, unsubscribe function:', unsubscribeContext);
+        
+        console.log('🟡 ActiveRoundScreen: Subscribing to shot detection...');
         const unsubscribeShots = golfLocationService.onShotDetection(handleShotDetection);
+        console.log('🟡 ActiveRoundScreen: Shot detection subscription completed, unsubscribe function:', unsubscribeShots);
+        
+        // Get initial location immediately if available
+        const currentPos = golfLocationService.getCurrentLocation();
+        if (currentPos) {
+          console.log('🟡 ActiveRoundScreen: Using existing location from service:', currentPos);
+          handleLocationUpdate(currentPos);
+        } else {
+          console.log('🟡 ActiveRoundScreen: No existing location available from service');
+        }
+        
+        // Log backend status for debugging
+        const backendStatus = golfLocationService.getBackendStatus();
+        console.log('🟡 ActiveRoundScreen: Location service backend status:', backendStatus);
         
         // Store unsubscribe functions for cleanup
         return () => {
           try {
+            console.log('🟡 ActiveRoundScreen: Unsubscribing from location services...');
             unsubscribeLocation();
             unsubscribeContext();
             unsubscribeShots();
+            console.log('🟡 ActiveRoundScreen: Successfully unsubscribed from location services');
           } catch (error) {
-            console.error('Error unsubscribing from location updates:', error);
+            console.error('🔴 ActiveRoundScreen: Error unsubscribing from location updates:', error);
           }
         };
+      } else {
+        console.warn('Failed to start location tracking');
+        Alert.alert(
+          'GPS Tracking Issue',
+          'Unable to start GPS tracking. The app will still work, but distance measurements may be limited.',
+          [{ text: 'OK' }]
+        );
       }
     } catch (error) {
       console.error('Error starting location tracking:', error);
-      Alert.alert('Location Error', 'Failed to start GPS tracking. Some features may not work properly.');
+      setLocationPermissionGranted(false);
+      Alert.alert(
+        'Location Error', 
+        'Failed to start GPS tracking. Some features may not work properly.',
+        [
+          { text: 'OK' },
+          { text: 'Retry', onPress: () => startLocationTracking(roundId, courseId) }
+        ]
+      );
     }
   };
 
@@ -187,15 +263,58 @@ export const ActiveRoundScreen: React.FC = () => {
     }
   };
 
-  // Handle location updates from GPS service
+  // Handle location updates from GPS service with validation
   const handleLocationUpdate = useCallback((location: LocationData) => {
-    // Update Redux state with current location
-    dispatch(updateCurrentLocation({
+    console.log('🟡 ActiveRoundScreen.handleLocationUpdate: CALLBACK TRIGGERED');
+    console.log('🟡 ActiveRoundScreen.handleLocationUpdate: Received location data:', {
       latitude: location.latitude,
       longitude: location.longitude,
       accuracy: location.accuracy,
-    }));
-  }, [dispatch]);
+      timestamp: new Date(location.timestamp).toLocaleTimeString(),
+      fullLocationObject: location
+    });
+    
+    // Validate location data
+    const isValidLocation = (lat: number, lng: number) => {
+      return lat !== 0 || lng !== 0; // Reject {0,0} coordinates
+    };
+    
+    if (!isValidLocation(location.latitude, location.longitude)) {
+      console.warn('🟡 ActiveRoundScreen.handleLocationUpdate: Rejecting invalid location coordinates {0,0}');
+      return;
+    }
+    
+    // Additional validation for reasonable coordinates
+    if (Math.abs(location.latitude) > 90 || Math.abs(location.longitude) > 180) {
+      console.warn('🟡 ActiveRoundScreen.handleLocationUpdate: Rejecting out-of-range coordinates:', {
+        latitude: location.latitude,
+        longitude: location.longitude
+      });
+      return;
+    }
+    
+    console.log('🟡 ActiveRoundScreen.handleLocationUpdate: Current Redux location state before dispatch:', currentLocation);
+    
+    try {
+      const updatePayload = {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        accuracy: location.accuracy,
+      };
+      
+      console.log('🟡 ActiveRoundScreen.handleLocationUpdate: About to dispatch updateCurrentLocation with payload:', updatePayload);
+      console.log('🟡 ActiveRoundScreen.handleLocationUpdate: Dispatch function:', dispatch);
+      
+      // Update Redux state with current location
+      const dispatchResult = dispatch(updateCurrentLocation(updatePayload));
+      
+      console.log('🟢 ActiveRoundScreen.handleLocationUpdate: Redux dispatch completed, result:', dispatchResult);
+      console.log('🟢 ActiveRoundScreen.handleLocationUpdate: Expected Redux state change from', currentLocation, 'to', updatePayload);
+    } catch (error) {
+      console.error('🔴 ActiveRoundScreen.handleLocationUpdate: ERROR dispatching to Redux:', error);
+      console.error('🔴 ActiveRoundScreen.handleLocationUpdate: Error stack:', error instanceof Error ? error.stack : 'No stack available');
+    }
+  }, [dispatch, currentLocation]);
 
   // Handle course context updates (hole detection, distances)
   const handleContextUpdate = useCallback((context: any) => {
@@ -235,16 +354,29 @@ export const ActiveRoundScreen: React.FC = () => {
     console.log('Conversation updated:', conversation.length, 'messages');
   }, []);
 
-  // Handle target selection on map
+  // Handle target selection on map with enhanced state management
   const handleTargetSelected = useCallback((coordinate: Coordinate, distance: DistanceResult) => {
+    // Clear target if distance is 0 (indicating clearing action)
+    if (distance.yards === 0) {
+      setTargetDistance(null);
+      dispatch(clearTargetPin());
+      
+      if (isLocationServiceAvailable()) {
+        golfLocationService.clearMapTargetPin();
+      }
+      console.log('Target pin cleared from map');
+      return;
+    }
+
     setTargetDistance(distance);
     
-    // Update Redux state with target pin data
+    // Calculate bearing for enhanced AI context
     const bearing = currentLocation ? DistanceCalculator.calculateBearing(
       { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
       coordinate
     ) : 0;
 
+    // Update Redux state with comprehensive target pin data
     dispatch(setTargetPin({
       latitude: coordinate.latitude,
       longitude: coordinate.longitude,
@@ -252,7 +384,7 @@ export const ActiveRoundScreen: React.FC = () => {
       bearing,
     }));
 
-    // Update location service
+    // Update location service with target pin data
     if (isLocationServiceAvailable()) {
       golfLocationService.setMapTargetPin(
         coordinate.latitude,
@@ -261,6 +393,8 @@ export const ActiveRoundScreen: React.FC = () => {
         bearing
       );
     }
+
+    console.log(`Target selected: ${distance.yards} yards, bearing ${bearing.toFixed(0)}°`);
   }, [dispatch, currentLocation]);
 
   // Handle map location updates
@@ -372,9 +506,14 @@ export const ActiveRoundScreen: React.FC = () => {
 
   // Handle settings press (could open a settings modal)
   const handleSettingsPress = useCallback(() => {
-    // For now, just toggle map type between satellite and standard
-    const newMapType = mapState.mapType === 'satellite' ? 'standard' : 'satellite';
+    // Cycle through map types: standard -> satellite -> terrain -> hybrid -> repeat
+    const mapTypes = ['standard', 'satellite', 'terrain', 'hybrid'] as const;
+    const currentIndex = mapTypes.indexOf(mapState.mapType as any);
+    const nextIndex = (currentIndex + 1) % mapTypes.length;
+    const newMapType = mapTypes[nextIndex];
+    
     dispatch(setMapType(newMapType));
+    console.log(`Map type changed to: ${newMapType}`);
   }, [mapState.mapType, dispatch]);
 
   // Handle round controls press
@@ -382,7 +521,32 @@ export const ActiveRoundScreen: React.FC = () => {
     setShowRoundControls(!showRoundControls);
   }, [showRoundControls]);
 
-  // Loading state
+  // Get course region for map initialization with priority for current location
+  const getCourseRegion = useCallback(() => {
+    // Priority: current location > course region > default
+    if (currentLocation) {
+      return {
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
+        latitudeDelta: 0.005, // Closer zoom when we have user location
+        longitudeDelta: 0.005,
+      };
+    }
+    
+    if (mapState.courseRegion) {
+      return mapState.courseRegion;
+    }
+    
+    // Default to Faughan Valley Golf Centre coordinates
+    return {
+      latitude: 54.9783,
+      longitude: -7.2054,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    };
+  }, [mapState.courseRegion, currentLocation]);
+
+  // Render loading state
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -391,7 +555,7 @@ export const ActiveRoundScreen: React.FC = () => {
     );
   }
 
-  // Error state
+  // Render error state
   if (error) {
     return (
       <SafeAreaView style={styles.container}>
@@ -403,7 +567,7 @@ export const ActiveRoundScreen: React.FC = () => {
     );
   }
 
-  // No active round state
+  // Render no active round state
   if (!activeRound) {
     return (
       <SafeAreaView style={styles.container}>
@@ -429,34 +593,32 @@ export const ActiveRoundScreen: React.FC = () => {
     );
   }
 
-  // Get course region for map initialization
-  const getCourseRegion = useCallback(() => {
-    if (mapState.courseRegion) {
-      return mapState.courseRegion;
-    }
-    
-    // Default to Faughan Valley Golf Centre coordinates
-    return {
-      latitude: 54.9783,
-      longitude: -7.2054,
-      latitudeDelta: 0.01,
-      longitudeDelta: 0.01,
-    };
-  }, [mapState.courseRegion]);
+  // Debug current location state with enhanced logging
+  console.log('🟡 ActiveRoundScreen RENDER - currentLocation:', currentLocation);
+  console.log('🟡 ActiveRoundScreen RENDER - mapState:', mapState);
+  console.log('🟡 ActiveRoundScreen RENDER - Redux voice state:', {
+    currentLocation,
+    isVoiceInterfaceVisible,
+    conversationHistory: conversationHistory?.length || 0
+  });
 
+  // Render active round interface
   return (
     <SafeAreaView style={styles.container}>
-      {/* Map View - Full Screen */}
-      <GolfCourseMap
-        currentLocation={currentLocation}
-        onTargetSelected={handleTargetSelected}
-        onLocationUpdate={handleMapLocationUpdate}
-        courseId={activeRound?.courseId}
-        courseName={activeRound?.course?.name}
-        initialRegion={getCourseRegion()}
-        mapType={mapState.mapType}
-        enableTargetPin={true}
-      />
+      {/* Map View - Full Screen with Error Boundary */}
+      <MapErrorBoundary>
+        <GolfCourseMap
+          currentLocation={currentLocation}
+          onTargetSelected={handleTargetSelected}
+          onLocationUpdate={handleMapLocationUpdate}
+          courseId={activeRound?.courseId}
+          courseName={activeRound?.course?.name}
+          initialRegion={getCourseRegion()}
+          mapType={mapState.mapType}
+          enableTargetPin={true}
+          showSatellite={mapState.mapType === 'satellite' || mapState.mapType === 'hybrid'}
+        />
+      </MapErrorBoundary>
 
       {/* Map Overlay - Floating UI Controls */}
       <MapOverlay
@@ -464,13 +626,16 @@ export const ActiveRoundScreen: React.FC = () => {
         currentHole={currentHole}
         currentLocation={currentLocation}
         targetDistance={targetDistance}
+        targetPin={mapState.targetPin}
         isLocationTracking={isLocationTracking}
         isVoiceInterfaceVisible={isVoiceInterfaceVisible}
         onVoiceToggle={handleVoiceToggle}
         onSettingsPress={handleSettingsPress}
         onRoundControlsPress={handleRoundControlsPress}
+        onClearTarget={() => handleTargetSelected({ latitude: 0, longitude: 0 }, { yards: 0, meters: 0, feet: 0, kilometers: 0, miles: 0 })}
         roundStatus={activeRound?.status}
         gpsAccuracy={currentLocation?.accuracy}
+        mapType={mapState.mapType}
       />
 
       {/* Round Controls Modal (when requested) */}
@@ -529,16 +694,20 @@ export const ActiveRoundScreen: React.FC = () => {
         </View>
       )}
 
-      {/* Voice AI Interface - Positioned by the interface itself */}
+      {/* Voice AI Interface - Positioned by the interface itself with Error Boundary */}
       {activeRound && user && (
-        <VoiceAIInterface
-          userId={Number(user.id)}
-          roundId={activeRound.id}
-          currentHole={currentHole}
-          isVisible={isVoiceInterfaceVisible}
-          onToggle={handleVoiceToggle}
-          onConversationUpdate={handleConversationUpdate}
-        />
+        <VoiceErrorBoundary>
+          <VoiceAIInterface
+            userId={Number(user.id)}
+            roundId={activeRound.id}
+            currentHole={currentHole}
+            targetPin={mapState.targetPin}
+            currentLocation={currentLocation}
+            isVisible={isVoiceInterfaceVisible}
+            onToggle={handleVoiceToggle}
+            onConversationUpdate={handleConversationUpdate}
+          />
+        </VoiceErrorBoundary>
       )}
     </SafeAreaView>
   );

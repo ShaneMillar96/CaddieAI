@@ -1,6 +1,7 @@
 import Geolocation from '@react-native-community/geolocation';
 import { Platform, PermissionsAndroid, Alert } from 'react-native';
 import TokenStorage from './tokenStorage';
+import { buildApiUrl, isNetworkError, API_TIMEOUT } from '../config/api';
 
 // Types for location data
 export interface LocationData {
@@ -79,14 +80,18 @@ export class GolfLocationService {
   private mapTargetPin: MapTargetData | null = null;
   private mapLocationCallbacks: Array<(context: MapLocationContext) => void> = [];
   private lastMapUpdate: number = 0;
+  
+  // Backend availability tracking
+  private backendAvailable: boolean = true;
+  private lastBackendCheck: number = 0;
 
   // Default GPS options optimized for golf course tracking
   private defaultOptions: LocationUpdateOptions = {
     enableHighAccuracy: true,
-    timeout: 10000, // 10 seconds
-    maximumAge: 2000, // 2 seconds
+    timeout: 30000, // 30 seconds - Allow more time for GPS to achieve good accuracy
+    maximumAge: 10000, // 10 seconds - Allow GPS time to improve between readings
     distanceFilter: 2, // Update every 2 meters
-    interval: 3000 // Update every 3 seconds
+    interval: 5000 // Update every 5 seconds - Reduced frequency for better accuracy
   };
 
   constructor() {
@@ -131,7 +136,7 @@ export class GolfLocationService {
   }
 
   /**
-   * Start GPS tracking for a golf round
+   * Start GPS tracking for a golf round with enhanced error handling
    */
   async startRoundTracking(
     roundId: number, 
@@ -142,11 +147,7 @@ export class GolfLocationService {
       // Check permissions first
       const hasPermission = await this.requestLocationPermissions();
       if (!hasPermission) {
-        Alert.alert(
-          'Location Permission Required',
-          'Please enable location permissions to track your round with GPS.',
-          [{ text: 'OK' }]
-        );
+        console.log('Location permission not granted - GPS tracking disabled');
         return false;
       }
 
@@ -174,9 +175,18 @@ export class GolfLocationService {
       this.isTracking = true;
       console.log(`Started GPS tracking for round ${roundId} on course ${courseId}`);
       
+      // Try to get initial position to verify GPS is working
+      const initialPosition = await this.getCurrentPosition();
+      if (initialPosition) {
+        console.log('Initial GPS position acquired successfully');
+      } else {
+        console.warn('Could not acquire initial GPS position, but tracking will continue');
+      }
+      
       return true;
     } catch (error) {
       console.error('Error starting round tracking:', error);
+      // Don't show error alert here - let the calling component handle it
       return false;
     }
   }
@@ -205,6 +215,13 @@ export class GolfLocationService {
     roundId: number, 
     courseId: number
   ): Promise<void> {
+    console.log('🔵 LocationService.handleLocationUpdate: ENTRY POINT - GPS data received');
+    console.log('🔵 LocationService.handleLocationUpdate: Raw position data:', {
+      coords: position.coords,
+      timestamp: position.timestamp,
+      provider: position.provider
+    });
+    
     try {
       const locationData: LocationData = {
         latitude: position.coords.latitude,
@@ -216,7 +233,23 @@ export class GolfLocationService {
         timestamp: position.timestamp
       };
 
+      console.log('🔵 LocationService.handleLocationUpdate: Processed locationData:', locationData);
+
+      // Enhanced GPS accuracy logging
+      const accuracyStatus = this.getAccuracyStatus(locationData.accuracy);
+      console.log(`🔵 GPS Update: ${accuracyStatus} (${locationData.accuracy?.toFixed(1)}m) at ${new Date(locationData.timestamp).toLocaleTimeString()}`);
+      
+      // Log accuracy improvements
+      if (this.currentLocation && this.currentLocation.accuracy && locationData.accuracy) {
+        const accuracyChange = this.currentLocation.accuracy - locationData.accuracy;
+        if (Math.abs(accuracyChange) > 2) {
+          const improvement = accuracyChange > 0 ? 'improved' : 'degraded';
+          console.log(`🔵 GPS accuracy ${improvement} by ${Math.abs(accuracyChange).toFixed(1)}m`);
+        }
+      }
+
       // Update current location
+      console.log('🔵 LocationService.handleLocationUpdate: Updating currentLocation from:', this.currentLocation, 'to:', locationData);
       this.currentLocation = locationData;
 
       // Add to history (keep last 100 locations for shot detection)
@@ -225,17 +258,37 @@ export class GolfLocationService {
         this.locationHistory = this.locationHistory.slice(-100);
       }
 
-      // Notify subscribers
-      this.updateCallbacks.forEach(callback => {
-        try {
-          callback(locationData);
-        } catch (error) {
-          console.error('Error in location update callback:', error);
-        }
-      });
+      // Notify subscribers with detailed logging
+      console.log('🔵 LocationService.handleLocationUpdate: About to notify subscribers');
+      console.log('🔵 LocationService: Current callback count:', this.updateCallbacks.length);
+      console.log('🔵 LocationService: Callback array contents:', this.updateCallbacks);
+      
+      if (this.updateCallbacks.length === 0) {
+        console.error('🔴 LocationService: CRITICAL - No location update callbacks registered to receive GPS data!');
+        console.error('🔴 LocationService: This means React components won\'t receive location updates');
+      } else {
+        console.log('🔵 LocationService: Starting callback execution loop...');
+        this.updateCallbacks.forEach((callback, index) => {
+          try {
+            console.log(`🔵 LocationService: EXECUTING callback ${index + 1}/${this.updateCallbacks.length}`);
+            console.log(`🔵 LocationService: Callback function:`, callback.toString().substring(0, 100) + '...');
+            
+            // Execute the callback
+            const result = callback(locationData);
+            
+            console.log(`🟢 LocationService: Callback ${index + 1} executed successfully, result:`, result);
+          } catch (error) {
+            console.error(`🔴 LocationService: ERROR in location update callback ${index + 1}:`, error);
+            console.error(`🔴 LocationService: Error stack:`, error instanceof Error ? error.stack : 'No stack available');
+          }
+        });
+        console.log('🔵 LocationService: Finished executing all callbacks');
+      }
 
-      // Process location with backend for course context
-      await this.processLocationWithBackend(locationData, roundId, courseId);
+      // Process location with backend for course context only if backend is available
+      if (this.shouldAttemptBackendProcessing()) {
+        await this.processLocationWithBackend(locationData, roundId, courseId);
+      }
 
       // Analyze for potential shots
       await this.analyzeForShotDetection(locationData, roundId);
@@ -252,25 +305,59 @@ export class GolfLocationService {
    * Handle location errors
    */
   private handleLocationError(error: any): void {
-    console.error('Location error:', error);
+    const errorDetails = {
+      code: error.code,
+      message: error.message,
+      timestamp: new Date().toISOString()
+    };
+    console.error('Location error details:', errorDetails);
     
     let errorMessage = 'Unable to get location';
+    let logMessage = '';
+    
     switch (error.code) {
       case 1: // PERMISSION_DENIED
         errorMessage = 'Location permission denied. Please enable location services.';
+        logMessage = 'GPS Error: Permission denied - check app location permissions';
         break;
       case 2: // POSITION_UNAVAILABLE
         errorMessage = 'Location unavailable. Please check your GPS signal.';
+        logMessage = 'GPS Error: Position unavailable - device may be indoors or GPS signal blocked';
         break;
       case 3: // TIMEOUT
         errorMessage = 'Location request timed out. Trying again...';
+        logMessage = `GPS Error: Timeout after ${this.defaultOptions.timeout}ms - GPS may need more time to acquire signal`;
         break;
+      default:
+        logMessage = `GPS Error: Unknown error code ${error.code}`;
     }
+
+    console.warn(logMessage);
 
     // For timeout errors, don't show alert as it's temporary
     if (error.code !== 3) {
       Alert.alert('GPS Error', errorMessage);
     }
+  }
+
+  /**
+   * Check if we should attempt backend processing based on availability and timing
+   */
+  private shouldAttemptBackendProcessing(): boolean {
+    const now = Date.now();
+    const timeSinceLastCheck = now - this.lastBackendCheck;
+    
+    // If backend was marked unavailable, retry after 5 minutes
+    if (!this.backendAvailable && timeSinceLastCheck < 300000) {
+      return false;
+    }
+    
+    // If it's been more than 5 minutes since last check, try again
+    if (timeSinceLastCheck > 300000) {
+      this.backendAvailable = true;
+    }
+    
+    return this.backendAvailable;
   }
 
   /**
@@ -282,8 +369,16 @@ export class GolfLocationService {
     courseId: number
   ): Promise<void> {
     try {
-      // This would call the LocationTrackingService on the backend
-      const response = await fetch('/api/voiceai/location-update', {
+      // Use proper API URL with timeout and error handling
+      const apiUrl = buildApiUrl('voiceai/location-update');
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.log('Location processing request timed out');
+        controller.abort();
+      }, API_TIMEOUT);
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -299,10 +394,16 @@ export class GolfLocationService {
             movementSpeedMps: location.speed,
             timestamp: new Date(location.timestamp).toISOString()
           }
-        })
+        }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
 
       if (response.ok) {
+        // Mark backend as available
+        this.backendAvailable = true;
+        this.lastBackendCheck = Date.now();
         const result: LocationProcessingResult = await response.json();
         
         // Update course context
@@ -337,10 +438,33 @@ export class GolfLocationService {
             }
           });
         }
+      } else if (response.status === 404) {
+        console.log('Backend location endpoint not found - disabling backend processing');
+        this.backendAvailable = false;
+        this.lastBackendCheck = Date.now();
+      } else {
+        console.warn(`Backend location processing failed with status: ${response.status}`);
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Enhanced error handling with graceful degradation
+      if (isNetworkError(error)) {
+        console.log('Backend location processing unavailable - continuing in offline mode');
+        this.backendAvailable = false;
+        this.lastBackendCheck = Date.now();
+        return;
+      }
+      
+      if (error.name === 'AbortError') {
+        console.log('Location processing request timed out - continuing without backend processing');
+        this.backendAvailable = false;
+        this.lastBackendCheck = Date.now();
+        return;
+      }
+      
       console.error('Error processing location with backend:', error);
-      // Continue without backend processing - offline mode
+      this.backendAvailable = false;
+      this.lastBackendCheck = Date.now();
+      // Continue without backend processing - app remains functional
     }
   }
 
@@ -390,16 +514,36 @@ export class GolfLocationService {
   }
 
   /**
-   * Subscribe to location updates
+   * Subscribe to location updates with deduplication
    */
   onLocationUpdate(callback: (location: LocationData) => void): () => void {
+    console.log('🔵 LocationService.onLocationUpdate: Registering callback. Total callbacks before:', this.updateCallbacks.length);
+    
+    // Check if callback is already registered (deduplication)
+    const existingIndex = this.updateCallbacks.indexOf(callback);
+    if (existingIndex > -1) {
+      console.warn('🟡 LocationService.onLocationUpdate: Callback already registered, skipping duplicate registration');
+      return () => {
+        const index = this.updateCallbacks.indexOf(callback);
+        if (index > -1) {
+          this.updateCallbacks.splice(index, 1);
+          console.log('🔵 LocationService: Duplicate callback unsubscribed. Total callbacks now:', this.updateCallbacks.length);
+        }
+      };
+    }
+    
     this.updateCallbacks.push(callback);
+    console.log('🔵 LocationService.onLocationUpdate: New callback registered. Total callbacks now:', this.updateCallbacks.length);
+    console.log('🔵 LocationService.onLocationUpdate: Callback function signature:', callback.toString().substring(0, 150) + '...');
     
     // Return unsubscribe function
     return () => {
       const index = this.updateCallbacks.indexOf(callback);
       if (index > -1) {
         this.updateCallbacks.splice(index, 1);
+        console.log('🔵 LocationService: Location update callback unsubscribed. Total callbacks now:', this.updateCallbacks.length);
+      } else {
+        console.warn('🟡 LocationService: Attempted to unsubscribe callback that was not found');
       }
     };
   }
@@ -454,10 +598,21 @@ export class GolfLocationService {
   }
 
   /**
-   * Get one-time location reading
+   * Get backend processing status for debugging
+   */
+  getBackendStatus(): { available: boolean; lastCheck: number } {
+    return {
+      available: this.backendAvailable,
+      lastCheck: this.lastBackendCheck,
+    };
+  }
+
+  /**
+   * Get one-time location reading with enhanced error handling and progressive accuracy
    */
   async getCurrentPosition(): Promise<LocationData | null> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
+      // First try: Quick coarse location
       Geolocation.getCurrentPosition(
         (position) => {
           const locationData: LocationData = {
@@ -469,16 +624,52 @@ export class GolfLocationService {
             speed: position.coords.speed || undefined,
             timestamp: position.timestamp
           };
-          resolve(locationData);
+          
+          // If accuracy is good enough (≤20m), return immediately
+          if (position.coords.accuracy <= 20) {
+            console.log(`GPS position acquired with good accuracy: ${position.coords.accuracy}m`);
+            resolve(locationData);
+            return;
+          }
+          
+          // If accuracy is poor, try again with high accuracy
+          console.log(`Initial GPS accuracy: ${position.coords.accuracy}m, trying for better accuracy...`);
+          
+          Geolocation.getCurrentPosition(
+            (highAccuracyPosition) => {
+              const highAccuracyData: LocationData = {
+                latitude: highAccuracyPosition.coords.latitude,
+                longitude: highAccuracyPosition.coords.longitude,
+                accuracy: highAccuracyPosition.coords.accuracy,
+                altitude: highAccuracyPosition.coords.altitude || undefined,
+                heading: highAccuracyPosition.coords.heading || undefined,
+                speed: highAccuracyPosition.coords.speed || undefined,
+                timestamp: highAccuracyPosition.timestamp
+              };
+              console.log(`High accuracy GPS position: ${highAccuracyPosition.coords.accuracy}m`);
+              resolve(highAccuracyData);
+            },
+            (highAccuracyError) => {
+              console.log('High accuracy GPS failed, using initial position');
+              // Fall back to initial position if high accuracy fails
+              resolve(locationData);
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 20000, // Longer timeout for high accuracy attempt
+              maximumAge: 0 // Force fresh reading
+            }
+          );
         },
         (error) => {
           console.error('Error getting current position:', error);
-          reject(error);
+          // Return null for graceful degradation
+          resolve(null);
         },
         {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 5000
+          enableHighAccuracy: false, // Start with coarse location for speed
+          timeout: 10000, // Quick initial timeout
+          maximumAge: 30000 // Allow cached location for initial reading
         }
       );
     });
@@ -658,6 +849,18 @@ export class GolfLocationService {
   }
 
   // Private helper methods
+
+  /**
+   * Get accuracy status string for logging
+   */
+  private getAccuracyStatus(accuracy?: number): string {
+    if (!accuracy) return 'Unknown';
+    if (accuracy <= 8) return 'Excellent';
+    if (accuracy <= 15) return 'Good';
+    if (accuracy <= 25) return 'Fair';
+    if (accuracy <= 50) return 'Poor';
+    return 'Very Poor';
+  }
 
   private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const R = 6371000; // Earth's radius in meters

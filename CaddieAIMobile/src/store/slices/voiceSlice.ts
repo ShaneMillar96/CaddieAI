@@ -293,7 +293,25 @@ const voiceSlice = createSlice({
       distanceToTee?: number;
       positionOnHole?: string;
     }>) => {
+      console.log('🟣 Redux voiceSlice.updateCurrentLocation: REDUCER TRIGGERED');
+      console.log('🟣 Redux voiceSlice.updateCurrentLocation: Action received:', {
+        type: action.type,
+        payload: action.payload,
+        meta: action.meta
+      });
+      console.log('🟣 Redux voiceSlice.updateCurrentLocation: Previous location state:', state.currentLocation);
+      console.log('🟣 Redux voiceSlice.updateCurrentLocation: State object before update:', JSON.stringify(state.currentLocation));
+      
+      // Update the state
       state.currentLocation = action.payload;
+      
+      console.log('🟢 Redux voiceSlice.updateCurrentLocation: Location state updated to:', state.currentLocation);
+      console.log('🟢 Redux voiceSlice.updateCurrentLocation: State object after update:', JSON.stringify(state.currentLocation));
+      console.log('🟢 Redux voiceSlice.updateCurrentLocation: Coordinates set to:', {
+        latitude: state.currentLocation?.latitude,
+        longitude: state.currentLocation?.longitude,
+        accuracy: state.currentLocation?.accuracy
+      });
     },
 
     // Map state management

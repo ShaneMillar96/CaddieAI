@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -27,13 +27,22 @@ export interface MapOverlayProps {
     positionOnHole?: string;
   } | null;
   targetDistance: DistanceResult | null;
+  targetPin?: {
+    latitude: number;
+    longitude: number;
+    distanceYards: number;
+    bearing: number;
+    timestamp: number;
+  } | null;
   isLocationTracking: boolean;
   isVoiceInterfaceVisible: boolean;
   onVoiceToggle: () => void;
   onSettingsPress: () => void;
   onRoundControlsPress: () => void;
+  onClearTarget: () => void;
   roundStatus?: string;
   gpsAccuracy?: number;
+  mapType?: 'standard' | 'satellite' | 'hybrid' | 'terrain';
 }
 
 export interface DistanceBadgeProps {
@@ -67,15 +76,27 @@ const MapOverlay: React.FC<MapOverlayProps> = ({
   currentHole = 1,
   currentLocation,
   targetDistance,
+  targetPin,
   isLocationTracking,
   isVoiceInterfaceVisible,
   onVoiceToggle,
   onSettingsPress,
   onRoundControlsPress,
+  onClearTarget,
   roundStatus,
   gpsAccuracy,
+  mapType = 'satellite',
 }) => {
   const [showRoundControls, setShowRoundControls] = useState(false);
+  
+  // GPS status persistence to prevent flickering
+  const [stableGpsStatus, setStableGpsStatus] = useState<{
+    icon: string;
+    color: string;
+    text: string;
+  } | null>(null);
+  const lastGoodStatusRef = useRef<{ icon: string; color: string; text: string } | null>(null);
+  const statusUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Handle round controls toggle
   const handleRoundControlsToggle = useCallback(() => {
@@ -83,23 +104,75 @@ const MapOverlay: React.FC<MapOverlayProps> = ({
     onRoundControlsPress();
   }, [showRoundControls, onRoundControlsPress]);
 
-  // Get GPS status info
-  const getGPSStatus = () => {
+  // Get GPS status info with improved stability
+  const calculateGPSStatus = useCallback(() => {
+    // Debug logging for location data
+    console.log('MapOverlay GPS Status Check:', {
+      hasCurrentLocation: !!currentLocation,
+      gpsAccuracy,
+      currentLocationAccuracy: currentLocation?.accuracy,
+      latitude: currentLocation?.latitude,
+      longitude: currentLocation?.longitude
+    });
+
     if (!currentLocation) {
       return { icon: 'location-off', color: '#dc3545', text: 'No GPS' };
     }
     
-    const accuracy = gpsAccuracy || currentLocation.accuracy || 999;
-    if (accuracy <= 5) {
-      return { icon: 'gps-fixed', color: '#28a745', text: 'GPS Excellent' };
-    } else if (accuracy <= 10) {
-      return { icon: 'gps-not-fixed', color: '#ffc107', text: 'GPS Good' };
-    } else {
-      return { icon: 'gps-off', color: '#dc3545', text: 'GPS Poor' };
+    const accuracy = gpsAccuracy || currentLocation.accuracy;
+    
+    // If no accuracy data is available, show searching state
+    if (accuracy === undefined || accuracy === null) {
+      return { icon: 'gps-not-fixed', color: '#ffc107', text: 'Searching...' };
     }
-  };
+    
+    // Realistic GPS accuracy thresholds for mobile devices
+    if (accuracy <= 8) {
+      return { icon: 'gps-fixed', color: '#28a745', text: 'Excellent' };
+    } else if (accuracy <= 15) {
+      return { icon: 'gps-fixed', color: '#28a745', text: 'Good' };
+    } else if (accuracy <= 25) {
+      return { icon: 'gps-not-fixed', color: '#ffc107', text: 'Fair' };
+    } else if (accuracy <= 50) {
+      return { icon: 'gps-off', color: '#ff6b35', text: 'Poor' };
+    } else {
+      return { icon: 'gps-off', color: '#dc3545', text: 'Very Poor' };
+    }
+  }, [currentLocation, gpsAccuracy]);
 
-  const gpsStatus = getGPSStatus();
+  // Update GPS status with debouncing to prevent flickering
+  useEffect(() => {
+    const newStatus = calculateGPSStatus();
+    
+    // If we have a good status (not Searching or No GPS), remember it
+    if (newStatus.text !== 'Searching...' && newStatus.text !== 'No GPS') {
+      lastGoodStatusRef.current = newStatus;
+    }
+    
+    // Clear any existing timeout
+    if (statusUpdateTimeoutRef.current) {
+      clearTimeout(statusUpdateTimeoutRef.current);
+    }
+    
+    // If the new status is "Searching..." and we have a recent good status, wait before updating
+    if (newStatus.text === 'Searching...' && lastGoodStatusRef.current) {
+      statusUpdateTimeoutRef.current = setTimeout(() => {
+        setStableGpsStatus(newStatus);
+      }, 2000); // Wait 2 seconds before showing "Searching..."
+    } else {
+      // Update immediately for good statuses or when we don't have a fallback
+      setStableGpsStatus(newStatus);
+    }
+    
+    return () => {
+      if (statusUpdateTimeoutRef.current) {
+        clearTimeout(statusUpdateTimeoutRef.current);
+      }
+    };
+  }, [calculateGPSStatus]);
+
+  // Use stable status or fallback to calculated status
+  const gpsStatus = stableGpsStatus || calculateGPSStatus();
 
   return (
     <SafeAreaView style={styles.container} pointerEvents="box-none">

@@ -29,6 +29,22 @@ export interface VoiceAIInterfaceProps {
   userId: number;
   roundId: number;
   currentHole?: number;
+  targetPin?: {
+    latitude: number;
+    longitude: number;
+    distanceYards: number;
+    bearing: number;
+    timestamp: number;
+  } | null;
+  currentLocation?: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+    currentHole?: number;
+    distanceToPin?: number;
+    distanceToTee?: number;
+    positionOnHole?: string;
+  } | null;
   isVisible: boolean;
   onToggle: () => void;
   onConversationUpdate: (conversation: ConversationMessage[]) => void;
@@ -45,10 +61,12 @@ export interface ConversationMessage {
 
 type VoiceState = 'idle' | 'listening' | 'processing' | 'speaking' | 'error';
 
-export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
+export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
   userId,
   roundId,
   currentHole,
+  targetPin,
+  currentLocation: propCurrentLocation,
   isVisible,
   onToggle,
   onConversationUpdate,
@@ -62,6 +80,18 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
   const [mapLocationContext, setMapLocationContext] = useState<MapLocationContext | null>(null);
   const [hasPermissions, setHasPermissions] = useState(false);
+  
+  // Update local location state when prop changes
+  useEffect(() => {
+    if (propCurrentLocation) {
+      setCurrentLocation({
+        latitude: propCurrentLocation.latitude,
+        longitude: propCurrentLocation.longitude,
+        accuracy: propCurrentLocation.accuracy || 10,
+        timestamp: Date.now(),
+      });
+    }
+  }, [propCurrentLocation]);
 
   // Animation values
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -299,49 +329,56 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
     setVoiceState('idle');
   };
 
-  // Build enhanced location context for AI
+  // Build enhanced location context for AI with target pin integration
   const buildEnhancedLocationContext = useCallback(() => {
-    if (!currentLocation) return undefined;
+    const activeLocation = propCurrentLocation || currentLocation;
+    if (!activeLocation) return undefined;
 
     const baseContext = {
-      latitude: currentLocation.latitude,
-      longitude: currentLocation.longitude,
-      accuracyMeters: currentLocation.accuracy || 10,
-      currentHole,
-      movementSpeedMps: currentLocation.speed,
+      latitude: activeLocation.latitude,
+      longitude: activeLocation.longitude,
+      accuracyMeters: activeLocation.accuracy || 10,
+      currentHole: 'currentHole' in activeLocation ? activeLocation.currentHole || currentHole : currentHole,
+      distanceToPinMeters: 'distanceToPin' in activeLocation ? activeLocation.distanceToPin : undefined,
+      distanceToTeeMeters: 'distanceToTee' in activeLocation ? activeLocation.distanceToTee : undefined,
+      positionOnHole: 'positionOnHole' in activeLocation ? activeLocation.positionOnHole : undefined,
+      movementSpeedMps: currentLocation?.speed,
       withinCourseBoundaries: true, // This would come from location service
-      timestamp: new Date(currentLocation.timestamp).toISOString(),
+      timestamp: new Date(currentLocation?.timestamp || Date.now()).toISOString(),
     };
 
-    // Add enhanced context from map if available
-    if (mapLocationContext) {
+    // Add enhanced context with target pin information from props or map context
+    const activeTargetPin = targetPin || mapLocationContext?.targetPin;
+    
+    if (activeTargetPin || mapLocationContext) {
       const enhancedContext = {
         ...baseContext,
-        // Add target pin information
-        targetPin: mapLocationContext.targetPin ? {
-          latitude: mapLocationContext.targetPin.coordinate.latitude,
-          longitude: mapLocationContext.targetPin.coordinate.longitude,
-          distanceYards: mapLocationContext.targetPin.distanceYards,
-          bearing: mapLocationContext.targetPin.bearing,
-          recommendedClub: DistanceCalculator.recommendClub(mapLocationContext.targetPin.distanceYards),
+        // Add target pin information with club recommendation
+        targetPin: activeTargetPin ? {
+          latitude: 'coordinate' in activeTargetPin ? activeTargetPin.coordinate.latitude : activeTargetPin.latitude,
+          longitude: 'coordinate' in activeTargetPin ? activeTargetPin.coordinate.longitude : activeTargetPin.longitude,
+          distanceYards: activeTargetPin.distanceYards,
+          bearing: activeTargetPin.bearing,
+          recommendedClub: getRecommendedClub(activeTargetPin.distanceYards),
+          shotDifficulty: getShotDifficulty(activeTargetPin.distanceYards),
           formattedDistance: formatGolfDistance({
-            yards: mapLocationContext.targetPin.distanceYards,
-            meters: mapLocationContext.targetPin.distanceYards / 1.09361,
-            feet: mapLocationContext.targetPin.distanceYards * 3,
-            kilometers: mapLocationContext.targetPin.distanceYards / 1093.61,
-            miles: mapLocationContext.targetPin.distanceYards / 1760,
+            yards: activeTargetPin.distanceYards,
+            meters: activeTargetPin.distanceYards / 1.09361,
+            feet: activeTargetPin.distanceYards * 3,
+            kilometers: activeTargetPin.distanceYards / 1093.61,
+            miles: activeTargetPin.distanceYards / 1760,
           }),
         } : undefined,
         // Add course features if available
-        courseFeatures: mapLocationContext.courseFeatures ? {
+        courseFeatures: mapLocationContext?.courseFeatures ? {
           nearbyHazards: mapLocationContext.courseFeatures.nearbyHazards,
           distanceToGreen: mapLocationContext.courseFeatures.distanceToGreen,
           distanceToTee: mapLocationContext.courseFeatures.distanceToTee,
         } : undefined,
         // Add GPS accuracy assessment
         gpsQuality: DistanceCalculator.validateGPSAccuracy(
-          currentLocation.accuracy || 10,
-          { latitude: currentLocation.latitude, longitude: currentLocation.longitude }
+          activeLocation.accuracy || 10,
+          { latitude: activeLocation.latitude, longitude: activeLocation.longitude }
         ),
       };
 
@@ -349,7 +386,7 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
     }
 
     return baseContext;
-  }, [currentLocation, mapLocationContext, currentHole]);
+  }, [propCurrentLocation, currentLocation, mapLocationContext, currentHole, targetPin]);
 
   // Process voice input with AI
   const processVoiceInput = async (spokenText: string) => {
@@ -368,8 +405,16 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
       const updatedHistory = [...conversationHistory, userMessage];
       setConversationHistory(updatedHistory);
 
-      // Prepare enhanced request with map context
+      // Prepare enhanced request with map and target pin context
       const enhancedLocationContext = buildEnhancedLocationContext();
+      const activeTargetPin = targetPin || mapLocationContext?.targetPin;
+      
+      console.log('Processing voice input with enhanced context:', {
+        hasLocation: !!enhancedLocationContext,
+        hasTargetPin: !!activeTargetPin,
+        targetDistance: activeTargetPin?.distanceYards,
+        recommendedClub: activeTargetPin ? getRecommendedClub(activeTargetPin.distanceYards) : undefined
+      });
       
       const request: VoiceAIRequest = {
         userId,
@@ -381,6 +426,12 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
           role: msg.role,
           timestamp: msg.timestamp.toISOString(),
         })),
+        // Add context about current golf situation
+        golfContext: {
+          hasActiveTarget: !!targetPin,
+          currentHole: currentHole || propCurrentLocation?.currentHole,
+          shotType: targetPin ? getShotDifficulty(targetPin.distanceYards) : 'general',
+        },
       };
 
       // Get AI response
@@ -410,7 +461,12 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
       console.error('Error processing voice input:', error);
       setVoiceState('error');
       
-      const errorResponse = "I'm sorry, I'm having trouble understanding right now. Please try again.";
+      let errorResponse = "I'm sorry, I'm having trouble understanding right now. Please try again.";
+      
+      // Provide contextual error message if we have target info
+      if (targetPin) {
+        errorResponse = `I couldn't process that, but I can see you've selected a ${targetPin.distanceYards}-yard shot. Would you like a club recommendation?`;
+      }
       await speakResponse(errorResponse);
       
       setTimeout(() => setVoiceState('idle'), 2000);
@@ -571,15 +627,22 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      {/* Status Text */}
-      {(voiceState !== 'idle' || recognizedText) && (
+      {/* Status Text with Target Context */}
+      {(voiceState !== 'idle' || recognizedText || targetPin) && (
         <View style={styles.statusContainer}>
           {recognizedText ? (
             <Text style={styles.recognizedText}>"{recognizedText}"</Text>
+          ) : targetPin && voiceState === 'idle' ? (
+            <View style={styles.targetContext}>
+              <Text style={styles.targetContextText}>
+                Target: {targetPin.distanceYards}y • {getRecommendedClub(targetPin.distanceYards)}
+              </Text>
+              <Text style={styles.targetHint}>Ask me about this shot!</Text>
+            </View>
           ) : (
             <Text style={styles.statusText}>
               {voiceState === 'listening' && 'Listening...'}
-              {voiceState === 'processing' && 'Processing...'}
+              {voiceState === 'processing' && 'Analyzing shot...'}
               {voiceState === 'speaking' && 'Speaking...'}
               {voiceState === 'error' && 'Error occurred'}
             </Text>
@@ -587,14 +650,23 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
         </View>
       )}
 
-      {/* Voice Button */}
+      {/* Voice Button with Target Indicator */}
       <Animated.View style={[styles.voiceButtonContainer, { transform: [{ scale: pulseAnim }] }]}>
         <TouchableOpacity
-          style={[styles.voiceButton, { backgroundColor: getButtonColor() }]}
+          style={[
+            styles.voiceButton, 
+            { backgroundColor: getButtonColor() },
+            targetPin && voiceState === 'idle' && styles.voiceButtonWithTarget
+          ]}
           onPress={handleVoiceButtonPress}
           disabled={voiceState === 'processing'}
         >
           <Icon name={getButtonIcon()} size={32} color="#fff" />
+          {targetPin && voiceState === 'idle' && (
+            <View style={styles.targetIndicator}>
+              <Icon name="gps-fixed" size={12} color="#4CAF50" />
+            </View>
+          )}
         </TouchableOpacity>
       </Animated.View>
 
@@ -613,7 +685,19 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = ({
       </TouchableOpacity>
     </Animated.View>
   );
-};
+}, (prevProps, nextProps) => {
+  // Optimize re-renders by comparing relevant props
+  return (
+    prevProps.isVisible === nextProps.isVisible &&
+    prevProps.userId === nextProps.userId &&
+    prevProps.roundId === nextProps.roundId &&
+    prevProps.currentHole === nextProps.currentHole &&
+    prevProps.targetPin?.distanceYards === nextProps.targetPin?.distanceYards &&
+    prevProps.targetPin?.timestamp === nextProps.targetPin?.timestamp &&
+    prevProps.currentLocation?.latitude === nextProps.currentLocation?.latitude &&
+    prevProps.currentLocation?.longitude === nextProps.currentLocation?.longitude
+  );
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -656,6 +740,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  voiceButtonWithTarget: {
+    borderWidth: 3,
+    borderColor: '#4CAF50',
+  },
+  targetIndicator: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 2,
+  },
+  targetContext: {
+    alignItems: 'center',
+  },
+  targetContextText: {
+    color: '#4CAF50',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  targetHint: {
+    color: '#888',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
   responseContainer: {
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     paddingHorizontal: 16,
@@ -689,5 +801,45 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
 });
+
+// Helper functions for enhanced AI context
+const getRecommendedClub = (yards: number): string => {
+  if (yards >= 280) return 'Driver';
+  if (yards >= 240) return '3-Wood';
+  if (yards >= 210) return '5-Wood';
+  if (yards >= 190) return '3-Iron';
+  if (yards >= 170) return '4-Iron';
+  if (yards >= 160) return '5-Iron';
+  if (yards >= 150) return '6-Iron';
+  if (yards >= 140) return '7-Iron';
+  if (yards >= 130) return '8-Iron';
+  if (yards >= 120) return '9-Iron';
+  if (yards >= 105) return 'Pitching Wedge';
+  if (yards >= 90) return 'Sand Wedge';
+  if (yards >= 70) return 'Lob Wedge';
+  return 'Short Iron';
+};
+
+const getShotDifficulty = (yards: number): string => {
+  if (yards < 50) return 'short-game';
+  if (yards < 100) return 'wedge-shot';
+  if (yards < 150) return 'approach-shot';
+  if (yards < 200) return 'mid-iron';
+  if (yards < 250) return 'long-iron';
+  return 'driver-shot';
+};
+
+const calculateWindEffect = (yards: number): string => {
+  if (yards < 100) return 'minimal';
+  if (yards < 200) return 'moderate';
+  return 'significant';
+};
+
+const getShotStrategy = (yards: number): string => {
+  if (yards < 50) return 'precision-focused';
+  if (yards < 100) return 'accuracy-over-distance';
+  if (yards < 200) return 'balanced-approach';
+  return 'distance-focused';
+};
 
 export default VoiceAIInterface;

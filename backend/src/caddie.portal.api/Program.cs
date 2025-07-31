@@ -96,17 +96,36 @@ builder.Services.AddScoped<IRoundService, RoundService>();
 builder.Services.AddScoped<IClubRecommendationService, ClubRecommendationService>();
 
 // Configure OpenAI
+builder.Services.Configure<OpenAISettings>(options =>
+{
+    builder.Configuration.GetSection(OpenAISettings.SectionName).Bind(options);
+    
+    // Override API key from environment variable if available
+    var envApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+    if (!string.IsNullOrEmpty(envApiKey))
+    {
+        options.ApiKey = envApiKey;
+    }
+});
+
 var openAISettings = builder.Configuration.GetSection(OpenAISettings.SectionName).Get<OpenAISettings>();
 if (openAISettings == null)
 {
     throw new InvalidOperationException("OpenAI settings are not configured");
 }
 
+// Get API key from environment variable or configuration
+var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? openAISettings.ApiKey;
+if (string.IsNullOrEmpty(apiKey))
+{
+    throw new InvalidOperationException("OpenAI API key is not configured. Set OPENAI_API_KEY environment variable or configure in appsettings.json");
+}
+
 builder.Services.AddHttpClient("OpenAI", client =>
 {
     client.BaseAddress = new Uri(openAISettings.BaseUrl);
     client.Timeout = TimeSpan.FromSeconds(openAISettings.TimeoutSeconds);
-    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAISettings.ApiKey}");
+    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 });
 
 builder.Services.AddScoped<IOpenAIService, OpenAIService>();
