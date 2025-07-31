@@ -36,6 +36,26 @@ export interface VoiceState {
     positionOnHole?: string;
   } | null;
 
+  // Map-specific state
+  mapState: {
+    targetPin: {
+      latitude: number;
+      longitude: number;
+      distanceYards: number;
+      bearing: number;
+      timestamp: number;
+    } | null;
+    mapType: 'standard' | 'satellite' | 'hybrid' | 'terrain';
+    showDistanceBadge: boolean;
+    lastTargetUpdate: string | null;
+    courseRegion: {
+      latitude: number;
+      longitude: number;
+      latitudeDelta: number;
+      longitudeDelta: number;
+    } | null;
+  };
+
   // Usage statistics
   sessionStartTime: string | null;
   totalTokensUsed: number;
@@ -73,6 +93,15 @@ const initialState: VoiceState = {
 
   // Location context
   currentLocation: null,
+
+  // Map-specific state
+  mapState: {
+    targetPin: null,
+    mapType: 'satellite',
+    showDistanceBadge: false,
+    lastTargetUpdate: null,
+    courseRegion: null,
+  },
 
   // Usage statistics
   sessionStartTime: null,
@@ -267,6 +296,44 @@ const voiceSlice = createSlice({
       state.currentLocation = action.payload;
     },
 
+    // Map state management
+    setTargetPin: (state, action: PayloadAction<{
+      latitude: number;
+      longitude: number;
+      distanceYards: number;
+      bearing: number;
+    }>) => {
+      state.mapState.targetPin = {
+        ...action.payload,
+        timestamp: Date.now(),
+      };
+      state.mapState.showDistanceBadge = true;
+      state.mapState.lastTargetUpdate = new Date().toISOString();
+    },
+
+    clearTargetPin: (state) => {
+      state.mapState.targetPin = null;
+      state.mapState.showDistanceBadge = false;
+      state.mapState.lastTargetUpdate = null;
+    },
+
+    setMapType: (state, action: PayloadAction<'standard' | 'satellite' | 'hybrid' | 'terrain'>) => {
+      state.mapState.mapType = action.payload;
+    },
+
+    setCourseRegion: (state, action: PayloadAction<{
+      latitude: number;
+      longitude: number;
+      latitudeDelta: number;
+      longitudeDelta: number;
+    }>) => {
+      state.mapState.courseRegion = action.payload;
+    },
+
+    toggleDistanceBadge: (state) => {
+      state.mapState.showDistanceBadge = !state.mapState.showDistanceBadge;
+    },
+
     // Settings
     updateVoiceSettings: (state, action: PayloadAction<Partial<VoiceState['voiceSettings']>>) => {
       state.voiceSettings = { ...state.voiceSettings, ...action.payload };
@@ -405,6 +472,11 @@ export const {
   addAssistantMessage,
   clearConversationHistory,
   updateCurrentLocation,
+  setTargetPin,
+  clearTargetPin,
+  setMapType,
+  setCourseRegion,
+  toggleDistanceBadge,
   updateVoiceSettings,
   startVoiceSession,
   endVoiceSession,
