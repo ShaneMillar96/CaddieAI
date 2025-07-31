@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using caddie.portal.services.Interfaces;
 using caddie.portal.services.Models;
+using caddie.portal.services.Exceptions;
 using caddie.portal.dal.Models;
 using caddie.portal.dal.Repositories.Interfaces;
 using System.Security.Claims;
@@ -111,6 +112,21 @@ public class VoiceAIController : ControllerBase
             _logger.LogInformation("Generated voice AI response for user {UserId}, round {RoundId}", userId, request.RoundId);
 
             return Ok(response);
+        }
+        catch (OpenAIQuotaExceededException ex)
+        {
+            _logger.LogWarning(ex, "OpenAI quota exceeded for user {UserId}, round {RoundId}", request.UserId, request.RoundId);
+            
+            var retryAfter = ex.RetryAfterSeconds ?? 3600;
+            Response.Headers["Retry-After"] = retryAfter.ToString();
+            
+            return StatusCode(StatusCodes.Status429TooManyRequests, new 
+            { 
+                message = "AI service temporarily unavailable due to quota limits. Please try again later.",
+                quotaType = ex.QuotaType,
+                retryAfterSeconds = retryAfter,
+                fallbackAdvice = "Focus on fundamentals: good setup, smooth tempo, and smart course management."
+            });
         }
         catch (Exception ex)
         {
@@ -231,6 +247,23 @@ public class VoiceAIController : ControllerBase
                 userId, request.RoundId, request.HoleNumber);
 
             return Ok(response);
+        }
+        catch (OpenAIQuotaExceededException ex)
+        {
+            _logger.LogWarning(ex, "OpenAI quota exceeded for hole completion, user {UserId}, round {RoundId}, hole {HoleNumber}", 
+                request.UserId, request.RoundId, request.HoleNumber);
+            
+            // Return default commentary when quota exceeded
+            var fallbackResponse = new HoleCompletionResponse
+            {
+                Commentary = GetFallbackHoleCommentary(request.Score, request.Par),
+                PerformanceSummary = GeneratePerformanceSummary(request.Score, request.Par),
+                ScoreDescription = GetScoreDescription(request.Score, request.Par),
+                EncouragementLevel = CalculateEncouragementLevel(request.Score, request.Par),
+                GeneratedAt = DateTime.UtcNow
+            };
+            
+            return Ok(fallbackResponse);
         }
         catch (Exception ex)
         {
@@ -513,6 +546,17 @@ public class VoiceAIController : ControllerBase
             1 => 3,     // Neutral for bogey
             2 => 2,     // Supportive for double bogey
             _ => 1      // Most supportive for worse scores
+        };
+    }
+
+    private static string GetFallbackHoleCommentary(int score, int par)
+    {
+        return (score - par) switch
+        {
+            <= -1 => "Great job on that hole! Keep up the excellent play.",
+            0 => "Nice par! Solid golf right there.",
+            1 => "Good bogey. Stay positive and focus on the next hole.",
+            _ => "Tough hole, but that's golf! Let's bounce back on the next one."
         };
     }
 

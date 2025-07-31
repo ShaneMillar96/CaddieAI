@@ -5,6 +5,7 @@ using OpenAI.Chat;
 using System.Text.Json;
 using caddie.portal.services.Configuration;
 using caddie.portal.services.Interfaces;
+using caddie.portal.services.Exceptions;
 using caddie.portal.dal.Models;
 using caddie.portal.dal.Repositories.Interfaces;
 using OpenAIChatMessage = OpenAI.Chat.ChatMessage;
@@ -33,7 +34,15 @@ public class OpenAIService : IOpenAIService
         _golfContextService = golfContextService;
         _openAISettings = openAISettings.Value;
         _logger = logger;
-        _openAIClient = new OpenAIClient(_openAISettings.ApiKey);
+        
+        // Get API key from environment variable or configuration
+        var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? _openAISettings.ApiKey;
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            throw new InvalidOperationException("OpenAI API key not configured. Set OPENAI_API_KEY environment variable.");
+        }
+        
+        _openAIClient = new OpenAIClient(apiKey);
     }
 
     public async Task<ChatSession> StartChatSessionAsync(int userId, int? roundId = null, int? courseId = null, string? sessionName = null)
@@ -151,22 +160,39 @@ public class OpenAIService : IOpenAIService
                     _ => OpenAIChatMessage.CreateUserMessage(m.MessageContent)
                 }).ToList();
 
-            // Call OpenAI API
+            // Call OpenAI API with error handling
             var chatClient = _openAIClient.GetChatClient(_openAISettings.Model);
-            var response = await chatClient.CompleteChatAsync(
-                openAiMessages,
-                new ChatCompletionOptions
+            ChatCompletion response;
+            
+            try
+            {
+                response = await chatClient.CompleteChatAsync(
+                    openAiMessages,
+                    new ChatCompletionOptions
+                    {
+                        Temperature = (float)_openAISettings.Temperature,
+                        MaxOutputTokenCount = _openAISettings.MaxTokens
+                    });
+            }
+            catch (Exception ex) when (IsQuotaExceededException(ex))
+            {
+                _logger.LogWarning(ex, "OpenAI quota exceeded for user {UserId}, session {SessionId}", userId, sessionId);
+                
+                if (_openAISettings.EnableFallbackResponses)
                 {
-                    Temperature = (float)_openAISettings.Temperature,
-                    MaxOutputTokenCount = _openAISettings.MaxTokens
-                });
+                    var fallbackResponse = GetFallbackChatResponse(message);
+                    return await CreateFallbackChatMessageAsync(sessionId, userId, fallbackResponse);
+                }
+                
+                throw new OpenAIQuotaExceededException("OpenAI quota exceeded. Please try again later.", "api_quota", 3600);
+            }
 
-            if (response?.Value?.Content == null || response.Value.Content.Count == 0)
+            if (response?.Content == null || response.Content.Count == 0)
             {
                 throw new InvalidOperationException("No response received from OpenAI");
             }
 
-            var responseContent = string.Join("", response.Value.Content.Select(c => c.Text));
+            var responseContent = string.Join("", response.Content.Select(c => c.Text));
 
             // Create assistant message
             var assistantMessage = new DalChatMessage
@@ -175,15 +201,15 @@ public class OpenAIService : IOpenAIService
                 UserId = userId,
                 MessageContent = responseContent,
                 OpenaiRole = "assistant",
-                TokensConsumed = response.Value.Usage?.TotalTokenCount,
+                TokensConsumed = response.Usage?.TotalTokenCount,
                 OpenaiModelUsed = _openAISettings.Model,
                 ContextData = JsonSerializer.Serialize(new
                 {
-                    PromptTokens = response.Value.Usage?.InputTokenCount,
-                    CompletionTokens = response.Value.Usage?.OutputTokenCount,
-                    TotalTokens = response.Value.Usage?.TotalTokenCount,
-                    Model = response.Value.Model,
-                    FinishReason = response.Value.FinishReason.ToString()
+                    PromptTokens = response.Usage?.InputTokenCount,
+                    CompletionTokens = response.Usage?.OutputTokenCount,
+                    TotalTokens = response.Usage?.TotalTokenCount,
+                    Model = response.Model,
+                    FinishReason = response.FinishReason.ToString()
                 })
             };
 
@@ -195,7 +221,7 @@ public class OpenAIService : IOpenAIService
             await _chatSessionRepository.UpdateAsync(session);
 
             _logger.LogInformation("Generated AI response for session {SessionId}, used {TokenCount} tokens", 
-                sessionId, response.Value.Usage?.TotalTokenCount);
+                sessionId, response.Usage?.TotalTokenCount);
 
             return assistantMessage;
         }
@@ -393,27 +419,44 @@ public class OpenAIService : IOpenAIService
             // Add current user input
             messages.Add(OpenAIChatMessage.CreateUserMessage(userInput));
 
-            // Call OpenAI API with voice-optimized settings
+            // Call OpenAI API with voice-optimized settings, retry logic, and error handling
             var chatClient = _openAIClient.GetChatClient(_openAISettings.Model);
-            var response = await chatClient.CompleteChatAsync(
-                messages,
-                new ChatCompletionOptions
+            ChatCompletion response;
+            
+            try
+            {
+                response = await ExecuteWithRetryAsync(async () =>
+                    await chatClient.CompleteChatAsync(
+                        messages,
+                        new ChatCompletionOptions
+                        {
+                            Temperature = 0.7f, // Slightly higher for conversational tone
+                            MaxOutputTokenCount = 150, // Shorter responses for voice
+                            FrequencyPenalty = 0.1f, // Reduce repetition
+                            PresencePenalty = 0.1f // Encourage variety
+                        }));
+            }
+            catch (Exception ex) when (IsQuotaExceededException(ex))
+            {
+                _logger.LogWarning(ex, "OpenAI quota exceeded for voice advice, user {UserId}, round {RoundId}", userId, roundId);
+                
+                if (_openAISettings.EnableFallbackResponses)
                 {
-                    Temperature = 0.7f, // Slightly higher for conversational tone
-                    MaxOutputTokenCount = 150, // Shorter responses for voice
-                    FrequencyPenalty = 0.1f, // Reduce repetition
-                    PresencePenalty = 0.1f // Encourage variety
-                });
+                    return GetFallbackVoiceAdvice(userInput);
+                }
+                
+                throw new OpenAIQuotaExceededException("OpenAI quota exceeded. Please try again later.", "api_quota", 3600);
+            }
 
-            if (response?.Value?.Content == null || response.Value.Content.Count == 0)
+            if (response?.Content == null || response.Content.Count == 0)
             {
                 throw new InvalidOperationException("No response received from OpenAI");
             }
 
-            var responseContent = string.Join("", response.Value.Content.Select(c => c.Text));
+            var responseContent = string.Join("", response.Content.Select(c => c.Text));
 
             _logger.LogInformation("Generated voice golf advice for user {UserId}, round {RoundId}, used {TokenCount} tokens", 
-                userId, roundId, response.Value.Usage?.TotalTokenCount);
+                userId, roundId, response.Usage?.TotalTokenCount);
 
             return responseContent;
         }
@@ -495,20 +538,30 @@ Examples:
             };
 
             var chatClient = _openAIClient.GetChatClient(_openAISettings.Model);
-            var response = await chatClient.CompleteChatAsync(
-                messages,
-                new ChatCompletionOptions
-                {
-                    Temperature = 0.8f, // Higher creativity for commentary
-                    MaxOutputTokenCount = 100 // Very brief for voice
-                });
+            ChatCompletion response;
+            
+            try
+            {
+                response = await chatClient.CompleteChatAsync(
+                    messages,
+                    new ChatCompletionOptions
+                    {
+                        Temperature = 0.8f, // Higher creativity for commentary
+                        MaxOutputTokenCount = 100 // Very brief for voice
+                    });
+            }
+            catch (Exception ex) when (IsQuotaExceededException(ex))
+            {
+                _logger.LogWarning(ex, "OpenAI quota exceeded for hole commentary, user {UserId}, round {RoundId}, hole {HoleNumber}", userId, roundId, holeNumber);
+                return GetDefaultHoleCommentary(score, par);
+            }
 
-            if (response?.Value?.Content == null || response.Value.Content.Count == 0)
+            if (response?.Content == null || response.Content.Count == 0)
             {
                 return GetDefaultHoleCommentary(score, par);
             }
 
-            var commentary = string.Join("", response.Value.Content.Select(c => c.Text));
+            var commentary = string.Join("", response.Content.Select(c => c.Text));
             
             _logger.LogInformation("Generated hole completion commentary for user {UserId}, round {RoundId}, hole {HoleNumber}", 
                 userId, roundId, holeNumber);
@@ -607,6 +660,125 @@ VOICE INTERACTION: Keep responses brief and conversational for voice delivery. P
             1 => "Good bogey. Stay positive and focus on the next hole.",
             _ => "Tough hole, but that's golf! Let's bounce back on the next one."
         };
+    }
+
+    private static bool IsQuotaExceededException(Exception ex)
+    {
+        return ex.Message.Contains("insufficient_quota") || 
+               ex.Message.Contains("quota exceeded") ||
+               ex.Message.Contains("429") ||
+               (ex.GetType().Name.Contains("OpenAI") && ex.Message.Contains("rate limit"));
+    }
+
+    private string GetFallbackChatResponse(string userMessage)
+    {
+        var lowerMessage = userMessage.ToLower();
+        
+        if (lowerMessage.Contains("club") || lowerMessage.Contains("what should i hit"))
+        {
+            return "I'm temporarily unable to access detailed club recommendations. Consider the distance to the pin, wind conditions, and your comfort level with each club. When in doubt, take one more club than you think you need.";
+        }
+        
+        if (lowerMessage.Contains("distance") || lowerMessage.Contains("yardage"))
+        {
+            return "I can't access precise distance calculations right now. Use your GPS device or course markers to estimate yardage. Remember to account for pin position and any elevation changes.";
+        }
+        
+        if (lowerMessage.Contains("strategy") || lowerMessage.Contains("approach"))
+        {
+            return "For course strategy, focus on playing to your strengths. Aim for the center of greens, avoid trouble areas, and play within your skill level. Conservative play often leads to better scores.";
+        }
+        
+        if (lowerMessage.Contains("putt") || lowerMessage.Contains("green"))
+        {
+            return "For putting, read the green carefully for slope and grain. Take your time with alignment and focus on smooth tempo. Aim to get the ball close to the hole for an easy second putt.";
+        }
+        
+        return "I'm experiencing temporary connectivity issues with my advanced analysis. Focus on fundamentals: good setup, smooth tempo, and course management. You've got this!";
+    }
+
+    private string GetFallbackVoiceAdvice(string userInput)
+    {
+        var lowerInput = userInput.ToLower();
+        
+        if (lowerInput.Contains("club") || lowerInput.Contains("what club"))
+        {
+            return "Consider the distance, wind, and lie. When unsure, take one more club and swing smooth.";
+        }
+        
+        if (lowerInput.Contains("putt") || lowerInput.Contains("putting"))
+        {
+            return "Read the slope, trust your line, and focus on smooth tempo. You've got this putt.";
+        }
+        
+        if (lowerInput.Contains("shot") || lowerInput.Contains("approach"))
+        {
+            return "Pick your target, commit to the shot, and trust your swing. Play smart and within your comfort zone.";
+        }
+        
+        if (lowerInput.Contains("help") || lowerInput.Contains("advice"))
+        {
+            return "Stay positive and focus on one shot at a time. Trust your preparation and play your game.";
+        }
+        
+        return "Keep your head up and play smart. You're doing great out there!";
+    }
+
+    private async Task<DalChatMessage> CreateFallbackChatMessageAsync(int sessionId, int userId, string fallbackContent)
+    {
+        var assistantMessage = new DalChatMessage
+        {
+            SessionId = sessionId,
+            UserId = userId,
+            MessageContent = fallbackContent,
+            OpenaiRole = "assistant",
+            TokensConsumed = 0, // No tokens consumed for fallback
+            OpenaiModelUsed = "fallback-response",
+            ContextData = JsonSerializer.Serialize(new
+            {
+                IsFallbackResponse = true,
+                FallbackReason = "OpenAI quota exceeded",
+                GeneratedAt = DateTime.UtcNow
+            })
+        };
+
+        await _chatMessageRepository.CreateAsync(assistantMessage);
+        return assistantMessage;
+    }
+
+    private async Task<T> ExecuteWithRetryAsync<T>(Func<Task<T>> operation, int maxRetries = 3)
+    {
+        var baseDelay = TimeSpan.FromSeconds(1);
+        
+        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                return await operation();
+            }
+            catch (Exception ex) when (IsRetryableException(ex) && attempt < maxRetries)
+            {
+                var delay = TimeSpan.FromMilliseconds(baseDelay.TotalMilliseconds * Math.Pow(2, attempt));
+                _logger.LogWarning(ex, "Attempt {Attempt} failed, retrying in {Delay}ms", attempt + 1, delay.TotalMilliseconds);
+                
+                await Task.Delay(delay);
+            }
+        }
+        
+        // Final attempt without catching exceptions
+        return await operation();
+    }
+
+    private static bool IsRetryableException(Exception ex)
+    {
+        // Retry on network errors, timeouts, but not quota exceeded
+        return !IsQuotaExceededException(ex) && 
+               (ex.Message.Contains("timeout") || 
+                ex.Message.Contains("network") ||
+                ex.Message.Contains("connection") ||
+                ex.Message.Contains("502") ||
+                ex.Message.Contains("503") ||
+                ex.Message.Contains("504"));
     }
 
 }
