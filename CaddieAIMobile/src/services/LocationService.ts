@@ -66,6 +66,17 @@ export interface MapLocationContext {
   };
 }
 
+// Shot marker interface for AI integration
+export interface ShotMarkerData {
+  id: string;
+  coordinate: { latitude: number; longitude: number };
+  distance: { yards: number; meters: number; feet: number; kilometers: number; miles: number };
+  timestamp: number;
+  club?: string;
+  accuracy?: number;
+  note?: string;
+}
+
 // Location service for GPS tracking during golf rounds
 export class GolfLocationService {
   private watchId: number | null = null;
@@ -80,6 +91,10 @@ export class GolfLocationService {
   private mapTargetPin: MapTargetData | null = null;
   private mapLocationCallbacks: Array<(context: MapLocationContext) => void> = [];
   private lastMapUpdate: number = 0;
+  
+  // Shot tracking for AI integration
+  private shotMarkers: ShotMarkerData[] = [];
+  private shotTrackingCallbacks: Array<(shots: ShotMarkerData[]) => void> = [];
   
   // Backend availability tracking
   private backendAvailable: boolean = true;
@@ -255,12 +270,14 @@ export class GolfLocationService {
   private clearAllCallbacks(): void {
     try {
       const totalBefore = this.updateCallbacks.length + this.contextUpdateCallbacks.length + 
-                         this.shotDetectionCallbacks.length + this.mapLocationCallbacks.length;
+                         this.shotDetectionCallbacks.length + this.mapLocationCallbacks.length +
+                         this.shotTrackingCallbacks.length;
       
       this.updateCallbacks = [];
       this.contextUpdateCallbacks = [];
       this.shotDetectionCallbacks = [];
       this.mapLocationCallbacks = [];
+      this.shotTrackingCallbacks = [];
       
       // Reset error logging flags
       this.hasLoggedNoCallbacksError = false;
@@ -270,6 +287,78 @@ export class GolfLocationService {
     } catch (error) {
       console.error('🔴 LocationService: Error clearing callbacks:', error);
     }
+  }
+
+  /**
+   * Add shot marker for AI integration
+   */
+  addShotMarker(shot: ShotMarkerData): void {
+    this.shotMarkers.push(shot);
+    this.notifyShotTrackingCallbacks();
+    console.log(`🟢 LocationService: Added shot marker at ${shot.distance.yards}y with ${shot.club || 'unknown club'}`);
+  }
+
+  /**
+   * Remove shot marker
+   */
+  removeShotMarker(shotId: string): void {
+    const beforeCount = this.shotMarkers.length;
+    this.shotMarkers = this.shotMarkers.filter(shot => shot.id !== shotId);
+    if (this.shotMarkers.length < beforeCount) {
+      this.notifyShotTrackingCallbacks();
+      console.log(`🟢 LocationService: Removed shot marker ${shotId}`);
+    }
+  }
+
+  /**
+   * Get all shot markers for AI context
+   */
+  getShotMarkers(): ShotMarkerData[] {
+    return [...this.shotMarkers];
+  }
+
+  /**
+   * Subscribe to shot tracking updates for AI integration
+   */
+  onShotTrackingUpdate(callback: (shots: ShotMarkerData[]) => void): () => void {
+    this.shotTrackingCallbacks.push(callback);
+    
+    return () => {
+      const index = this.shotTrackingCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.shotTrackingCallbacks.splice(index, 1);
+      }
+    };
+  }
+
+  /**
+   * Notify shot tracking callbacks
+   */
+  private notifyShotTrackingCallbacks(): void {
+    this.shotTrackingCallbacks.forEach(callback => {
+      try {
+        callback([...this.shotMarkers]);
+      } catch (error) {
+        console.error('🔴 LocationService: Error in shot tracking callback:', error);
+      }
+    });
+  }
+
+  /**
+   * Get comprehensive context for AI including shots, location, and targets
+   */
+  getAIContext(): {
+    currentLocation: LocationData | null;
+    targetPin: MapTargetData | null;
+    shotMarkers: ShotMarkerData[];
+    locationHistory: LocationData[];
+  } {
+    return {
+      currentLocation: this.currentLocation,
+      targetPin: this.mapTargetPin,
+      shotMarkers: [...this.shotMarkers],
+      locationHistory: [...this.locationHistory.slice(-10)], // Last 10 locations
+    };
   }
 
   /**

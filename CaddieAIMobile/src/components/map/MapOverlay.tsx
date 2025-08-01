@@ -53,7 +53,6 @@ export interface MapOverlayProps {
   isVoiceInterfaceVisible: boolean;
   isPlacingShotMode?: boolean;
   onVoiceToggle: () => void;
-  onSettingsPress: () => void;
   onRoundControlsPress: () => void;
   onClearTarget: () => void;
   onToggleShotMode?: () => void;
@@ -61,7 +60,6 @@ export interface MapOverlayProps {
   onRemoveShotMarker?: (markerId: string) => void;
   roundStatus?: string;
   gpsAccuracy?: number;
-  mapType?: 'standard' | 'satellite' | 'hybrid' | 'terrain';
 }
 
 // Enhanced GPS Status Component
@@ -195,7 +193,6 @@ const MapOverlay: React.FC<MapOverlayProps> = ({
   isVoiceInterfaceVisible,
   isPlacingShotMode = false,
   onVoiceToggle,
-  onSettingsPress,
   onRoundControlsPress,
   onClearTarget,
   onToggleShotMode,
@@ -203,7 +200,6 @@ const MapOverlay: React.FC<MapOverlayProps> = ({
   onRemoveShotMarker,
   roundStatus,
   gpsAccuracy,
-  mapType = 'satellite',
 }) => {
   const [showShotHistory, setShowShotHistory] = useState(false);
   const [showLocationInfo, setShowLocationInfo] = useState(false);
@@ -357,19 +353,10 @@ const MapOverlay: React.FC<MapOverlayProps> = ({
         isVisible={showShotHistory}
       />
 
-      {/* Bottom Control Bar */}
+      {/* Bottom Control Bar - Simplified without map controls */}
       <View style={styles.bottomBar}>
-        {/* Left side - Settings */}
-        <TouchableOpacity
-          style={styles.controlButton}
-          onPress={onSettingsPress}
-          activeOpacity={0.7}
-        >
-          <Icon name="layers" size={24} color="#4a7c59" />
-          <Text style={styles.controlButtonLabel}>
-            {mapType === 'satellite' ? 'SAT' : mapType.substring(0, 3).toUpperCase()}
-          </Text>
-        </TouchableOpacity>
+        {/* Left side - Empty spacer for balance */}
+        <View style={styles.controlSpacer} />
 
         {/* Center - Round Status */}
         <View style={styles.roundStatusContainer}>
@@ -702,6 +689,9 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 8,
     minWidth: 50,
+  },
+  controlSpacer: {
+    minWidth: 50, // Same as controlButton for balance
   },
   controlButtonLabel: {
     fontSize: 10,

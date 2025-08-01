@@ -39,6 +39,7 @@ import MapOverlay from '../../components/map/MapOverlay';
 import { 
   golfLocationService, 
   LocationData, 
+  ShotMarkerData,
   isLocationServiceAvailable, 
   safeLocationServiceCall 
 } from '../../services/LocationService';
@@ -163,10 +164,17 @@ export const ActiveRoundScreen: React.FC = () => {
 
   // Shot placement mode controls
   const toggleShotPlacementMode = useCallback(() => {
-    setMapStateLocal(prev => ({
-      ...prev,
-      isPlacingShotMode: !prev.isPlacingShotMode,
-    }));
+    setMapStateLocal(prev => {
+      const newMode = !prev.isPlacingShotMode;
+      console.log('🟠 ActiveRoundScreen: Toggling shot placement mode:', {
+        previousMode: prev.isPlacingShotMode,
+        newMode: newMode
+      });
+      return {
+        ...prev,
+        isPlacingShotMode: newMode,
+      };
+    });
   }, []);
 
   // Remove shot marker
@@ -463,8 +471,7 @@ export const ActiveRoundScreen: React.FC = () => {
           setCurrentHole(result.currentHole || 1);
           dispatch(fetchHoleScores(result.id));
           
-          // Set map to satellite view by default
-          dispatch(setMapType('satellite'));
+          // Map is locked to satellite view - no Redux state needed
         }
       } catch (error) {
         console.error('Error loading active round:', error);
@@ -556,16 +563,6 @@ export const ActiveRoundScreen: React.FC = () => {
     dispatch(toggleVoiceInterface());
   }, [dispatch]);
 
-  const handleSettingsPress = useCallback(() => {
-    const mapTypes = ['standard', 'satellite', 'terrain', 'hybrid'] as const;
-    const currentIndex = mapTypes.indexOf(mapState.mapType as any);
-    const nextIndex = (currentIndex + 1) % mapTypes.length;
-    const newMapType = mapTypes[nextIndex];
-    
-    dispatch(setMapType(newMapType));
-    console.log(`Map type changed to: ${newMapType}`);
-  }, [mapState.mapType, dispatch]);
-
   // Memoized course region calculation for better performance
   const courseRegion = useMemo(() => {
     // Priority: current location > course region > default
@@ -651,8 +648,45 @@ export const ActiveRoundScreen: React.FC = () => {
           courseId={activeRound?.courseId}
           courseName={activeRound?.course?.name}
           initialRegion={courseRegion}
-          mapType={mapState.mapType || 'satellite'}
+          mapType="satellite"
           enableTargetPin={true}
+          // Shot placement functionality
+          shotMarkers={mapStateLocal.shotMarkers}
+          isPlacingShotMode={mapStateLocal.isPlacingShotMode}
+          onShotPlaced={(shot) => {
+            // Add shot to local state for map display
+            setMapStateLocal(prev => ({
+              ...prev,
+              shotMarkers: [...prev.shotMarkers, shot],
+              isPlacingShotMode: false, // Exit shot placement mode after placing
+            }));
+            
+            // Add shot to LocationService for AI integration
+            if (isLocationServiceAvailable()) {
+              const shotData: ShotMarkerData = {
+                id: shot.id,
+                coordinate: shot.coordinate,
+                distance: shot.distance,
+                timestamp: shot.timestamp,
+                club: shot.club,
+                accuracy: shot.accuracy,
+                note: shot.note,
+              };
+              golfLocationService.addShotMarker(shotData);
+            }
+          }}
+          onShotRemoved={(shotId) => {
+            // Remove shot from local state
+            setMapStateLocal(prev => ({
+              ...prev,
+              shotMarkers: prev.shotMarkers.filter(marker => marker.id !== shotId),
+            }));
+            
+            // Remove shot from LocationService for AI integration
+            if (isLocationServiceAvailable()) {
+              golfLocationService.removeShotMarker(shotId);
+            }
+          }}
         />
       </MapErrorBoundary>
 
@@ -668,7 +702,6 @@ export const ActiveRoundScreen: React.FC = () => {
         isVoiceInterfaceVisible={isVoiceInterfaceVisible}
         isPlacingShotMode={mapStateLocal.isPlacingShotMode}
         onVoiceToggle={handleVoiceToggle}
-        onSettingsPress={handleSettingsPress}
         onRoundControlsPress={() => setShowRoundControls(!showRoundControls)}
         onClearTarget={() => handleTargetSelected({ latitude: 0, longitude: 0 }, { yards: 0, meters: 0, feet: 0, kilometers: 0, miles: 0 })}
         onToggleShotMode={toggleShotPlacementMode}
@@ -676,7 +709,6 @@ export const ActiveRoundScreen: React.FC = () => {
         onRemoveShotMarker={removeShotMarker}
         roundStatus={activeRound?.status}
         gpsAccuracy={currentLocation?.accuracy}
-        mapType={mapState.mapType}
       />
 
       {/* Round Controls Modal (when requested) */}
