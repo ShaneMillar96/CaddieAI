@@ -6,6 +6,7 @@ import {
   Alert,
   Platform,
   Text,
+  Animated,
 } from 'react-native';
 import MapView, {
   Marker,
@@ -40,12 +41,27 @@ export interface GolfCourseMapProps {
   showSatellite?: boolean;
   enableTargetPin?: boolean;
   mapType?: 'standard' | 'satellite' | 'hybrid' | 'terrain';
+  // Shot placement functionality
+  shotMarkers?: ShotMarker[];
+  isPlacingShotMode?: boolean;
+  onShotPlaced?: (shot: ShotMarker) => void;
+  onShotRemoved?: (shotId: string) => void;
 }
 
 export interface TargetPin {
   coordinate: Coordinate;
   distance: DistanceResult;
   timestamp: number;
+}
+
+export interface ShotMarker {
+  id: string;
+  coordinate: Coordinate;
+  distance: DistanceResult;
+  timestamp: number;
+  club?: string;
+  note?: string;
+  accuracy?: number;
 }
 
 const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
@@ -57,7 +73,12 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
   initialRegion,
   showSatellite = true,
   enableTargetPin = true,
-  mapType = 'satellite',
+  mapType = 'satellite', // Default to satellite for better green visibility
+  // Shot placement props
+  shotMarkers = [],
+  isPlacingShotMode = false,
+  onShotPlaced,
+  onShotRemoved,
 }) => {
   // State management
   const [targetPin, setTargetPin] = useState<TargetPin | null>(null);
@@ -185,6 +206,31 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
   const mapRef = useRef<MapView>(null);
   const lastLocationUpdateRef = useRef<number>(0);
   const mapInitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Animation ref for user location pulse
+  const pulseAnimation = useRef(new Animated.Value(1)).current;
+
+  // Start pulse animation for user location marker
+  useEffect(() => {
+    const startPulseAnimation = () => {
+      Animated.sequence([
+        Animated.timing(pulseAnimation, {
+          toValue: 1.4,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnimation, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ]).start(() => startPulseAnimation());
+    };
+
+    if (currentLocation) {
+      startPulseAnimation();
+    }
+  }, [currentLocation, pulseAnimation]);
 
   // Default region (should be updated based on course location)
   const defaultRegion: Region = initialRegion || {
@@ -264,20 +310,25 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
     }
   }, [currentLocation, isMapReady, hasMapRef]); // Removed onLocationUpdate to prevent infinite loops
 
-  // Handle map press for enhanced target pin placement with loading state
+  // Enhanced map press handler for both target selection and shot placement
   const handleMapPress = useCallback((event: MapPressEvent) => {
-    if (!enableTargetPin || !currentLocation) {
-      if (!currentLocation) {
-        Alert.alert(
-          'Location Required',
-          'Please wait for GPS to acquire your location before selecting targets.',
-          [{ text: 'OK' }]
-        );
-      }
+    const coordinate = event.nativeEvent.coordinate;
+    console.log('🟠 GolfCourseMap: Map press detected:', {
+      coordinate,
+      hasCurrentLocation: !!currentLocation,
+      isPlacingShotMode,
+      enableTargetPin
+    });
+    
+    if (!currentLocation) {
+      console.warn('🔴 GolfCourseMap: No current location for map press');
+      Alert.alert(
+        'Location Required',
+        'Please wait for GPS to acquire your location before selecting targets or placing shots.',
+        [{ text: 'OK' }]
+      );
       return;
     }
-
-    const coordinate = event.nativeEvent.coordinate;
     
     // Calculate distance to target with enhanced validation
     const distance = DistanceCalculator.calculateDistance(
@@ -307,22 +358,53 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
       return;
     }
 
-    // Create new target pin with enhanced data and smooth transition
-    const newTargetPin: TargetPin = {
-      coordinate,
-      distance,
-      timestamp: Date.now(),
-    };
+    // Handle shot placement mode
+    if (isPlacingShotMode && onShotPlaced) {
+      console.log('🟢 GolfCourseMap: Placing shot in shot mode:', {
+        distance: distance.yards,
+        coordinate
+      });
+      
+      const newShot: ShotMarker = {
+        id: `shot-${Date.now()}`,
+        coordinate,
+        distance,
+        timestamp: Date.now(),
+        club: getRecommendedClub(distance.yards),
+        accuracy: currentLocation.accuracy,
+      };
 
-    // Add smooth transition for target pin placement
-    setTargetPin(null); // Clear first for smooth transition
-    setTimeout(() => {
-      setTargetPin(newTargetPin);
-      onTargetSelected(coordinate, distance);
-    }, 100);
-    
-    console.log(`Target selected: ${distance.yards} yards from current location`);
-  }, [currentLocation, enableTargetPin, onTargetSelected]);
+      onShotPlaced(newShot);
+      
+      Alert.alert(
+        'Shot Placed',
+        `Shot placed at ${distance.yards} yards with recommended club: ${newShot.club}`,
+        [{ text: 'OK' }]
+      );
+      
+      console.log(`🟢 GolfCourseMap: Shot placed successfully: ${distance.yards} yards, club: ${newShot.club}`);
+      return;
+    }
+
+    // Handle target pin placement (default behavior)
+    if (enableTargetPin) {
+      // Create new target pin with enhanced data and smooth transition
+      const newTargetPin: TargetPin = {
+        coordinate,
+        distance,
+        timestamp: Date.now(),
+      };
+
+      // Add smooth transition for target pin placement
+      setTargetPin(null); // Clear first for smooth transition
+      setTimeout(() => {
+        setTargetPin(newTargetPin);
+        onTargetSelected(coordinate, distance);
+      }, 100);
+      
+      console.log(`Target selected: ${distance.yards} yards from current location`);
+    }
+  }, [currentLocation, enableTargetPin, isPlacingShotMode, onTargetSelected, onShotPlaced]);
 
   // Handle long press for recentering map with enhanced feedback
   const handleLongPress = useCallback(() => {
@@ -404,9 +486,21 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
     }
   }, [targetPin, onTargetSelected]);
 
-  // Enhanced custom marker for user location
+  // Enhanced custom marker for user location with animated pulse and accuracy visualization
   const renderUserLocationMarker = () => {
-    if (!currentLocation) return null;
+    console.log('🟠 GolfCourseMap: renderUserLocationMarker called', {
+      hasCurrentLocation: !!currentLocation,
+      location: currentLocation ? {
+        lat: currentLocation.latitude,
+        lng: currentLocation.longitude,
+        accuracy: currentLocation.accuracy
+      } : null
+    });
+    
+    if (!currentLocation) {
+      console.warn('🔴 GolfCourseMap: No currentLocation available for user marker');
+      return null;
+    }
 
     const accuracyText = currentLocation.accuracy 
       ? `GPS: ${currentLocation.accuracy.toFixed(1)}m` 
@@ -415,6 +509,24 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
     const speedText = ('speed' in currentLocation && currentLocation.speed) 
       ? ` • Speed: ${(currentLocation.speed * 3.6).toFixed(1)} km/h` 
       : '';
+
+    // Determine GPS accuracy color and status
+    const getAccuracyStatus = (accuracy?: number) => {
+      if (!accuracy) return { color: '#999', status: 'unknown', icon: 'gps-not-fixed' };
+      if (accuracy <= 5) return { color: '#4CAF50', status: 'excellent', icon: 'gps-fixed' };
+      if (accuracy <= 10) return { color: '#8BC34A', status: 'good', icon: 'gps-fixed' };
+      if (accuracy <= 20) return { color: '#FFC107', status: 'fair', icon: 'gps-not-fixed' };
+      return { color: '#FF5722', status: 'poor', icon: 'gps-off' };
+    };
+
+    const accuracyStatus = getAccuracyStatus(currentLocation.accuracy);
+    
+    console.log('🟢 GolfCourseMap: Rendering user marker with coordinates:', {
+      latitude: currentLocation.latitude,
+      longitude: currentLocation.longitude,
+      accuracyColor: accuracyStatus.color,
+      accuracyStatus: accuracyStatus.status
+    });
 
     return (
       <Marker
@@ -425,16 +537,60 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
         anchor={{ x: 0.5, y: 0.5 }}
         title="Your Position"
         description={`${accuracyText}${speedText}`}
+        flat={false}
+        zIndex={1000}
       >
         <View style={styles.userLocationContainer}>
-          <View style={styles.userLocationMarker}>
-            <Icon name="person-pin" size={16} color="#fff" />
+          {/* Animated outer pulse ring */}
+          <Animated.View 
+            style={[
+              styles.userLocationOuterPulse,
+              {
+                transform: [{ scale: pulseAnimation }],
+                backgroundColor: `${accuracyStatus.color}20`,
+                borderColor: `${accuracyStatus.color}40`,
+              }
+            ]} 
+          />
+          
+          {/* Inner pulse ring */}
+          <View style={[
+            styles.userLocationPulse,
+            {
+              backgroundColor: `${accuracyStatus.color}30`,
+              borderColor: `${accuracyStatus.color}60`,
+            }
+          ]} />
+          
+          {/* Main location marker - made more visible */}
+          <View style={[
+            styles.userLocationMarker,
+            { 
+              backgroundColor: accuracyStatus.color,
+              borderWidth: 4,
+              borderColor: '#ffffff',
+            }
+          ]}>
+            <Icon name="my-location" size={20} color="#fff" />
           </View>
-          <View style={styles.userLocationPulse} />
-          {/* GPS accuracy indicator */}
-          {currentLocation.accuracy && currentLocation.accuracy <= 10 && (
-            <View style={styles.accuracyIndicator}>
-              <Icon name="gps-fixed" size={12} color="#4CAF50" />
+          
+          {/* GPS accuracy indicator badge */}
+          <View style={[
+            styles.accuracyIndicator,
+            { backgroundColor: accuracyStatus.color }
+          ]}>
+            <Icon name={accuracyStatus.icon} size={12} color="#fff" />
+          </View>
+          
+          {/* Direction indicator (if heading is available) */}
+          {currentLocation.heading !== undefined && currentLocation.heading !== null && (
+            <View style={[
+              styles.directionIndicator,
+              {
+                transform: [{ rotate: `${currentLocation.heading}deg` }]
+              }
+            ]}>
+              <Icon name="navigation" size={14} color={accuracyStatus.color} />
             </View>
           )}
         </View>
@@ -473,6 +629,49 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
         </View>
       </Marker>
     );
+  };
+
+  // Render shot markers with distance labels (matching reference design)
+  const renderShotMarkers = () => {
+    return shotMarkers.map((shot, index) => (
+      <Marker
+        key={shot.id}
+        coordinate={shot.coordinate}
+        anchor={{ x: 0.5, y: 1.0 }}
+        title={`Shot ${index + 1}`}
+        description={`${shot.distance.yards}y • ${shot.club || 'Unknown club'}`}
+        onPress={() => {
+          // Allow removal of shot markers on press
+          if (onShotRemoved) {
+            Alert.alert(
+              'Remove Shot',
+              `Remove shot ${index + 1} (${shot.distance.yards} yards)?`,
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Remove', style: 'destructive', onPress: () => onShotRemoved(shot.id) }
+              ]
+            );
+          }
+        }}
+      >
+        <View style={styles.shotMarkerContainer}>
+          {/* Shot marker with distance label matching reference image */}
+          <View style={styles.shotMarker}>
+            <Text style={styles.shotMarkerNumber}>{index + 1}</Text>
+          </View>
+          {/* Distance badge similar to reference "120" style */}
+          <View style={styles.shotDistanceBadge}>
+            <Text style={styles.shotDistanceText}>{shot.distance.yards}</Text>
+          </View>
+          {/* Club indicator */}
+          {shot.club && (
+            <View style={styles.shotClubBadge}>
+              <Text style={styles.shotClubText}>{shot.club}</Text>
+            </View>
+          )}
+        </View>
+      </Marker>
+    ));
   };
 
   // Get recommended club based on distance
@@ -630,6 +829,7 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
           >
             {renderUserLocationMarker()}
             {renderTargetMarker()}
+            {renderShotMarkers()}
           </MapView>
 
           {/* Enhanced map controls with smooth transitions */}
@@ -723,46 +923,84 @@ const styles = StyleSheet.create({
     width: width,
     height: height,
   },
+  userLocationContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 80,
+    height: 80,
+  },
   userLocationMarker: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#4a7c59',
-    borderWidth: 3,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#2196F3', // Bright blue for visibility
+    borderWidth: 4,
     borderColor: '#ffffff',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 10,
+    zIndex: 1000,
+    position: 'relative',
   },
   userLocationPulse: {
     position: 'absolute',
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(74, 124, 89, 0.2)',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(33, 150, 243, 0.3)', // Blue with transparency
     borderWidth: 2,
-    borderColor: 'rgba(74, 124, 89, 0.4)',
+    borderColor: 'rgba(33, 150, 243, 0.5)',
+    zIndex: 2,
   },
-  userLocationContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  userLocationOuterPulse: {
+    position: 'absolute',
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: 'rgba(33, 150, 243, 0.2)', // Blue with transparency
+    borderWidth: 1,
+    borderColor: 'rgba(33, 150, 243, 0.4)',
+    zIndex: 1,
   },
   accuracyIndicator: {
     position: 'absolute',
-    top: -5,
-    right: -5,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 2,
+    top: -6,
+    right: -6,
+    backgroundColor: '#4CAF50', // Will be overridden by accuracy color
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 6,
+    zIndex: 4,
+  },
+  directionIndicator: {
+    position: 'absolute',
+    top: -12,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
-    elevation: 2,
+    elevation: 4,
+    zIndex: 2,
   },
   targetMarkerContainer: {
     alignItems: 'center',
@@ -816,6 +1054,66 @@ const styles = StyleSheet.create({
   crosshairVertical: {
     width: 2,
     height: 60,
+  },
+  
+  // Shot marker styles (matching reference design)
+  shotMarkerContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shotMarker: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#2196F3', // Blue color for shot markers
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  shotMarkerNumber: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  shotDistanceBadge: {
+    position: 'absolute',
+    top: -15,
+    backgroundColor: '#1976D2',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    minWidth: 50,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  shotDistanceText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  shotClubBadge: {
+    position: 'absolute',
+    bottom: -18,
+    backgroundColor: 'rgba(33, 150, 243, 0.9)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  shotClubText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '600',
   },
   mapControlsContainer: {
     position: 'absolute',

@@ -18,6 +18,7 @@ import {
   golfLocationService, 
   LocationData, 
   MapLocationContext,
+  ShotMarkerData,
   isLocationServiceAvailable, 
   safeLocationServiceCall 
 } from '../../services/LocationService';
@@ -79,6 +80,7 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
   const [conversationHistory, setConversationHistory] = useState<ConversationMessage[]>([]);
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
   const [mapLocationContext, setMapLocationContext] = useState<MapLocationContext | null>(null);
+  const [shotMarkers, setShotMarkers] = useState<ShotMarkerData[]>([]);
   const [hasPermissions, setHasPermissions] = useState(false);
   
   // Update local location state when prop changes
@@ -215,7 +217,7 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
         return () => {}; // Return empty unsubscribe function
       }
 
-      // Subscribe to both regular location updates and enhanced map context
+      // Subscribe to location updates, map context, and shot tracking for comprehensive AI context
       const unsubscribeLocation = golfLocationService.onLocationUpdate((location: LocationData) => {
         setCurrentLocation(location);
       });
@@ -225,9 +227,15 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
         setCurrentLocation(context.userLocation);
       });
 
+      const unsubscribeShotTracking = golfLocationService.onShotTrackingUpdate((shots: ShotMarkerData[]) => {
+        setShotMarkers(shots);
+        console.log(`🟢 VoiceAI: Updated shot tracking context with ${shots.length} shots`);
+      });
+
       return () => {
         unsubscribeLocation();
         unsubscribeMapContext();
+        unsubscribeShotTracking();
       };
     } catch (error) {
       console.error('Error setting up location tracking in VoiceAIInterface:', error);
@@ -413,7 +421,9 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
         hasLocation: !!enhancedLocationContext,
         hasTargetPin: !!activeTargetPin,
         targetDistance: activeTargetPin?.distanceYards,
-        recommendedClub: activeTargetPin ? getRecommendedClub(activeTargetPin.distanceYards) : undefined
+        recommendedClub: activeTargetPin ? getRecommendedClub(activeTargetPin.distanceYards) : undefined,
+        totalShots: shotMarkers.length,
+        lastShotClub: shotMarkers.length > 0 ? shotMarkers[shotMarkers.length - 1].club : null
       });
       
       const request: VoiceAIRequest = {
@@ -426,11 +436,22 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
           role: msg.role,
           timestamp: msg.timestamp.toISOString(),
         })),
-        // Add context about current golf situation
+        // Add comprehensive context about current golf situation including shot history
         golfContext: {
           hasActiveTarget: !!targetPin,
           currentHole: currentHole || propCurrentLocation?.currentHole,
           shotType: targetPin ? getShotDifficulty(targetPin.distanceYards) : 'general',
+          // Shot tracking context for AI recommendations
+          shotHistory: shotMarkers.map((shot, index) => ({
+            shotNumber: index + 1,
+            distance: shot.distance.yards,
+            club: shot.club,
+            timestamp: shot.timestamp,
+            accuracy: shot.accuracy,
+          })),
+          totalShots: shotMarkers.length,
+          lastShotDistance: shotMarkers.length > 0 ? shotMarkers[shotMarkers.length - 1].distance.yards : null,
+          lastShotClub: shotMarkers.length > 0 ? shotMarkers[shotMarkers.length - 1].club : null,
         },
       };
 
