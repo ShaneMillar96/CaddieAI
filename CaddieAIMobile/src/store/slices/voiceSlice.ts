@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { voiceAIApiService, VoiceAIRequest, VoiceAIResponse } from '../../services/voiceAIApi';
+import { voiceAIApiService, VoiceAIRequest } from '../../services/voiceAIApi';
 
 export interface ConversationMessage {
   id: string;
@@ -126,7 +126,7 @@ const initialState: VoiceState = {
 // Async thunks
 export const processVoiceInput = createAsyncThunk(
   'voice/processVoiceInput',
-  async (request: VoiceAIRequest, { rejectWithValue, getState }) => {
+  async (request: VoiceAIRequest, { rejectWithValue }) => {
     try {
       const response = await voiceAIApiService.processVoiceInput(request);
       return response;
@@ -296,8 +296,7 @@ const voiceSlice = createSlice({
       console.log('🟣 Redux voiceSlice.updateCurrentLocation: REDUCER TRIGGERED');
       console.log('🟣 Redux voiceSlice.updateCurrentLocation: Action received:', {
         type: action.type,
-        payload: action.payload,
-        meta: action.meta
+        payload: action.payload
       });
       console.log('🟣 Redux voiceSlice.updateCurrentLocation: Previous location state:', state.currentLocation);
       console.log('🟣 Redux voiceSlice.updateCurrentLocation: State object before update:', JSON.stringify(state.currentLocation));

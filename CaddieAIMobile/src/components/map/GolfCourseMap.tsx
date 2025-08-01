@@ -142,7 +142,7 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
         mapInitTimeoutRef.current = null;
       }
     };
-  }, [isMapReady, currentLocation, initialRegion]);
+  }, [isMapReady]); // Reduced dependencies to prevent loops
 
   // Clear timeout when map becomes ready
   useEffect(() => {
@@ -179,12 +179,12 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
         console.error('🔴 GolfCourseMap: MapRef available - error animating to location:', error);
       }
     }
-  }, [hasMapRef, isMapReady, currentLocation]); // Trigger when ref or location becomes available
+  }, [hasMapRef, isMapReady]); // Reduced dependencies to prevent loops
 
   // Refs
   const mapRef = useRef<MapView>(null);
   const lastLocationUpdateRef = useRef<number>(0);
-  const mapInitTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const mapInitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Default region (should be updated based on course location)
   const defaultRegion: Region = initialRegion || {
@@ -246,11 +246,13 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
         
         console.log('🟢 GolfCourseMap: Updated map region and animated to user location');
         
-        // Notify parent of location update
-        onLocationUpdate({
-          latitude: currentLocation.latitude,
-          longitude: currentLocation.longitude,
-        });
+        // Notify parent of location update - but don't include callback in deps
+        if (onLocationUpdate) {
+          onLocationUpdate({
+            latitude: currentLocation.latitude,
+            longitude: currentLocation.longitude,
+          });
+        }
       }
     } else {
       console.log('🟠 GolfCourseMap: Cannot update location - missing requirements:', {
@@ -260,7 +262,7 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
         hasMapRefCurrent: !!mapRef.current
       });
     }
-  }, [currentLocation, isMapReady, hasMapRef, onLocationUpdate]); // Added hasMapRef dependency
+  }, [currentLocation, isMapReady, hasMapRef]); // Removed onLocationUpdate to prevent infinite loops
 
   // Handle map press for enhanced target pin placement with loading state
   const handleMapPress = useCallback((event: MapPressEvent) => {
@@ -390,7 +392,7 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
       }
       console.log('GolfCourseMap: Map ready - positioned at default region (Faughan Valley):', defaultRegion);
     }
-  }, [initialRegion, currentLocation, defaultRegion]);
+  }, []); // Empty deps - use current values at time of execution
 
   // Clear target pin on double tap with smooth animation
   const handleDoubleTap = useCallback(() => {
@@ -497,7 +499,7 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
   };
 
   // Handle map loading errors
-  const handleMapError = useCallback((error: any) => {
+  const handleMapError = useCallback((error: unknown) => {
     console.error('Map loading error:', error);
     setIsMapLoading(false);
     setIsMapReady(false);
@@ -505,11 +507,12 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
     let errorMessage = 'Unable to load map. Please check your internet connection and try again.';
     
     // Provide more specific error messages
-    if (error?.code === 'NETWORK_ERROR') {
+    const errorObj = error as any;
+    if (errorObj?.code === 'NETWORK_ERROR') {
       errorMessage = 'Network error: Please check your internet connection.';
-    } else if (error?.code === 'API_KEY_ERROR') {
+    } else if (errorObj?.code === 'API_KEY_ERROR') {
       errorMessage = 'Map service configuration error. Please contact support.';
-    } else if (error?.message?.includes('location')) {
+    } else if (errorObj?.message?.includes('location')) {
       errorMessage = 'Location services error. Please enable GPS and try again.';
     }
     
@@ -527,7 +530,7 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
     </View>
   );
 
-  // Fallback component when map fails to load
+  // Fallback component when map fails to loadclaude 
   const renderMapFallback = () => (
     <View style={styles.fallbackContainer}>
       <Icon name="map-off" size={48} color="#ccc" />
@@ -595,10 +598,6 @@ const GolfCourseMap: React.FC<GolfCourseMapProps> = React.memo(({
             onMapReady={() => {
               console.log('🟠 GolfCourseMap: onMapReady callback triggered - calling handleMapReady');
               handleMapReady();
-            }}
-            onError={(error) => {
-              console.error('🔴 GolfCourseMap: MapView onError triggered:', error);
-              handleMapError(error);
             }}
             onLayout={(event) => {
               console.log('🟠 GolfCourseMap: MapView onLayout triggered:', event.nativeEvent.layout);

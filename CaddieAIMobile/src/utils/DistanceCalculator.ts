@@ -211,7 +211,7 @@ export class DistanceCalculator {
    */
   static validateGPSAccuracy(
     accuracy: number,
-    coordinate: Coordinate
+    _coordinate: Coordinate
   ): { isAccurate: boolean; quality: string; recommendation: string } {
     // GPS accuracy quality thresholds for golf (in meters)
     if (accuracy <= 3) {
@@ -258,8 +258,8 @@ export class DistanceCalculator {
    * Calculate shot detection threshold based on movement pattern
    */
   static calculateShotDetectionThreshold(
-    previousLocations: Coordinate[],
-    timeWindow: number = 10000 // 10 seconds in milliseconds
+    _previousLocations: Coordinate[],
+    _timeWindow: number = 10000 // 10 seconds in milliseconds
   ): { minDistance: number; minSpeed: number } {
     // Analyze recent movement to set dynamic thresholds
     const avgAccuracy = 5; // Assume 5m GPS accuracy

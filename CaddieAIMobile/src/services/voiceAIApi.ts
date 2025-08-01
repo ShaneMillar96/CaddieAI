@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import TokenStorage from './tokenStorage';
-import { API_BASE_URL, API_TIMEOUT } from '../config/api';
+import { API_BASE_URL } from '../config/api';
 
 // Types for Voice AI API
 export interface VoiceAIRequest {
