@@ -84,6 +84,15 @@ export class GolfLocationService {
   // Backend availability tracking
   private backendAvailable: boolean = true;
   private lastBackendCheck: number = 0;
+  
+  // Error logging control
+  private hasLoggedNoCallbacksError: boolean = false;
+  private pausedDueToNoCallbacks: boolean = false;
+  private pausedWatchId: number | null = null;
+  
+  // Logging throttle control
+  private lastLogTimestamp: { [key: string]: number } = {};
+  private logThrottleMs: number = 2000; // Throttle identical logs to every 2 seconds
 
   // Default GPS options optimized for golf course tracking
   private defaultOptions: LocationUpdateOptions = {
@@ -96,6 +105,32 @@ export class GolfLocationService {
 
   constructor() {
     this.setupGeolocation();
+  }
+  
+  /**
+   * Throttled logging to prevent excessive console noise
+   */
+  private throttledLog(key: string, message: string, ...args: any[]): void {
+    const now = Date.now();
+    const lastLog = this.lastLogTimestamp[key] || 0;
+    
+    if (now - lastLog >= this.logThrottleMs) {
+      console.log(message, ...args);
+      this.lastLogTimestamp[key] = now;
+    }
+  }
+  
+  /**
+   * Throttled warning logging
+   */
+  private throttledWarn(key: string, message: string, ...args: any[]): void {
+    const now = Date.now();
+    const lastLog = this.lastLogTimestamp[key] || 0;
+    
+    if (now - lastLog >= this.logThrottleMs) {
+      console.warn(message, ...args);
+      this.lastLogTimestamp[key] = now;
+    }
   }
 
   private setupGeolocation(): void {
@@ -173,14 +208,14 @@ export class GolfLocationService {
       );
 
       this.isTracking = true;
-      console.log(`Started GPS tracking for round ${roundId} on course ${courseId}`);
+      this.throttledLog('gps-start', `Started GPS tracking for round ${roundId} on course ${courseId}`);
       
       // Try to get initial position to verify GPS is working
       const initialPosition = await this.getCurrentPosition();
       if (initialPosition) {
-        console.log('Initial GPS position acquired successfully');
+        this.throttledLog('gps-position', 'Initial GPS position acquired successfully');
       } else {
-        console.warn('Could not acquire initial GPS position, but tracking will continue');
+        this.throttledWarn('gps-position-warning', 'Could not acquire initial GPS position, but tracking will continue');
       }
       
       return true;
@@ -192,19 +227,90 @@ export class GolfLocationService {
   }
 
   /**
-   * Stop GPS tracking
+   * Stop GPS tracking with enhanced cleanup
    */
   stopRoundTracking(): void {
-    if (this.watchId !== null) {
+    try {
+      if (this.watchId !== null) {
+        Geolocation.clearWatch(this.watchId);
+        this.watchId = null;
+      }
+      
+      this.isTracking = false;
+      this.locationHistory = [];
+      this.currentLocation = null;
+      
+      // Clear all callbacks to prevent memory leaks
+      this.clearAllCallbacks();
+      
+      console.log('Stopped GPS tracking and cleared all callbacks');
+    } catch (error) {
+      console.error('Error stopping GPS tracking:', error);
+    }
+  }
+
+  /**
+   * Clear all registered callbacks to prevent memory leaks
+   */
+  private clearAllCallbacks(): void {
+    try {
+      const totalBefore = this.updateCallbacks.length + this.contextUpdateCallbacks.length + 
+                         this.shotDetectionCallbacks.length + this.mapLocationCallbacks.length;
+      
+      this.updateCallbacks = [];
+      this.contextUpdateCallbacks = [];
+      this.shotDetectionCallbacks = [];
+      this.mapLocationCallbacks = [];
+      
+      // Reset error logging flags
+      this.hasLoggedNoCallbacksError = false;
+      this.pausedDueToNoCallbacks = false;
+      
+      this.throttledLog('callback-clear', `🔵 LocationService: Cleared all callbacks. Total removed: ${totalBefore}`);
+    } catch (error) {
+      console.error('🔴 LocationService: Error clearing callbacks:', error);
+    }
+  }
+
+  /**
+   * Temporarily pause GPS tracking when no callbacks are registered
+   */
+  private pauseTrackingDueToNoCallbacks(): void {
+    if (this.watchId !== null && !this.pausedDueToNoCallbacks) {
+      console.log('🟡 LocationService: Pausing GPS tracking due to no registered callbacks');
+      
+      // Store the current watch ID before clearing it
+      this.pausedWatchId = this.watchId;
       Geolocation.clearWatch(this.watchId);
       this.watchId = null;
+      this.pausedDueToNoCallbacks = true;
     }
-    
-    this.isTracking = false;
-    this.locationHistory = [];
-    this.currentLocation = null;
-    
-    console.log('Stopped GPS tracking');
+  }
+
+  /**
+   * Resume GPS tracking when callbacks are registered again
+   */
+  private resumeTrackingAfterCallbackRegistration(roundId: number, courseId: number): void {
+    if (this.pausedDueToNoCallbacks && this.pausedWatchId !== null) {
+      console.log('🟢 LocationService: Resuming GPS tracking after callback registration');
+      
+      // Restart location updates
+      this.watchId = Geolocation.watchPosition(
+        (position) => this.handleLocationUpdate(position, roundId, courseId),
+        (error) => this.handleLocationError(error),
+        {
+          enableHighAccuracy: this.defaultOptions.enableHighAccuracy,
+          timeout: this.defaultOptions.timeout,
+          maximumAge: this.defaultOptions.maximumAge,
+          distanceFilter: this.defaultOptions.distanceFilter,
+          interval: this.defaultOptions.interval,
+          useSignificantChanges: false
+        }
+      );
+      
+      this.pausedDueToNoCallbacks = false;
+      this.pausedWatchId = null;
+    }
   }
 
   /**
@@ -215,13 +321,6 @@ export class GolfLocationService {
     roundId: number, 
     courseId: number
   ): Promise<void> {
-    console.log('🔵 LocationService.handleLocationUpdate: ENTRY POINT - GPS data received');
-    console.log('🔵 LocationService.handleLocationUpdate: Raw position data:', {
-      coords: position.coords,
-      timestamp: position.timestamp,
-      provider: position.provider
-    });
-    
     try {
       const locationData: LocationData = {
         latitude: position.coords.latitude,
@@ -233,23 +332,16 @@ export class GolfLocationService {
         timestamp: position.timestamp
       };
 
-      console.log('🔵 LocationService.handleLocationUpdate: Processed locationData:', locationData);
-
-      // Enhanced GPS accuracy logging
-      const accuracyStatus = this.getAccuracyStatus(locationData.accuracy);
-      console.log(`🔵 GPS Update: ${accuracyStatus} (${locationData.accuracy?.toFixed(1)}m) at ${new Date(locationData.timestamp).toLocaleTimeString()}`);
-      
-      // Log accuracy improvements
+      // Only log GPS accuracy changes that are significant
       if (this.currentLocation && this.currentLocation.accuracy && locationData.accuracy) {
         const accuracyChange = this.currentLocation.accuracy - locationData.accuracy;
-        if (Math.abs(accuracyChange) > 2) {
+        if (Math.abs(accuracyChange) > 5) { // Only log changes > 5m
           const improvement = accuracyChange > 0 ? 'improved' : 'degraded';
           console.log(`🔵 GPS accuracy ${improvement} by ${Math.abs(accuracyChange).toFixed(1)}m`);
         }
       }
 
       // Update current location
-      console.log('🔵 LocationService.handleLocationUpdate: Updating currentLocation from:', this.currentLocation, 'to:', locationData);
       this.currentLocation = locationData;
 
       // Add to history (keep last 100 locations for shot detection)
@@ -258,32 +350,32 @@ export class GolfLocationService {
         this.locationHistory = this.locationHistory.slice(-100);
       }
 
-      // Notify subscribers with detailed logging
-      console.log('🔵 LocationService.handleLocationUpdate: About to notify subscribers');
-      console.log('🔵 LocationService: Current callback count:', this.updateCallbacks.length);
-      console.log('🔵 LocationService: Callback array contents:', this.updateCallbacks);
-      
+      // Notify subscribers - only log critical issues
       if (this.updateCallbacks.length === 0) {
-        console.error('🔴 LocationService: CRITICAL - No location update callbacks registered to receive GPS data!');
-        console.error('🔴 LocationService: This means React components won\'t receive location updates');
-      } else {
-        console.log('🔵 LocationService: Starting callback execution loop...');
-        this.updateCallbacks.forEach((callback, index) => {
-          try {
-            console.log(`🔵 LocationService: EXECUTING callback ${index + 1}/${this.updateCallbacks.length}`);
-            console.log(`🔵 LocationService: Callback function:`, callback.toString().substring(0, 100) + '...');
-            
-            // Execute the callback
-            const result = callback(locationData);
-            
-            console.log(`🟢 LocationService: Callback ${index + 1} executed successfully, result:`, result);
-          } catch (error) {
-            console.error(`🔴 LocationService: ERROR in location update callback ${index + 1}:`, error);
-            console.error(`🔴 LocationService: Error stack:`, error instanceof Error ? error.stack : 'No stack available');
-          }
-        });
-        console.log('🔵 LocationService: Finished executing all callbacks');
-      }
+        // Only log this error once per tracking session to avoid spam
+        if (!this.hasLoggedNoCallbacksError) {
+          console.error('🔴 LocationService: CRITICAL - No location update callbacks registered to receive GPS data!');
+          console.error('🔴 LocationService: This means React components won\'t receive location updates');
+          console.error('🔴 LocationService: GPS tracking will be paused until callbacks are registered');
+          this.hasLoggedNoCallbacksError = true;
+          
+          // Pause GPS tracking to prevent continuous error logging
+          this.pauseTrackingDueToNoCallbacks();
+        }
+        return; // Exit early if no callbacks
+      } 
+
+      // Reset the error flag since we have callbacks now
+      this.hasLoggedNoCallbacksError = false;
+      
+      // Execute callbacks with minimal logging
+      this.updateCallbacks.forEach((callback, index) => {
+        try {
+          callback(locationData);
+        } catch (error) {
+          console.error(`🔴 LocationService: ERROR in location update callback ${index + 1}:`, error);
+        }
+      });
 
       // Process location with backend for course context only if backend is available
       if (this.shouldAttemptBackendProcessing()) {
@@ -366,7 +458,7 @@ export class GolfLocationService {
   private async processLocationWithBackend(
     location: LocationData, 
     roundId: number, 
-    courseId: number
+    _courseId: number
   ): Promise<void> {
     try {
       // Use proper API URL with timeout and error handling
@@ -471,7 +563,7 @@ export class GolfLocationService {
   /**
    * Simple client-side shot detection analysis
    */
-  private async analyzeForShotDetection(location: LocationData, roundId: number): Promise<void> {
+  private async analyzeForShotDetection(location: LocationData, _roundId: number): Promise<void> {
     try {
       if (this.locationHistory.length < 2) return;
 
@@ -514,64 +606,139 @@ export class GolfLocationService {
   }
 
   /**
-   * Subscribe to location updates with deduplication
+   * Subscribe to location updates with improved deduplication and error handling
    */
   onLocationUpdate(callback: (location: LocationData) => void): () => void {
-    console.log('🔵 LocationService.onLocationUpdate: Registering callback. Total callbacks before:', this.updateCallbacks.length);
+    this.throttledLog('callback-registration', '🔵 LocationService.onLocationUpdate: Registering callback. Total callbacks before:', this.updateCallbacks.length);
     
-    // Check if callback is already registered (deduplication)
+    // Validate callback function
+    if (!callback || typeof callback !== 'function') {
+      console.error('🔴 LocationService.onLocationUpdate: Invalid callback provided');
+      return () => {}; // Return no-op unsubscribe function
+    }
+    
+    // Check if callback is already registered (deduplication by function reference)
     const existingIndex = this.updateCallbacks.indexOf(callback);
     if (existingIndex > -1) {
-      console.warn('🟡 LocationService.onLocationUpdate: Callback already registered, skipping duplicate registration');
+      this.throttledLog('duplicate-callback', '🟡 LocationService.onLocationUpdate: Callback already registered, skipping duplicate registration');
       return () => {
-        const index = this.updateCallbacks.indexOf(callback);
-        if (index > -1) {
-          this.updateCallbacks.splice(index, 1);
-          console.log('🔵 LocationService: Duplicate callback unsubscribed. Total callbacks now:', this.updateCallbacks.length);
+        try {
+          const index = this.updateCallbacks.indexOf(callback);
+          if (index > -1) {
+            this.updateCallbacks.splice(index, 1);
+            this.throttledLog('callback-unsubscribe', '🔵 LocationService: Duplicate callback unsubscribed. Total callbacks now:', this.updateCallbacks.length);
+          }
+        } catch (error) {
+          console.error('🔴 LocationService: Error unsubscribing duplicate callback:', error);
         }
       };
     }
     
     this.updateCallbacks.push(callback);
-    console.log('🔵 LocationService.onLocationUpdate: New callback registered. Total callbacks now:', this.updateCallbacks.length);
-    console.log('🔵 LocationService.onLocationUpdate: Callback function signature:', callback.toString().substring(0, 150) + '...');
+    this.throttledLog('callback-registration', '🔵 LocationService.onLocationUpdate: New callback registered. Total callbacks now:', this.updateCallbacks.length);
     
-    // Return unsubscribe function
+    // Resume GPS tracking if it was paused due to no callbacks
+    // Note: We can't access roundId/courseId here, so we rely on the component to restart tracking
+    if (this.pausedDueToNoCallbacks) {
+      console.log('🟡 LocationService: GPS was paused due to no callbacks. Component should restart tracking.');
+    }
+    
+    // Return enhanced unsubscribe function with error handling
     return () => {
-      const index = this.updateCallbacks.indexOf(callback);
-      if (index > -1) {
-        this.updateCallbacks.splice(index, 1);
-        console.log('🔵 LocationService: Location update callback unsubscribed. Total callbacks now:', this.updateCallbacks.length);
-      } else {
-        console.warn('🟡 LocationService: Attempted to unsubscribe callback that was not found');
+      try {
+        const index = this.updateCallbacks.indexOf(callback);
+        if (index > -1) {
+          this.updateCallbacks.splice(index, 1);
+          this.throttledLog('callback-unsubscribe', '🔵 LocationService: Location update callback unsubscribed. Total callbacks now:', this.updateCallbacks.length);
+        } else {
+          this.throttledLog('callback-warning', '🟡 LocationService: Attempted to unsubscribe callback that was not found');
+        }
+      } catch (error) {
+        console.error('🔴 LocationService: Error during callback unsubscription:', error);
       }
     };
   }
 
   /**
-   * Subscribe to course context updates
+   * Subscribe to course context updates with error handling
    */
   onContextUpdate(callback: (context: CourseLocationContext) => void): () => void {
+    // Validate callback function
+    if (!callback || typeof callback !== 'function') {
+      console.error('🔴 LocationService.onContextUpdate: Invalid callback provided');
+      return () => {}; // Return no-op unsubscribe function
+    }
+    
+    // Check for duplicates
+    const existingIndex = this.contextUpdateCallbacks.indexOf(callback);
+    if (existingIndex > -1) {
+      this.throttledWarn('context-duplicate-callback', '🟡 LocationService.onContextUpdate: Callback already registered, skipping duplicate');
+      return () => {
+        try {
+          const index = this.contextUpdateCallbacks.indexOf(callback);
+          if (index > -1) {
+            this.contextUpdateCallbacks.splice(index, 1);
+          }
+        } catch (error) {
+          console.error('🔴 LocationService: Error unsubscribing context callback:', error);
+        }
+      };
+    }
+    
     this.contextUpdateCallbacks.push(callback);
+    this.throttledLog('context-callback-registration', '🔵 LocationService: Context update callback registered. Total:', this.contextUpdateCallbacks.length);
     
     return () => {
-      const index = this.contextUpdateCallbacks.indexOf(callback);
-      if (index > -1) {
-        this.contextUpdateCallbacks.splice(index, 1);
+      try {
+        const index = this.contextUpdateCallbacks.indexOf(callback);
+        if (index > -1) {
+          this.contextUpdateCallbacks.splice(index, 1);
+          this.throttledLog('context-callback-unsubscribe', '🔵 LocationService: Context update callback unsubscribed. Total:', this.contextUpdateCallbacks.length);
+        }
+      } catch (error) {
+        console.error('🔴 LocationService: Error during context callback unsubscription:', error);
       }
     };
   }
 
   /**
-   * Subscribe to shot detection events
+   * Subscribe to shot detection events with error handling
    */
   onShotDetection(callback: (shotData: any) => void): () => void {
+    // Validate callback function
+    if (!callback || typeof callback !== 'function') {
+      console.error('🔴 LocationService.onShotDetection: Invalid callback provided');
+      return () => {}; // Return no-op unsubscribe function
+    }
+    
+    // Check for duplicates
+    const existingIndex = this.shotDetectionCallbacks.indexOf(callback);
+    if (existingIndex > -1) {
+      console.warn('🟡 LocationService.onShotDetection: Callback already registered, skipping duplicate');
+      return () => {
+        try {
+          const index = this.shotDetectionCallbacks.indexOf(callback);
+          if (index > -1) {
+            this.shotDetectionCallbacks.splice(index, 1);
+          }
+        } catch (error) {
+          console.error('🔴 LocationService: Error unsubscribing shot detection callback:', error);
+        }
+      };
+    }
+    
     this.shotDetectionCallbacks.push(callback);
+    console.log('🔵 LocationService: Shot detection callback registered. Total:', this.shotDetectionCallbacks.length);
     
     return () => {
-      const index = this.shotDetectionCallbacks.indexOf(callback);
-      if (index > -1) {
-        this.shotDetectionCallbacks.splice(index, 1);
+      try {
+        const index = this.shotDetectionCallbacks.indexOf(callback);
+        if (index > -1) {
+          this.shotDetectionCallbacks.splice(index, 1);
+          console.log('🔵 LocationService: Shot detection callback unsubscribed. Total:', this.shotDetectionCallbacks.length);
+        }
+      } catch (error) {
+        console.error('🔴 LocationService: Error during shot detection callback unsubscription:', error);
       }
     };
   }
@@ -649,7 +816,7 @@ export class GolfLocationService {
               console.log(`High accuracy GPS position: ${highAccuracyPosition.coords.accuracy}m`);
               resolve(highAccuracyData);
             },
-            (highAccuracyError) => {
+            (_highAccuracyError) => {
               console.log('High accuracy GPS failed, using initial position');
               // Fall back to initial position if high accuracy fails
               resolve(locationData);

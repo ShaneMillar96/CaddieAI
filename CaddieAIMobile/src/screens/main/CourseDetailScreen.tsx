@@ -171,7 +171,7 @@ export const CourseDetailScreen: React.FC = () => {
         }
 
         // Proceed with round creation
-        const newRound = await roundApi.createAndStartRound(selectedCourse.id);
+        await roundApi.createAndStartRound(selectedCourse.id);
         
         // Update Redux state
         await dispatch(fetchActiveRound());
