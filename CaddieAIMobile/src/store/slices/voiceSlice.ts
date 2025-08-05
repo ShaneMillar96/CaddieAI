@@ -36,7 +36,7 @@ export interface VoiceState {
     positionOnHole?: string;
   } | null;
 
-  // Map-specific state
+  // Enhanced map-specific state
   mapState: {
     targetPin: {
       latitude: number;
@@ -44,16 +44,28 @@ export interface VoiceState {
       distanceYards: number;
       bearing: number;
       timestamp: number;
+      club?: string;
+      confidence?: number;
     } | null;
     mapType: 'standard' | 'satellite' | 'hybrid' | 'terrain';
     showDistanceBadge: boolean;
     lastTargetUpdate: string | null;
+    lastInteraction?: {
+      interactionType: 'target' | 'shot' | 'location';
+      data: any;
+      timestamp: number;
+    };
     courseRegion: {
       latitude: number;
       longitude: number;
       latitudeDelta: number;
       longitudeDelta: number;
     } | null;
+    gpsQuality?: {
+      accuracy: number;
+      quality: 'excellent' | 'good' | 'fair' | 'poor';
+      timestamp: number;
+    };
   };
 
   // Usage statistics
@@ -94,13 +106,15 @@ const initialState: VoiceState = {
   // Location context
   currentLocation: null,
 
-  // Map-specific state
+  // Enhanced map-specific state
   mapState: {
     targetPin: null,
     mapType: 'satellite',
     showDistanceBadge: false,
     lastTargetUpdate: null,
+    lastInteraction: undefined,
     courseRegion: null,
+    gpsQuality: undefined,
   },
 
   // Usage statistics
@@ -293,32 +307,34 @@ const voiceSlice = createSlice({
       distanceToTee?: number;
       positionOnHole?: string;
     }>) => {
-      console.log('🟣 Redux voiceSlice.updateCurrentLocation: REDUCER TRIGGERED');
-      console.log('🟣 Redux voiceSlice.updateCurrentLocation: Action received:', {
-        type: action.type,
-        payload: action.payload
-      });
-      console.log('🟣 Redux voiceSlice.updateCurrentLocation: Previous location state:', state.currentLocation);
-      console.log('🟣 Redux voiceSlice.updateCurrentLocation: State object before update:', JSON.stringify(state.currentLocation));
+      // Optimized logging - only log essential info and avoid expensive JSON.stringify
+      if (__DEV__) {
+        const hasSignificantChange = !state.currentLocation || 
+          Math.abs(state.currentLocation.latitude - action.payload.latitude) > 0.0001 ||
+          Math.abs(state.currentLocation.longitude - action.payload.longitude) > 0.0001;
+        
+        if (hasSignificantChange) {
+          console.log('🟢 Redux voiceSlice.updateCurrentLocation: Significant location update:', {
+            lat: action.payload.latitude.toFixed(6),
+            lng: action.payload.longitude.toFixed(6),
+            accuracy: action.payload.accuracy?.toFixed(1) + 'm',
+            hole: action.payload.currentHole
+          });
+        }
+      }
       
-      // Update the state
+      // Update the state efficiently
       state.currentLocation = action.payload;
-      
-      console.log('🟢 Redux voiceSlice.updateCurrentLocation: Location state updated to:', state.currentLocation);
-      console.log('🟢 Redux voiceSlice.updateCurrentLocation: State object after update:', JSON.stringify(state.currentLocation));
-      console.log('🟢 Redux voiceSlice.updateCurrentLocation: Coordinates set to:', {
-        latitude: state.currentLocation?.latitude,
-        longitude: state.currentLocation?.longitude,
-        accuracy: state.currentLocation?.accuracy
-      });
     },
 
-    // Map state management
+    // Enhanced map state management
     setTargetPin: (state, action: PayloadAction<{
       latitude: number;
       longitude: number;
       distanceYards: number;
       bearing: number;
+      club?: string;
+      confidence?: number;
     }>) => {
       state.mapState.targetPin = {
         ...action.payload,
@@ -326,12 +342,36 @@ const voiceSlice = createSlice({
       };
       state.mapState.showDistanceBadge = true;
       state.mapState.lastTargetUpdate = new Date().toISOString();
+      
+      // Log target selection for AI context
+      console.log(`🎯 Redux: Target pin set - ${action.payload.distanceYards} yards at bearing ${action.payload.bearing}°`);
     },
 
     clearTargetPin: (state) => {
+      const previousTarget = state.mapState.targetPin;
       state.mapState.targetPin = null;
       state.mapState.showDistanceBadge = false;
       state.mapState.lastTargetUpdate = null;
+      
+      if (previousTarget) {
+        console.log(`🎯 Redux: Target pin cleared - was ${previousTarget.distanceYards} yards`);
+      }
+    },
+
+    updateMapInteraction: (state, action: PayloadAction<{
+      interactionType: 'target' | 'shot' | 'location';
+      data: any;
+      timestamp?: number;
+    }>) => {
+      // Track map interactions for better AI context
+      const interaction = {
+        ...action.payload,
+        timestamp: action.payload.timestamp || Date.now()
+      };
+      
+      // Store last interaction for AI integration
+      state.mapState.lastInteraction = interaction;
+      console.log(`🗺️ Redux: Map interaction - ${interaction.interactionType}:`, interaction.data);
     },
 
     setMapType: (state, action: PayloadAction<'standard' | 'satellite' | 'hybrid' | 'terrain'>) => {

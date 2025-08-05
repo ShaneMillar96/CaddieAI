@@ -17,6 +17,24 @@ export interface GolfDistanceContext {
   isWithinGolfRange: boolean;
   recommendedClub?: string;
   windAdjustment?: number;
+  elevation?: number;
+  accuracyQuality?: string;
+  shotDifficulty?: 'Easy' | 'Moderate' | 'Difficult' | 'Expert';
+}
+
+export interface PinLocationData {
+  front: number;
+  center: number;
+  back: number;
+  pinPosition?: 'front' | 'middle' | 'back';
+}
+
+export interface ShotAnalysis {
+  carry: number;
+  total: number;
+  trajectory: 'low' | 'mid' | 'high';
+  spin: 'low' | 'medium' | 'high';
+  confidence: number;
 }
 
 /**
@@ -35,23 +53,23 @@ export class DistanceCalculator {
   private static readonly METERS_TO_KILOMETERS = 0.001;
   private static readonly METERS_TO_MILES = 0.000621371;
 
-  // Golf club distance ranges (in yards) - average male golfer
+  // Enhanced golf club distance ranges with additional data
   private static readonly CLUB_DISTANCES = {
-    'Driver': { min: 200, max: 300 },
-    '3-Wood': { min: 180, max: 250 },
-    '5-Wood': { min: 160, max: 220 },
-    '3-Iron': { min: 150, max: 200 },
-    '4-Iron': { min: 140, max: 185 },
-    '5-Iron': { min: 130, max: 170 },
-    '6-Iron': { min: 120, max: 160 },
-    '7-Iron': { min: 110, max: 150 },
-    '8-Iron': { min: 100, max: 140 },
-    '9-Iron': { min: 90, max: 130 },
-    'Pitching Wedge': { min: 80, max: 120 },
-    'Sand Wedge': { min: 60, max: 100 },
-    'Lob Wedge': { min: 40, max: 80 },
-    'Putter': { min: 0, max: 30 }
-  };
+    'Driver': { min: 200, max: 300, avg: 250, trajectory: 'low', spin: 'low' },
+    '3-Wood': { min: 180, max: 250, avg: 215, trajectory: 'mid', spin: 'low' },
+    '5-Wood': { min: 160, max: 220, avg: 190, trajectory: 'mid', spin: 'medium' },
+    '3-Iron': { min: 150, max: 200, avg: 175, trajectory: 'low', spin: 'low' },
+    '4-Iron': { min: 140, max: 185, avg: 162, trajectory: 'low', spin: 'medium' },
+    '5-Iron': { min: 130, max: 170, avg: 150, trajectory: 'mid', spin: 'medium' },
+    '6-Iron': { min: 120, max: 160, avg: 140, trajectory: 'mid', spin: 'medium' },
+    '7-Iron': { min: 110, max: 150, avg: 130, trajectory: 'mid', spin: 'medium' },
+    '8-Iron': { min: 100, max: 140, avg: 120, trajectory: 'mid', spin: 'high' },
+    '9-Iron': { min: 90, max: 130, avg: 110, trajectory: 'high', spin: 'high' },
+    'PW': { min: 80, max: 120, avg: 100, trajectory: 'high', spin: 'high' },
+    'SW': { min: 60, max: 100, avg: 80, trajectory: 'high', spin: 'high' },
+    'LW': { min: 40, max: 80, avg: 60, trajectory: 'high', spin: 'high' },
+    'Putter': { min: 0, max: 30, avg: 15, trajectory: 'low', spin: 'low' }
+  } as const;
 
   /**
    * Calculate distance between two GPS coordinates using Haversine formula
@@ -140,25 +158,73 @@ export class DistanceCalculator {
   }
 
   /**
-   * Recommend golf club based on distance in yards
+   * Enhanced club recommendation with conditions
    */
-  static recommendClub(distanceYards: number): string {
-    // Find the most appropriate club for the distance
+  static recommendClub(distanceYards: number, conditions?: {
+    wind?: 'headwind' | 'tailwind' | 'crosswind' | 'calm';
+    elevation?: 'uphill' | 'downhill' | 'level';
+    pin?: 'front' | 'middle' | 'back';
+    confidence?: 'conservative' | 'aggressive';
+  }): string {
+    let adjustedDistance = distanceYards;
+
+    // Apply condition adjustments
+    if (conditions) {
+      if (conditions.wind === 'headwind') adjustedDistance *= 1.1;
+      else if (conditions.wind === 'tailwind') adjustedDistance *= 0.9;
+      
+      if (conditions.elevation === 'uphill') adjustedDistance *= 1.1;
+      else if (conditions.elevation === 'downhill') adjustedDistance *= 0.9;
+      
+      if (conditions.pin === 'back') adjustedDistance *= 1.05;
+      else if (conditions.pin === 'front') adjustedDistance *= 0.95;
+      
+      if (conditions.confidence === 'conservative') adjustedDistance *= 1.05;
+      else if (conditions.confidence === 'aggressive') adjustedDistance *= 0.95;
+    }
+
+    // Find best club match
+    let bestClub = 'PW';
+    let bestScore = Infinity;
+
     for (const [club, range] of Object.entries(this.CLUB_DISTANCES)) {
-      if (distanceYards >= range.min && distanceYards <= range.max) {
-        // If distance is in the upper part of the range, suggest this club
-        const midpoint = (range.min + range.max) / 2;
-        if (distanceYards >= midpoint) {
-          return club;
-        }
+      const score = Math.abs(adjustedDistance - range.avg);
+      if (score < bestScore && adjustedDistance >= range.min - 10 && adjustedDistance <= range.max + 10) {
+        bestScore = score;
+        bestClub = club;
       }
     }
 
-    // Fallback logic for edge cases
-    if (distanceYards > 300) return 'Driver';
-    if (distanceYards < 40) return 'Putter';
-    
-    return 'Pitching Wedge'; // Safe default for mid-range shots
+    return bestClub;
+  }
+
+  /**
+   * Get multiple club options for a distance
+   */
+  static getClubOptions(distanceYards: number): Array<{
+    club: string;
+    confidence: number;
+    shot: 'full' | 'easy' | 'hard';
+  }> {
+    const options: Array<{ club: string; confidence: number; shot: 'full' | 'easy' | 'hard' }> = [];
+
+    for (const [club, range] of Object.entries(this.CLUB_DISTANCES)) {
+      if (distanceYards >= range.min - 15 && distanceYards <= range.max + 15) {
+        let confidence = 100;
+        let shot: 'full' | 'easy' | 'hard' = 'full';
+
+        const distanceFromAvg = Math.abs(distanceYards - range.avg);
+        const rangeSize = range.max - range.min;
+        confidence = Math.max(50, 100 - (distanceFromAvg / rangeSize) * 100);
+
+        if (distanceYards < range.avg - rangeSize * 0.2) shot = 'easy';
+        else if (distanceYards > range.avg + rangeSize * 0.2) shot = 'hard';
+
+        options.push({ club, confidence: Math.round(confidence), shot });
+      }
+    }
+
+    return options.sort((a, b) => b.confidence - a.confidence).slice(0, 3);
   }
 
   /**
@@ -242,16 +308,40 @@ export class DistanceCalculator {
   }
 
   /**
-   * Format distance for golf display (prioritizes yards)
+   * Enhanced distance formatting with context
    */
-  static formatGolfDistance(distance: DistanceResult): string {
-    if (distance.yards < 1) {
-      return `${Math.round(distance.feet)}'`;
-    } else if (distance.yards < 100) {
-      return `${Math.round(distance.yards)} yds`;
-    } else {
-      return `${Math.round(distance.yards)} yards`;
+  static formatGolfDistance(distance: DistanceResult, format: 'compact' | 'detailed' | 'precise' = 'compact'): string {
+    const yards = Math.round(distance.yards);
+    const meters = Math.round(distance.meters);
+    const feet = Math.round(distance.feet);
+
+    switch (format) {
+      case 'detailed':
+        if (yards < 1) return `${feet}ft`;
+        return `${yards} yds (${meters}m)`;
+      
+      case 'precise':
+        if (yards < 1) return `${feet}ft`;
+        if (yards < 10) return `${distance.yards.toFixed(1)} yds`;
+        return `${yards} yds`;
+      
+      case 'compact':
+      default:
+        if (yards < 1) return `${feet}ft`;
+        return `${yards} yds`;
     }
+  }
+
+  /**
+   * Get compass direction text from bearing
+   */
+  static getBearingDirection(bearing: number): string {
+    const directions = [
+      'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
+      'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'
+    ];
+    const index = Math.round(bearing / 22.5) % 16;
+    return directions[index];
   }
 
   /**
