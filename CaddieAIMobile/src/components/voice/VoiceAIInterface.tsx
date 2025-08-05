@@ -441,7 +441,9 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
           hasActiveTarget: !!targetPin,
           currentHole: currentHole || propCurrentLocation?.currentHole,
           shotType: targetPin ? getShotDifficulty(targetPin.distanceYards) : 'general',
-          // Shot tracking context for AI recommendations
+        },
+        // Add shot history as metadata instead
+        metadata: {
           shotHistory: shotMarkers.map((shot, index) => ({
             shotNumber: index + 1,
             distance: shot.distance.yards,

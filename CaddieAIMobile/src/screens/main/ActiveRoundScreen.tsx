@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -27,46 +27,19 @@ import {
   startVoiceSession,
   endVoiceSession,
   updateCurrentLocation,
-  setTargetPin,
-  clearTargetPin,
-  setMapType,
 } from '../../store/slices/voiceSlice';
 import { LoadingSpinner } from '../../components/auth/LoadingSpinner';
 import { ErrorMessage } from '../../components/auth/ErrorMessage';
-import VoiceAIInterface, { ConversationMessage } from '../../components/voice/VoiceAIInterface';
-import GolfCourseMap from '../../components/map/GolfCourseMap';
-import MapOverlay from '../../components/map/MapOverlay';
+import VoiceAIInterface from '../../components/voice/VoiceAIInterface';
+import SimpleMapView from '../../components/map/SimpleMapView';
+import SimpleMapOverlay from '../../components/map/SimpleMapOverlay';
+import MapErrorBoundary from '../../components/map/MapErrorBoundary';
 import { 
-  golfLocationService, 
-  LocationData, 
-  ShotMarkerData,
-  isLocationServiceAvailable, 
-  safeLocationServiceCall 
-} from '../../services/LocationService';
-import { DistanceCalculator, Coordinate, DistanceResult } from '../../utils/DistanceCalculator';
-
-// Enhanced interfaces
-interface ShotMarker {
-  id: string;
-  coordinate: Coordinate;
-  timestamp: number;
-  distance?: DistanceResult;
-  club?: string;
-  note?: string;
-}
-
-interface MapState {
-  region: {
-    latitude: number;
-    longitude: number;
-    latitudeDelta: number;
-    longitudeDelta: number;
-  } | null;
-  userLocation: LocationData | null;
-  shotMarkers: ShotMarker[];
-  isPlacingShotMode: boolean;
-}
-import { MapErrorBoundary, VoiceErrorBoundary } from '../../components/common/ErrorBoundary';
+  simpleLocationService, 
+  SimpleLocationData,
+  isLocationServiceAvailable 
+} from '../../services/SimpleLocationService';
+import { useGPSStabilization, useGPSStabilityPresets } from '../../hooks/useGPSStabilization';
 
 // Navigation types
 type MainStackParamList = {
@@ -78,6 +51,17 @@ type MainStackParamList = {
 
 type ActiveRoundScreenNavigationProp = StackNavigationProp<MainStackParamList>;
 
+/**
+ * ActiveRoundScreen - Clean Implementation
+ * 
+ * Core functionality:
+ * - Display satellite map view
+ * - Show current location with GPS marker
+ * - Handle location permissions
+ * - Provide loading and error states
+ * - Basic voice interface integration
+ * - Round control access
+ */
 export const ActiveRoundScreen: React.FC = () => {
   const navigation = useNavigation<ActiveRoundScreenNavigationProp>();
   const dispatch = useDispatch<AppDispatch>();
@@ -94,228 +78,229 @@ export const ActiveRoundScreen: React.FC = () => {
   const {
     isVoiceInterfaceVisible,
     currentLocation,
-    mapState,
   } = useSelector((state: RootState) => state.voice);
 
   const { user } = useSelector((state: RootState) => state.auth);
 
-  // Enhanced local state
+  // Local state - keep it simple
   const [currentHole, setCurrentHole] = useState<number>(1);
   const [isLocationTracking, setIsLocationTracking] = useState(false);
-  const [, setLocationPermissionGranted] = useState(false);
-  const [targetDistance, setTargetDistance] = useState<DistanceResult | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [showRoundControls, setShowRoundControls] = useState(false);
   
-  // Enhanced map state
-  const [mapStateLocal, setMapStateLocal] = useState<MapState>({
-    region: null,
-    userLocation: null,
-    shotMarkers: [],
-    isPlacingShotMode: false,
-  });
+  // Map stability and lifecycle management
+  const [mapMountingAllowed, setMapMountingAllowed] = useState(false);
+  const [mapRetryCount, setMapRetryCount] = useState(0);
+  const [lastMapRetryTime, setLastMapRetryTime] = useState(0);
+  
+  // Convert Redux currentLocation to SimpleLocationData format with stable reference
+  const simpleLocationData: SimpleLocationData | null = useMemo(() => {
+    if (!currentLocation || 
+        typeof currentLocation.latitude !== 'number' || 
+        typeof currentLocation.longitude !== 'number' ||
+        currentLocation.latitude === 0 && currentLocation.longitude === 0) {
+      return null;
+    }
+    
+    return {
+      latitude: currentLocation.latitude,
+      longitude: currentLocation.longitude,
+      accuracy: currentLocation.accuracy || 0,
+      timestamp: Date.now(), // Only set timestamp when location actually changes
+    };
+  }, [currentLocation?.latitude, currentLocation?.longitude, currentLocation?.accuracy]);
 
-  // Refs for cleanup and map control
-  const cleanupFunctionsRef = useRef<Array<() => void>>([]);
-  const mapRef = useRef<any>(null);
-  const componentMountedRef = useRef(false);
-  const locationTrackingInitializedRef = useRef(false);
-  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // GPS stabilization configuration
+  const stabilityPresets = useGPSStabilityPresets();
+  const gpsStability = useGPSStabilization(simpleLocationData, stabilityPresets.balanced);
 
+  // Initialize active round
+  useEffect(() => {
+    const initializeRound = async () => {
+      try {
+        const result = await dispatch(fetchActiveRound()).unwrap();
+        if (result) {
+          setCurrentHole(result.currentHole || 1);
+          dispatch(fetchHoleScores(result.id));
+        }
+      } catch (error) {
+        console.error('Error loading active round:', error);
+      }
+    };
 
-  // Enhanced location update handler with improved state management
-  const handleLocationUpdate = useCallback((location: LocationData) => {
-    // Validate location data
-    if (!location.latitude || !location.longitude || 
-        Math.abs(location.latitude) > 90 || Math.abs(location.longitude) > 180) {
-      console.warn('🟡 Invalid location data, skipping update');
+    initializeRound();
+  }, [dispatch]);
+
+  // Monitor GPS stability and control map mounting
+  useEffect(() => {
+    const canMount = gpsStability.canRenderMap && isLocationTracking && !locationError;
+    
+    if (canMount !== mapMountingAllowed) {
+      if (canMount) {
+        console.log('✅ GPS Stabilization: GPS is stable, allowing map mounting');
+        console.log(`🟠 GPS Status: Accuracy: ${gpsStability.currentAccuracy?.toFixed(1)}m, Quality: ${gpsStability.qualityLevel}, Progress: ${gpsStability.stabilityProgress.toFixed(0)}%`);
+      } else {
+        console.log('🟡 GPS Stabilization: GPS not stable enough for map mounting');
+        console.log(`🟠 GPS Status: Accuracy: ${gpsStability.currentAccuracy?.toFixed(1) || 'unknown'}m, Quality: ${gpsStability.qualityLevel}, Stable: ${gpsStability.isStable}`);
+      }
+      
+      setMapMountingAllowed(canMount);
+    }
+  }, [gpsStability, isLocationTracking, locationError, mapMountingAllowed]);
+
+  // Start location tracking when round is available
+  useEffect(() => {
+    if (activeRound?.id && user?.id && !isLocationTracking) {
+      startLocationTracking();
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (isLocationTracking) {
+        stopLocationTracking();
+      }
+    };
+  }, [activeRound?.id, user?.id]);
+
+  // Start GPS tracking
+  const startLocationTracking = useCallback(async () => {
+    if (!isLocationServiceAvailable()) {
+      setLocationError('Location service not available');
       return;
     }
-    
-    // Update Redux state
-    dispatch(updateCurrentLocation({
-      latitude: location.latitude,
-      longitude: location.longitude,
-      accuracy: location.accuracy,
-    }));
 
-    // Update local map state
-    setMapStateLocal(prev => ({
-      ...prev,
-      userLocation: location,
-      region: prev.region || {
-        latitude: location.latitude,
-        longitude: location.longitude,
-        latitudeDelta: 0.003,
-        longitudeDelta: 0.003,
-      }
-    }));
-
-    // Center map on user location if this is the first location update
-    if (!mapStateLocal.region && mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: location.latitude,
-        longitude: location.longitude,
-        latitudeDelta: 0.003,
-        longitudeDelta: 0.003,
-      }, 1000);
-    }
-  }, [dispatch]); // Stable dependencies only
-
-
-  // Shot placement mode controls
-  const toggleShotPlacementMode = useCallback(() => {
-    setMapStateLocal(prev => {
-      const newMode = !prev.isPlacingShotMode;
-      console.log('🟠 ActiveRoundScreen: Toggling shot placement mode:', {
-        previousMode: prev.isPlacingShotMode,
-        newMode: newMode
-      });
-      return {
-        ...prev,
-        isPlacingShotMode: newMode,
-      };
-    });
-  }, []);
-
-  // Remove shot marker
-  const removeShotMarker = useCallback((markerId: string) => {
-    setMapStateLocal(prev => ({
-      ...prev,
-      shotMarkers: prev.shotMarkers.filter(marker => marker.id !== markerId),
-    }));
-  }, []);
-
-  // Center map on user location
-  const centerOnUserLocation = useCallback(() => {
-    if (currentLocation && mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude,
-        latitudeDelta: 0.003,
-        longitudeDelta: 0.003,
-      }, 1000);
-    }
-  }, [currentLocation]);
-
-  // Handle course context updates (hole detection, distances)
-  const handleContextUpdate = useCallback((context: any) => {
-    // Update current hole if detected
-    if (context.currentHole && context.currentHole !== currentHole) {
-      setCurrentHole(context.currentHole);
-    }
-    
-    // Update location context in Redux
-    dispatch(updateCurrentLocation({
-      latitude: currentLocation?.latitude || 0,
-      longitude: currentLocation?.longitude || 0,
-      currentHole: context.currentHole,
-      distanceToPin: context.distanceToPin,
-      distanceToTee: context.distanceToTee,
-      positionOnHole: context.positionOnHole,
-    }));
-  }, [dispatch, currentHole, currentLocation]);
-
-  // Handle shot detection events
-  const handleShotDetection = useCallback((shotData: any) => {
-    if (shotData.detected) {
-      console.log('Shot detected:', shotData);
-      // Could show a notification or update UI to reflect shot
-      Alert.alert(
-        'Shot Detected',
-        `Detected a ${shotData.distance?.toFixed(0)}m shot with ${shotData.estimatedClub}`,
-        [{ text: 'OK' }]
-      );
-    }
-  }, []);
-
-  // Enhanced location tracking setup with proper lifecycle management
-  const startLocationTracking = useCallback(async (roundId: number, courseId: number) => {
     try {
-      if (!isLocationServiceAvailable()) {
-        console.warn('Location service not available in ActiveRoundScreen');
-        setLocationPermissionGranted(false);
-        Alert.alert(
-          'Location Service Unavailable', 
-          'GPS tracking is currently unavailable. Please ensure location permissions are granted and restart the app.',
-          [
-            { text: 'OK' },
-            { text: 'Try Again', onPress: () => startLocationTracking(roundId, courseId) }
-          ]
-        );
-        return;
+      // Start voice session
+      if (activeRound?.id) {
+        dispatch(startVoiceSession({ roundId: activeRound.id }));
       }
 
-      const hasPermission = await safeLocationServiceCall(
-        (service) => service.requestLocationPermissions(),
-        false
-      );
-      
-      if (!hasPermission) {
-        setLocationPermissionGranted(false);
-        Alert.alert(
-          'Location Permission Required',
-          'GPS tracking enhances your golf experience with accurate distance measurements and shot analysis. Please grant location permission to continue.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Retry', onPress: () => startLocationTracking(roundId, courseId) }
-          ]
-        );
-        return;
-      }
-
-      setLocationPermissionGranted(true);
-      
-      // CRITICAL: Register callbacks BEFORE starting GPS tracking
-      console.log('🟢 ActiveRoundScreen: Registering location callbacks before starting GPS...');
-      const unsubscribeLocation = golfLocationService.onLocationUpdate(handleLocationUpdate);
-      const unsubscribeContext = golfLocationService.onContextUpdate(handleContextUpdate);
-      const unsubscribeShots = golfLocationService.onShotDetection(handleShotDetection);
-      
-      // Store cleanup functions immediately
-      cleanupFunctionsRef.current.push(unsubscribeLocation);
-      cleanupFunctionsRef.current.push(unsubscribeContext);
-      cleanupFunctionsRef.current.push(unsubscribeShots);
-      
-      console.log('🟢 ActiveRoundScreen: Location callbacks registered, now starting GPS tracking...');
-      
-      const trackingStarted = await safeLocationServiceCall(
-        (service) => service.startRoundTracking(roundId, courseId),
-        false
-      );
-      
-      if (trackingStarted) {
-        setIsLocationTracking(true);
-        console.log(`🟢 ActiveRoundScreen: GPS tracking started successfully for round ${roundId}`);
-        
-        // Get initial location
-        const currentPos = golfLocationService.getCurrentLocation();
-        if (currentPos) {
-          handleLocationUpdate(currentPos);
+      // Subscribe to location updates
+      const unsubscribeLocation = simpleLocationService.onLocationUpdate(
+        (location: SimpleLocationData) => {
+          // Update Redux store
+          dispatch(updateCurrentLocation({
+            latitude: location.latitude,
+            longitude: location.longitude,
+            accuracy: location.accuracy,
+          }));
         }
+      );
+
+      // Subscribe to location errors
+      const unsubscribeError = simpleLocationService.onLocationError(
+        (error: string) => {
+          setLocationError(error);
+        }
+      );
+
+      // Start GPS tracking
+      const success = await simpleLocationService.startTracking();
+      if (success) {
+        setIsLocationTracking(true);
+        setLocationError(null);
+        console.log('GPS tracking started successfully');
       } else {
-        console.warn('Failed to start location tracking, cleaning up callbacks');
-        // Clean up callbacks if GPS tracking failed
-        cleanupFunctionsRef.current.forEach(cleanup => cleanup());
-        cleanupFunctionsRef.current = [];
-        
-        Alert.alert(
-          'GPS Tracking Issue',
-          'Unable to start GPS tracking. The app will still work, but distance measurements may be limited.',
-          [{ text: 'OK' }]
-        );
+        setLocationError('Failed to start GPS tracking');
       }
+
+      // Store cleanup functions
+      return () => {
+        unsubscribeLocation();
+        unsubscribeError();
+      };
     } catch (error) {
       console.error('Error starting location tracking:', error);
-      setLocationPermissionGranted(false);
-      
-      // Clean up any callbacks that may have been registered
-      cleanupFunctionsRef.current.forEach(cleanup => cleanup());
-      cleanupFunctionsRef.current = [];
+      setLocationError('Error starting GPS tracking');
     }
-  }, [handleLocationUpdate, handleContextUpdate, handleShotDetection]);
+  }, [activeRound?.id, dispatch]);
 
-  // Memoized round control handlers to prevent re-renders
-  const roundControlHandlers = useMemo(() => ({
+  // Stop GPS tracking
+  const stopLocationTracking = useCallback(() => {
+    if (isLocationServiceAvailable()) {
+      simpleLocationService.stopTracking();
+    }
+    
+    setIsLocationTracking(false);
+    dispatch(endVoiceSession());
+    console.log('GPS tracking stopped');
+  }, [dispatch]);
+
+  // Handle voice toggle
+  const handleVoiceToggle = useCallback(() => {
+    dispatch(toggleVoiceInterface());
+  }, [dispatch]);
+
+  // Handle map press for distance measurement
+  const handleMapPress = useCallback((coordinate: { latitude: number; longitude: number }) => {
+    if (!currentLocation) {
+      Alert.alert(
+        'GPS Required',
+        'Please wait for GPS to acquire your location before measuring distances.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // Simple distance calculation (basic Haversine formula)
+    const R = 6371e3; // Earth's radius in meters
+    const φ1 = currentLocation.latitude * Math.PI/180;
+    const φ2 = coordinate.latitude * Math.PI/180;
+    const Δφ = (coordinate.latitude - currentLocation.latitude) * Math.PI/180;
+    const Δλ = (coordinate.longitude - currentLocation.longitude) * Math.PI/180;
+
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const distance = R * c; // Distance in meters
+    const yards = distance * 1.09361; // Convert to yards
+
+    if (yards < 5) {
+      Alert.alert('Target Too Close', 'Please select a target at least 5 yards away.');
+      return;
+    }
+
+    Alert.alert(
+      'Distance Measurement',
+      `Distance: ${Math.round(yards)} yards (${Math.round(distance)} meters)`,
+      [{ text: 'OK' }]
+    );
+  }, [currentLocation]);
+
+  // Center map on user location
+  const handleCenterOnUser = useCallback(() => {
+    // This will be handled by the SimpleMapView component automatically
+    // when currentLocation updates
+  }, []);
+
+  // Handle map retry with exponential backoff
+  const handleMapRetry = useCallback(() => {
+    const now = Date.now();
+    const timeSinceLastRetry = now - lastMapRetryTime;
+    const minRetryInterval = Math.min(2000 * Math.pow(2, mapRetryCount), 30000); // Max 30 seconds
+
+    if (timeSinceLastRetry < minRetryInterval) {
+      console.log(`🔄 Map retry too soon, waiting ${Math.ceil((minRetryInterval - timeSinceLastRetry) / 1000)}s`);
+      return;
+    }
+
+    console.log(`🔄 Map retry requested - Attempt #${mapRetryCount + 1}`);
+    setMapRetryCount(prev => prev + 1);
+    setLastMapRetryTime(now);
+    
+    // Reset map mounting to force re-evaluation
+    setMapMountingAllowed(false);
+    
+    // Re-evaluate mounting after a short delay
+    setTimeout(() => {
+      const canMount = gpsStability.canRenderMap && isLocationTracking && !locationError;
+      setMapMountingAllowed(canMount);
+    }, 1000);
+  }, [mapRetryCount, lastMapRetryTime, gpsStability.canRenderMap, isLocationTracking, locationError]);
+
+  // Round control handlers
+  const roundControlHandlers = {
     pause: async () => {
       if (!activeRound) return;
       try {
@@ -379,214 +364,104 @@ export const ActiveRoundScreen: React.FC = () => {
         ]
       );
     },
-  }), [activeRound, dispatch, navigation]);
+  };
 
-
-
-  // Handle voice conversation updates
-  const handleConversationUpdate = useCallback((conversation: ConversationMessage[]) => {
-    // Conversation is already managed by the VoiceAIInterface component
-    // and stored in Redux state
-    console.log('Conversation updated:', conversation.length, 'messages');
-  }, []);
-
-  // Enhanced target selection handler (defined early to avoid hoisting issues)
-  const handleTargetSelected = useCallback((coordinate: Coordinate, distance: DistanceResult) => {
-    if (distance.yards === 0) {
-      setTargetDistance(null);
-      dispatch(clearTargetPin());
-      return;
+  // Show location error if present
+  useEffect(() => {
+    if (locationError) {
+      Alert.alert('GPS Error', locationError, [
+        { text: 'OK' },
+        { text: 'Retry', onPress: startLocationTracking }
+      ]);
     }
+  }, [locationError, startLocationTracking]);
 
-    setTargetDistance(distance);
-    
-    const bearing = currentLocation ? DistanceCalculator.calculateBearing(
-      { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
-      coordinate
-    ) : 0;
+  // Render GPS stabilization loading
+  const renderGPSStabilizationScreen = () => {
+    return (
+      <View style={styles.gpsStabilizationContainer}>
+        <Icon name="gps-fixed" size={64} color="#4a7c59" />
+        <Text style={styles.gpsStabilizationTitle}>
+          Stabilizing GPS Signal
+        </Text>
+        <Text style={styles.gpsStabilizationSubtitle}>
+          Waiting for accurate location before loading map...
+        </Text>
+        
+        {/* GPS Status Info */}
+        <View style={styles.gpsStabilizationInfo}>
+          <View style={styles.gpsInfoRow}>
+            <Text style={styles.gpsInfoLabel}>Current Accuracy:</Text>
+            <Text style={[
+              styles.gpsInfoValue,
+              { color: gpsStability.currentAccuracy && gpsStability.currentAccuracy <= 15 ? '#28a745' : '#ffc107' }
+            ]}>
+              {gpsStability.currentAccuracy ? `±${gpsStability.currentAccuracy.toFixed(1)}m` : 'Searching...'}
+            </Text>
+          </View>
+          
+          <View style={styles.gpsInfoRow}>
+            <Text style={styles.gpsInfoLabel}>Signal Quality:</Text>
+            <Text style={[
+              styles.gpsInfoValue,
+              { 
+                color: gpsStability.qualityLevel === 'excellent' ? '#28a745' : 
+                       gpsStability.qualityLevel === 'good' ? '#4CAF50' : 
+                       gpsStability.qualityLevel === 'fair' ? '#ffc107' : '#ff6b6b'
+              }
+            ]}>
+              {gpsStability.qualityLevel.toUpperCase()}
+            </Text>
+          </View>
+          
+          {gpsStability.isStabilizing && (
+            <View style={styles.gpsInfoRow}>
+              <Text style={styles.gpsInfoLabel}>Stability Progress:</Text>
+              <Text style={styles.gpsInfoValue}>
+                {gpsStability.stabilityProgress.toFixed(0)}%
+              </Text>
+            </View>
+          )}
+        </View>
 
-    dispatch(setTargetPin({
-      latitude: coordinate.latitude,
-      longitude: coordinate.longitude,
-      distanceYards: distance.yards,
-      bearing,
-    }));
+        {/* Progress Bar */}
+        {gpsStability.isStabilizing && (
+          <View style={styles.progressBarContainer}>
+            <View style={styles.progressBarBackground}>
+              <View 
+                style={[
+                  styles.progressBarFill,
+                  { width: `${gpsStability.stabilityProgress}%` }
+                ]} 
+              />
+            </View>
+            <Text style={styles.progressBarText}>
+              {gpsStability.stabilityProgress >= 100 ? 'Ready!' : 'Stabilizing...'}
+            </Text>
+          </View>
+        )}
 
-    if (isLocationServiceAvailable()) {
-      golfLocationService.setMapTargetPin(
-        coordinate.latitude,
-        coordinate.longitude,
-        distance.yards,
-        bearing
-      );
-    }
-
-    console.log(`Target selected: ${distance.yards} yards, bearing ${bearing.toFixed(0)}°`);
-  }, [dispatch, currentLocation]);
-
-  // Enhanced map press handler for shot placement and target selection
-  const handleMapPress = useCallback((coordinate: Coordinate) => {
-    if (!currentLocation) return;
-
-    const distance = DistanceCalculator.calculateDistance(
-      { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
-      coordinate
+        {/* Available Features */}
+        <View style={styles.availableFeaturesContainer}>
+          <Text style={styles.availableFeaturesTitle}>Available Now:</Text>
+          <View style={styles.availableFeaturesList}>
+            <View style={styles.availableFeatureItem}>
+              <Icon name="check-circle" size={16} color="#28a745" />
+              <Text style={styles.availableFeatureText}>GPS Location Tracking</Text>
+            </View>
+            <View style={styles.availableFeatureItem}>
+              <Icon name="check-circle" size={16} color="#28a745" />
+              <Text style={styles.availableFeatureText}>Voice AI Assistant</Text>
+            </View>
+            <View style={styles.availableFeatureItem}>
+              <Icon name="check-circle" size={16} color="#28a745" />
+              <Text style={styles.availableFeatureText}>Round Management</Text>
+            </View>
+          </View>
+        </View>
+      </View>
     );
-
-    if (mapStateLocal.isPlacingShotMode) {
-      // Add shot marker
-      const newMarker: ShotMarker = {
-        id: `shot-${Date.now()}`,
-        coordinate,
-        timestamp: Date.now(),
-        distance,
-      };
-
-      setMapStateLocal(prev => ({
-        ...prev,
-        shotMarkers: [...prev.shotMarkers, newMarker],
-        isPlacingShotMode: false,
-      }));
-
-      Alert.alert(
-        'Shot Placed',
-        `Shot marker placed at ${distance.yards} yards`,
-        [{ text: 'OK' }]
-      );
-    } else {
-      // Set target pin for distance measurement
-      handleTargetSelected(coordinate, distance);
-    }
-  }, [currentLocation, mapStateLocal.isPlacingShotMode, handleTargetSelected]);
-
-  // Enhanced initialization with better cleanup and mount tracking
-  useEffect(() => {
-    componentMountedRef.current = true;
-    let isActiveEffect = true;
-    
-    const initializeRound = async () => {
-      try {
-        const result = await dispatch(fetchActiveRound()).unwrap();
-        if (result && isActiveEffect && componentMountedRef.current) {
-          setCurrentHole(result.currentHole || 1);
-          dispatch(fetchHoleScores(result.id));
-          
-          // Map is locked to satellite view - no Redux state needed
-        }
-      } catch (error) {
-        console.error('Error loading active round:', error);
-      }
-    };
-
-    initializeRound();
-    
-    return () => {
-      isActiveEffect = false;
-      componentMountedRef.current = false;
-    };
-  }, [dispatch]);
-
-  // Separate effect for location tracking initialization with mount state protection
-  useEffect(() => {
-    if (activeRound?.id && user?.id && !isLocationTracking && !locationTrackingInitializedRef.current && componentMountedRef.current) {
-      locationTrackingInitializedRef.current = true;
-      
-      const initializeLocationTracking = async () => {
-        try {
-          if (!componentMountedRef.current) return;
-          
-          dispatch(startVoiceSession({ roundId: activeRound.id }));
-          await startLocationTracking(activeRound.id, activeRound.courseId);
-        } catch (error) {
-          console.error('Error initializing location tracking:', error);
-          locationTrackingInitializedRef.current = false;
-        }
-      };
-      
-      // Debounce initialization to prevent rapid start/stop cycles
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-      
-      debounceTimeoutRef.current = setTimeout(initializeLocationTracking, 300);
-      
-      return () => {
-        if (debounceTimeoutRef.current) {
-          clearTimeout(debounceTimeoutRef.current);
-          debounceTimeoutRef.current = null;
-        }
-      };
-    }
-    
-    return () => {
-      // Enhanced cleanup coordination with atomic operations
-      if (!componentMountedRef.current) {
-        console.log('🟡 ActiveRoundScreen: Component unmounting, cleaning up location tracking...');
-        
-        // Cancel any pending debounced initialization
-        if (debounceTimeoutRef.current) {
-          clearTimeout(debounceTimeoutRef.current);
-          debounceTimeoutRef.current = null;
-        }
-        
-        // Atomic cleanup: First unregister callbacks, then stop GPS
-        cleanupFunctionsRef.current.forEach((cleanup, index) => {
-          try {
-            cleanup();
-          } catch (error) {
-            console.error(`Cleanup error for subscription ${index}:`, error);
-          }
-        });
-        cleanupFunctionsRef.current = [];
-        
-        // Then stop GPS tracking (which also clears any remaining callbacks)
-        if (isLocationServiceAvailable()) {
-          golfLocationService.stopRoundTracking();
-        }
-        
-        // End voice session
-        if (activeRound?.id) {
-          dispatch(endVoiceSession());
-        }
-        
-        // Reset component state
-        setIsLocationTracking(false);
-        locationTrackingInitializedRef.current = false;
-        
-        console.log('🟢 ActiveRoundScreen: Cleanup completed');
-      }
-    };
-  }, [activeRound?.id, user?.id]);
-
-  // Optimized callback handlers
-  const handleVoiceToggle = useCallback(() => {
-    dispatch(toggleVoiceInterface());
-  }, [dispatch]);
-
-  // Memoized course region calculation for better performance
-  const courseRegion = useMemo(() => {
-    // Priority: current location > course region > default
-    if (currentLocation && currentLocation.latitude !== 0 && currentLocation.longitude !== 0) {
-      return {
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude,
-        latitudeDelta: 0.003, // Tighter zoom for user location
-        longitudeDelta: 0.003,
-      };
-    }
-    
-    if (mapState.courseRegion) {
-      return mapState.courseRegion;
-    }
-    
-    // Default to Faughan Valley Golf Centre coordinates
-    return {
-      latitude: 54.9783,
-      longitude: -7.2054,
-      latitudeDelta: 0.01,
-      longitudeDelta: 0.01,
-    };
-  }, [currentLocation, mapState.courseRegion]); // Stable object references
+  };
 
   // Render loading state
   if (isLoading) {
@@ -618,7 +493,7 @@ export const ActiveRoundScreen: React.FC = () => {
           <Text style={styles.emptyTitle}>No Active Round</Text>
           <Text style={styles.emptyDescription}>
             Start a new round to begin tracking your game with GPS location tracking,
-            score keeping, and AI-powered recommendations.
+            distance measurements, and AI-powered recommendations.
           </Text>
           <TouchableOpacity
             style={styles.startRoundButton}
@@ -632,86 +507,69 @@ export const ActiveRoundScreen: React.FC = () => {
     );
   }
 
+  // Show GPS stabilization screen if GPS not ready for map
+  if (isLocationTracking && !mapMountingAllowed) {
+    return (
+      <SafeAreaView style={styles.container}>
+        {renderGPSStabilizationScreen()}
+        
+        {/* Voice AI Interface still available during GPS stabilization */}
+        {activeRound && user && (
+          <VoiceAIInterface
+            userId={Number(user.id)}
+            roundId={activeRound.id}
+            currentHole={currentHole}
+            targetPin={null}
+            currentLocation={currentLocation}
+            isVisible={isVoiceInterfaceVisible}
+            onToggle={handleVoiceToggle}
+            onConversationUpdate={() => {}}
+          />
+        )}
+      </SafeAreaView>
+    );
+  }
 
-  // Render active round interface
+  // Main render - Active round with robust map handling
   return (
     <SafeAreaView style={styles.container}>
-      {/* Map View - Full Screen with Error Boundary */}
-      <MapErrorBoundary>
-        <GolfCourseMap
-          currentLocation={currentLocation}
-          onTargetSelected={handleTargetSelected}
-          onLocationUpdate={(coordinate) => {
-            // Handle location updates if needed
-            console.log('Location update from map:', coordinate);
-          }}
-          courseId={activeRound?.courseId}
-          courseName={activeRound?.course?.name}
-          initialRegion={courseRegion}
-          mapType="satellite"
-          enableTargetPin={true}
-          // Shot placement functionality
-          shotMarkers={mapStateLocal.shotMarkers}
-          isPlacingShotMode={mapStateLocal.isPlacingShotMode}
-          onShotPlaced={(shot) => {
-            // Add shot to local state for map display
-            setMapStateLocal(prev => ({
-              ...prev,
-              shotMarkers: [...prev.shotMarkers, shot],
-              isPlacingShotMode: false, // Exit shot placement mode after placing
-            }));
-            
-            // Add shot to LocationService for AI integration
-            if (isLocationServiceAvailable()) {
-              const shotData: ShotMarkerData = {
-                id: shot.id,
-                coordinate: shot.coordinate,
-                distance: shot.distance,
-                timestamp: shot.timestamp,
-                club: shot.club,
-                accuracy: shot.accuracy,
-                note: shot.note,
-              };
-              golfLocationService.addShotMarker(shotData);
-            }
-          }}
-          onShotRemoved={(shotId) => {
-            // Remove shot from local state
-            setMapStateLocal(prev => ({
-              ...prev,
-              shotMarkers: prev.shotMarkers.filter(marker => marker.id !== shotId),
-            }));
-            
-            // Remove shot from LocationService for AI integration
-            if (isLocationServiceAvailable()) {
-              golfLocationService.removeShotMarker(shotId);
-            }
-          }}
-        />
+      {/* Map with Error Boundary and Stabilization */}
+      <MapErrorBoundary
+        currentLocation={simpleLocationData}
+        onMapPress={handleMapPress}
+        onRetryMap={handleMapRetry}
+        fallbackMode="gps-only"
+      >
+        {mapMountingAllowed ? (
+          <SimpleMapView
+            currentLocation={simpleLocationData}
+            onMapPress={handleMapPress}
+            showUserLocation={true}
+          />
+        ) : (
+          <View style={styles.mapPlaceholder}>
+            <Icon name="map" size={48} color="#6c757d" />
+            <Text style={styles.mapPlaceholderText}>
+              Map loading... GPS stabilizing
+            </Text>
+          </View>
+        )}
       </MapErrorBoundary>
 
-      {/* Map Overlay - Floating UI Controls */}
-      <MapOverlay
+      {/* Simple Map Overlay */}
+      <SimpleMapOverlay
         courseName={activeRound?.course?.name}
         currentHole={currentHole}
-        currentLocation={currentLocation}
-        targetDistance={targetDistance}
-        targetPin={mapState.targetPin}
-        shotMarkers={mapStateLocal.shotMarkers}
+        currentLocation={simpleLocationData}
         isLocationTracking={isLocationTracking}
         isVoiceInterfaceVisible={isVoiceInterfaceVisible}
-        isPlacingShotMode={mapStateLocal.isPlacingShotMode}
+        roundStatus={activeRound?.status}
         onVoiceToggle={handleVoiceToggle}
         onRoundControlsPress={() => setShowRoundControls(!showRoundControls)}
-        onClearTarget={() => handleTargetSelected({ latitude: 0, longitude: 0 }, { yards: 0, meters: 0, feet: 0, kilometers: 0, miles: 0 })}
-        onToggleShotMode={toggleShotPlacementMode}
-        onCenterOnUser={centerOnUserLocation}
-        onRemoveShotMarker={removeShotMarker}
-        roundStatus={activeRound?.status}
-        gpsAccuracy={currentLocation?.accuracy}
+        onCenterOnUser={handleCenterOnUser}
       />
 
-      {/* Round Controls Modal (when requested) */}
+      {/* Round Controls Modal */}
       {showRoundControls && (
         <View style={styles.roundControlsModal}>
           <View style={styles.roundControlsContent}>
@@ -767,20 +625,18 @@ export const ActiveRoundScreen: React.FC = () => {
         </View>
       )}
 
-      {/* Voice AI Interface - Positioned by the interface itself with Error Boundary */}
+      {/* Voice AI Interface */}
       {activeRound && user && (
-        <VoiceErrorBoundary>
-          <VoiceAIInterface
-            userId={Number(user.id)}
-            roundId={activeRound.id}
-            currentHole={currentHole}
-            targetPin={mapState.targetPin}
-            currentLocation={currentLocation}
-            isVisible={isVoiceInterfaceVisible}
-            onToggle={handleVoiceToggle}
-            onConversationUpdate={handleConversationUpdate}
-          />
-        </VoiceErrorBoundary>
+        <VoiceAIInterface
+          userId={Number(user.id)}
+          roundId={activeRound.id}
+          currentHole={currentHole}
+          targetPin={null}
+          currentLocation={currentLocation}
+          isVisible={isVoiceInterfaceVisible}
+          onToggle={handleVoiceToggle}
+          onConversationUpdate={() => {}}
+        />
       )}
     </SafeAreaView>
   );
@@ -898,6 +754,128 @@ const styles = StyleSheet.create({
     color: '#6c757d',
     fontSize: 16,
     fontWeight: '600',
+  },
+  
+  // GPS Stabilization Screen Styles
+  gpsStabilizationContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    padding: 20,
+  },
+  gpsStabilizationTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#2c5530',
+    marginTop: 20,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  gpsStabilizationSubtitle: {
+    fontSize: 16,
+    color: '#6c757d',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 30,
+    maxWidth: 300,
+  },
+  gpsStabilizationInfo: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    width: '100%',
+    maxWidth: 350,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  gpsInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  gpsInfoLabel: {
+    fontSize: 14,
+    color: '#6c757d',
+    fontWeight: '500',
+  },
+  gpsInfoValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    fontFamily: 'monospace',
+  },
+  progressBarContainer: {
+    width: '100%',
+    maxWidth: 300,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  progressBarBackground: {
+    width: '100%',
+    height: 8,
+    backgroundColor: '#e9ecef',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#4a7c59',
+    borderRadius: 4,
+  },
+  progressBarText: {
+    fontSize: 12,
+    color: '#6c757d',
+    marginTop: 8,
+    fontWeight: '500',
+  },
+  availableFeaturesContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    width: '100%',
+    maxWidth: 350,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  availableFeaturesTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2c5530',
+    marginBottom: 12,
+  },
+  availableFeaturesList: {
+    gap: 8,
+  },
+  availableFeatureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  availableFeatureText: {
+    fontSize: 14,
+    color: '#495057',
+    marginLeft: 8,
+  },
+  
+  // Map Placeholder Styles
+  mapPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+  },
+  mapPlaceholderText: {
+    fontSize: 16,
+    color: '#6c757d',
+    marginTop: 12,
+    textAlign: 'center',
   },
 });
 

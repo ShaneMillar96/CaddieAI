@@ -58,68 +58,190 @@ export interface MapOverlayProps {
   onToggleShotMode?: () => void;
   onCenterOnUser?: () => void;
   onRemoveShotMarker?: (markerId: string) => void;
+  onAdjustGPS?: () => void;
+  onRefreshGPS?: () => void;
   roundStatus?: string;
   gpsAccuracy?: number;
 }
 
 // Enhanced GPS Status Component
+// Enhanced GPS Status Component with detailed information
 const GPSStatusIndicator: React.FC<{
   currentLocation: any;
   gpsAccuracy?: number;
-}> = React.memo(({ currentLocation, gpsAccuracy }) => {
+  isExpanded?: boolean;
+}> = React.memo(({ currentLocation, gpsAccuracy, isExpanded = false }) => {
+  const pulseAnimation = useRef(new Animated.Value(1)).current;
+
   const gpsStatus = useMemo(() => {
     if (!currentLocation) {
-      return { icon: 'location-off', color: '#dc3545', text: 'No GPS' };
+      return { 
+        icon: 'location-off', 
+        color: '#dc3545', 
+        text: 'No GPS', 
+        quality: 'No Signal',
+        recommendation: 'Enable location services'
+      };
     }
     
     const accuracy = gpsAccuracy || currentLocation.accuracy;
     
     if (accuracy === undefined || accuracy === null) {
-      return { icon: 'gps-not-fixed', color: '#ffc107', text: 'Searching...' };
+      return { 
+        icon: 'gps-not-fixed', 
+        color: '#ffc107', 
+        text: 'Searching...', 
+        quality: 'Acquiring',
+        recommendation: 'Move to open area'
+      };
     }
     
-    if (accuracy <= 8) {
-      return { icon: 'gps-fixed', color: '#28a745', text: 'Excellent' };
+    if (accuracy <= 3) {
+      return { 
+        icon: 'gps-fixed', 
+        color: '#00C851', 
+        text: 'Excellent', 
+        quality: 'Tournament Level',
+        recommendation: 'Perfect for precision shots'
+      };
+    } else if (accuracy <= 8) {
+      return { 
+        icon: 'gps-fixed', 
+        color: '#28a745', 
+        text: 'Excellent', 
+        quality: 'Professional',
+        recommendation: 'Ideal for golf measurements'
+      };
     } else if (accuracy <= 15) {
-      return { icon: 'gps-fixed', color: '#28a745', text: 'Good' };
+      return { 
+        icon: 'gps-fixed', 
+        color: '#4CAF50', 
+        text: 'Good', 
+        quality: 'Recreational',
+        recommendation: 'Good for most golf needs'
+      };
     } else if (accuracy <= 25) {
-      return { icon: 'gps-not-fixed', color: '#ffc107', text: 'Fair' };
+      return { 
+        icon: 'gps-not-fixed', 
+        color: '#FFBB33', 
+        text: 'Fair', 
+        quality: 'Basic',
+        recommendation: 'Consider moving to open area'
+      };
     } else if (accuracy <= 50) {
-      return { icon: 'gps-off', color: '#ff6b35', text: 'Poor' };
+      return { 
+        icon: 'gps-off', 
+        color: '#FF8800', 
+        text: 'Poor', 
+        quality: 'Limited',
+        recommendation: 'Move away from obstructions'
+      };
     } else {
-      return { icon: 'gps-off', color: '#dc3545', text: 'Very Poor' };
+      return { 
+        icon: 'gps-off', 
+        color: '#FF4444', 
+        text: 'Very Poor', 
+        quality: 'Unreliable',
+        recommendation: 'Find better signal location'
+      };
     }
   }, [currentLocation, gpsAccuracy]);
 
+  // Pulse animation for searching state
+  useEffect(() => {
+    if (gpsStatus.text === 'Searching...') {
+      const startPulse = () => {
+        Animated.sequence([
+          Animated.timing(pulseAnimation, {
+            toValue: 0.6,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnimation, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          })
+        ]).start(() => startPulse());
+      };
+      startPulse();
+    }
+  }, [gpsStatus.text, pulseAnimation]);
+
   return (
-    <View style={styles.gpsStatus}>
-      <Icon name={gpsStatus.icon} size={16} color={gpsStatus.color} />
-      <Text style={[styles.gpsText, { color: gpsStatus.color }]}>
-        {gpsStatus.text}
-      </Text>
-      {gpsAccuracy && (
-        <Text style={styles.accuracyText}>
-          ±{Math.round(gpsAccuracy)}m
+    <View style={[styles.gpsStatus, isExpanded && styles.gpsStatusExpanded]}>
+      <Animated.View style={{ opacity: pulseAnimation }}>
+        <Icon name={gpsStatus.icon} size={16} color={gpsStatus.color} />
+      </Animated.View>
+      
+      <View style={styles.gpsStatusTextContainer}>
+        <Text style={[styles.gpsText, { color: gpsStatus.color }]}>
+          {gpsStatus.text}
         </Text>
+        {gpsAccuracy && (
+          <Text style={styles.accuracyText}>
+            ±{Math.round(gpsAccuracy)}m
+          </Text>
+        )}
+      </View>
+      
+      {isExpanded && (
+        <View style={styles.gpsStatusDetails}>
+          <Text style={styles.gpsQualityText}>{gpsStatus.quality}</Text>
+          <Text style={styles.gpsRecommendationText}>{gpsStatus.recommendation}</Text>
+          {currentLocation && (
+            <View style={styles.gpsCoordinates}>
+              <Text style={styles.coordinateText}>
+                {currentLocation.latitude.toFixed(6)}, {currentLocation.longitude.toFixed(6)}
+              </Text>
+            </View>
+          )}
+        </View>
       )}
     </View>
   );
 });
 
-// Enhanced Distance Badge Component
+// Enhanced Distance Badge Component with club recommendation
 const DistanceBadge: React.FC<{
   distance: DistanceResult;
   isVisible: boolean;
-}> = React.memo(({ distance, isVisible }) => {
+  targetPin?: any;
+  currentLocation?: any;
+}> = React.memo(({ distance, isVisible, targetPin, currentLocation }) => {
   const fadeAnimation = useRef(new Animated.Value(0)).current;
+  const scaleAnimation = useRef(new Animated.Value(0.8)).current;
 
   useEffect(() => {
-    Animated.timing(fadeAnimation, {
-      toValue: isVisible ? 1 : 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
-  }, [isVisible, fadeAnimation]);
+    if (isVisible) {
+      Animated.parallel([
+        Animated.timing(fadeAnimation, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnimation, {
+          toValue: 1,
+          tension: 100,
+          friction: 8,
+          useNativeDriver: true,
+        })
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(fadeAnimation, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnimation, {
+          toValue: 0.8,
+          duration: 300,
+          useNativeDriver: true,
+        })
+      ]).start();
+    }
+  }, [isVisible, fadeAnimation, scaleAnimation]);
 
   const formatDistance = useCallback((dist: DistanceResult): string => {
     if (dist.yards < 1) {
@@ -131,17 +253,81 @@ const DistanceBadge: React.FC<{
     }
   }, []);
 
+  // Enhanced club recommendation
+  const getRecommendedClub = useCallback((yards: number): string => {
+    if (yards >= 280) return 'Driver';
+    if (yards >= 240) return '3-Wood';
+    if (yards >= 210) return '5-Wood';
+    if (yards >= 190) return '3-Iron';
+    if (yards >= 170) return '4-Iron';
+    if (yards >= 160) return '5-Iron';
+    if (yards >= 150) return '6-Iron';
+    if (yards >= 140) return '7-Iron';
+    if (yards >= 130) return '8-Iron';
+    if (yards >= 120) return '9-Iron';
+    if (yards >= 105) return 'PW';
+    if (yards >= 90) return 'SW';
+    if (yards >= 70) return 'LW';
+    return 'Putter';
+  }, []);
+
+  // Calculate bearing if we have both locations
+  const bearing = useMemo(() => {
+    if (!currentLocation || !targetPin) return null;
+    const lat1 = currentLocation.latitude * Math.PI / 180;
+    const lat2 = targetPin.latitude * Math.PI / 180;
+    const deltaLng = (targetPin.longitude - currentLocation.longitude) * Math.PI / 180;
+    const y = Math.sin(deltaLng) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
+    const bearingRad = Math.atan2(y, x);
+    const bearingDeg = (bearingRad * 180 / Math.PI + 360) % 360;
+    return bearingDeg;
+  }, [currentLocation, targetPin]);
+
+  const getBearingText = useCallback((degrees: number): string => {
+    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    const index = Math.round(degrees / 45) % 8;
+    return directions[index];
+  }, []);
+
   if (!isVisible) return null;
+
+  const recommendedClub = getRecommendedClub(distance.yards);
 
   return (
     <Animated.View 
       style={[
         styles.distanceBadge,
-        { opacity: fadeAnimation }
+        { 
+          opacity: fadeAnimation,
+          transform: [{ scale: scaleAnimation }]
+        }
       ]}
     >
-      <Text style={styles.distanceNumber}>{formatDistance(distance)}</Text>
-      <Text style={styles.distanceUnit}>yds</Text>
+      <View style={styles.distanceMainContainer}>
+        <Text style={styles.distanceNumber}>{formatDistance(distance)}</Text>
+        <Text style={styles.distanceUnit}>yds</Text>
+      </View>
+      
+      <View style={styles.distanceMetaContainer}>
+        <View style={styles.clubContainer}>
+          <Icon name="golf-course" size={14} color="#fff" />
+          <Text style={styles.clubText}>{recommendedClub}</Text>
+        </View>
+        
+        {bearing !== null && (
+          <View style={styles.bearingContainer}>
+            <Icon name="explore" size={14} color="#fff" />
+            <Text style={styles.bearingText}>
+              {getBearingText(bearing)} ({Math.round(bearing)}°)
+            </Text>
+          </View>
+        )}
+        
+        <View style={styles.metersContainer}>
+          <Text style={styles.metersText}>{Math.round(distance.meters)}m</Text>
+        </View>
+      </View>
     </Animated.View>
   );
 });
@@ -198,6 +384,8 @@ const MapOverlay: React.FC<MapOverlayProps> = ({
   onToggleShotMode,
   onCenterOnUser,
   onRemoveShotMarker,
+  onAdjustGPS,
+  onRefreshGPS,
   roundStatus,
   gpsAccuracy,
 }) => {
@@ -231,10 +419,12 @@ const MapOverlay: React.FC<MapOverlayProps> = ({
         <TouchableOpacity
           style={styles.locationInfoButton}
           onPress={() => setShowLocationInfo(!showLocationInfo)}
+          activeOpacity={0.8}
         >
           <GPSStatusIndicator 
             currentLocation={currentLocation} 
-            gpsAccuracy={gpsAccuracy} 
+            gpsAccuracy={gpsAccuracy}
+            isExpanded={showLocationInfo}
           />
         </TouchableOpacity>
       </View>
@@ -257,25 +447,60 @@ const MapOverlay: React.FC<MapOverlayProps> = ({
         </View>
       )}
 
-      {/* Distance Badge - Center of screen when target selected */}
+      {/* Enhanced Distance Badge - Center of screen when target selected */}
       {targetDistance && (
         <View style={styles.distanceBadgeContainer}>
-          <DistanceBadge distance={targetDistance} isVisible={true} />
+          <DistanceBadge 
+            distance={targetDistance} 
+            isVisible={true} 
+            targetPin={targetPin}
+            currentLocation={currentLocation}
+          />
           <TouchableOpacity
             style={styles.clearTargetButton}
             onPress={onClearTarget}
+            activeOpacity={0.8}
           >
             <Icon name="close" size={16} color="#fff" />
-            <Text style={styles.clearTargetText}>Clear</Text>
+            <Text style={styles.clearTargetText}>Clear Target</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Shot Placement Mode Indicator */}
+      {/* Shot Placement Mode Indicator with GPS Controls */}
       {isPlacingShotMode && (
-        <View style={styles.shotModeIndicator}>
-          <Icon name="my-location" size={20} color="#fff" />
-          <Text style={styles.shotModeText}>Tap map to place shot</Text>
+        <View style={styles.shotModeContainer}>
+          <View style={styles.shotModeIndicator}>
+            <Icon name="my-location" size={20} color="#fff" />
+            <Text style={styles.shotModeText}>Move the green marker to aim shot</Text>
+          </View>
+          
+          {/* GPS Control Buttons matching reference design */}
+          <View style={styles.gpsControlsContainer}>
+            <TouchableOpacity
+              style={styles.gpsControlButton}
+              onPress={onAdjustGPS}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.gpsControlButtonText}>Adjust GPS</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.gpsControlButton}
+              onPress={onRefreshGPS}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.gpsControlButtonText}>Refresh GPS</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.gpsControlButton, styles.doneButton]}
+              onPress={onToggleShotMode}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.gpsControlButtonText, styles.doneButtonText]}>Done</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
@@ -443,16 +668,64 @@ const styles = StyleSheet.create({
   gpsStatus: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  gpsStatusExpanded: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    padding: 12,
+    borderRadius: 12,
+    minWidth: 200,
+  },
+  gpsStatusTextContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 4,
   },
   gpsText: {
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   accuracyText: {
     fontSize: 10,
     color: '#666',
     marginLeft: 2,
+    fontFamily: 'monospace',
+  },
+  gpsStatusDetails: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.2)',
+    width: '100%',
+  },
+  gpsQualityText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  gpsRecommendationText: {
+    color: '#ccc',
+    fontSize: 10,
+    fontStyle: 'italic',
+    marginBottom: 6,
+  },
+  gpsCoordinates: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  coordinateText: {
+    color: '#fff',
+    fontSize: 9,
+    fontFamily: 'monospace',
   },
   locationInfoButton: {
     padding: 4,
@@ -481,61 +754,117 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
 
-  // Distance Badge Styles
+  // Enhanced Distance Badge Styles
   distanceBadgeContainer: {
     position: 'absolute',
-    top: height * 0.25, // 25% from top
+    top: height * 0.2, // 20% from top for better visibility
     left: 20,
     right: 20,
     alignItems: 'center',
     pointerEvents: 'none',
   },
   distanceBadge: {
-    backgroundColor: 'rgba(74, 124, 89, 0.95)',
-    borderRadius: 20,
-    paddingHorizontal: 24,
-    paddingVertical: 16,
+    backgroundColor: 'rgba(44, 85, 48, 0.98)',
+    borderRadius: 24,
+    paddingHorizontal: 28,
+    paddingVertical: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  distanceMainContainer: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    justifyContent: 'center',
+    marginBottom: 8,
   },
   distanceNumber: {
-    fontSize: 32,
-    fontWeight: '700',
+    fontSize: 42,
+    fontWeight: '800',
     color: '#ffffff',
+    letterSpacing: -1,
   },
   distanceUnit: {
-    fontSize: 18,
-    fontWeight: '500',
+    fontSize: 20,
+    fontWeight: '600',
     color: '#ffffff',
-    marginLeft: 4,
+    marginLeft: 6,
+    opacity: 0.9,
+  },
+  distanceMetaContainer: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  clubContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  clubText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  bearingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    opacity: 0.9,
+  },
+  bearingText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  metersContainer: {
+    opacity: 0.8,
+  },
+  metersText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '500',
   },
   clearTargetButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(220, 53, 69, 0.9)',
+    backgroundColor: 'rgba(220, 53, 69, 0.95)',
     borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginTop: 8,
-    gap: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginTop: 12,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   clearTargetText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
   },
 
-  // Shot Mode Indicator
-  shotModeIndicator: {
+  // Shot Mode Indicator and Controls
+  shotModeContainer: {
     position: 'absolute',
     top: height * 0.15,
     left: 20,
     right: 20,
+    alignItems: 'center',
+    gap: 12,
+  },
+  shotModeIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -549,6 +878,34 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  gpsControlsContainer: {
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'center',
+  },
+  gpsControlButton: {
+    backgroundColor: 'rgba(255, 152, 0, 0.9)',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  gpsControlButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  doneButton: {
+    backgroundColor: 'rgba(76, 175, 80, 0.9)',
+  },
+  doneButtonText: {
+    fontWeight: '700',
   },
 
   // Right Controls

@@ -2,6 +2,13 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
+// Load secrets from secrets.properties file
+def secretsPropertiesFile = rootProject.file("secrets.properties")
+def secretsProperties = new Properties()
+if (secretsPropertiesFile.exists()) {
+    secretsProperties.load(new FileInputStream(secretsPropertiesFile))
+}
+
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
@@ -84,6 +91,16 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+        
+        // Enable MultiDex for large apps
+        multiDexEnabled true
+        
+        // Add Google Maps API key as build config field and manifest placeholder
+        def mapsApiKey = secretsProperties.getProperty('MAPS_API_KEY', '')
+        buildConfigField "String", "MAPS_API_KEY", "\"${mapsApiKey}\""
+        manifestPlaceholders = [
+            mapsApiKey: mapsApiKey
+        ]
     }
     signingConfigs {
         debug {
@@ -111,10 +128,20 @@ dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
-    // Google Play Services for react-native-maps
+    // MultiDex support for large apps
+    implementation 'androidx.multidex:multidex:2.0.1'
+
+    // Google Play Services for react-native-maps (updated versions for compatibility)
     implementation 'com.google.android.gms:play-services-base:18.5.0'
-    implementation 'com.google.android.gms:play-services-maps:19.0.0'
+    implementation 'com.google.android.gms:play-services-maps:19.1.0'
     implementation 'com.google.android.gms:play-services-location:21.3.0'
+    
+    // Additional Google Maps dependencies
+    implementation 'com.google.maps.android:android-maps-utils:3.8.2'
+    
+    // Force resolution of compatible versions to prevent NPE issues
+    implementation 'com.google.android.gms:play-services-auth:21.2.0'
+    implementation 'com.google.android.gms:play-services-basement:18.4.0'
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
