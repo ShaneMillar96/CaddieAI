@@ -16,11 +16,8 @@ echo "🏗️ Setting up Android Gradle properties..."
 cp CaddieAIMobile/android/gradle.properties.example CaddieAIMobile/android/gradle.properties
 sed -i '' 's/sk.YOUR_MAPBOX_SECRET_TOKEN_HERE/sk.eyJ1Ijoic2hhbmVtaWxsYXI5NiIsImEiOiJjbWUwMTdrNHcwMDB3MmtvZjZ5dG1veTJzIn0.mh7-3Fi1MjyzEsp6P_tg1g/g' CaddieAIMobile/android/gradle.properties
 
-# Set up Google Maps API key
-echo "🗺️ Setting up Google Maps API key..."
-mkdir -p CaddieAIMobile/android/app/src/main/res/values
-cp CaddieAIMobile/android/app/src/main/res/values/google_maps_api.xml.example CaddieAIMobile/android/app/src/main/res/values/google_maps_api.xml
-sed -i '' 's/YOUR_GOOGLE_MAPS_API_KEY_HERE/AIzaSyCJWhW4jOVOI38JMclbWzw-JluoKYU_SsQ/g' CaddieAIMobile/android/app/src/main/res/values/google_maps_api.xml
+# Google Maps no longer needed - using Mapbox exclusively
+echo "🗺️ Google Maps removed - using Mapbox for all mapping functionality"
 
 # Set up MCP configuration
 echo "🔗 Setting up MCP configuration..."
