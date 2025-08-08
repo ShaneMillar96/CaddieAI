@@ -90,6 +90,7 @@ export const ActiveRoundScreen: React.FC = () => {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [showRoundControls, setShowRoundControls] = useState(false);
+  const [isMapboxReady, setIsMapboxReady] = useState(false);
   
   
   // Convert Redux currentLocation to SimpleLocationData format with stable reference
@@ -142,10 +143,12 @@ export const ActiveRoundScreen: React.FC = () => {
           tokenPrefix: config.accessToken.substring(0, 15) + '...'
         });
         mapboxService.initialize(config.accessToken);
+        setIsMapboxReady(mapboxService.isConfigured());
       } catch (error) {
         console.error('❌ ActiveRoundScreen: Failed to load Mapbox config:', error);
         // Fallback to placeholder if config loading fails
         mapboxService.initialize('pk.your_mapbox_access_token_here');
+        setIsMapboxReady(false);
       }
     };
     
@@ -497,6 +500,7 @@ export const ActiveRoundScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       {/* Mapbox Map - Enhanced Golf Experience */}
+      {isMapboxReady && (
       <MapErrorBoundary
         currentLocation={simpleLocationData}
         onMapPress={handleMapPress}
@@ -513,6 +517,7 @@ export const ActiveRoundScreen: React.FC = () => {
           accessToken={mapboxService.getAccessToken()}
         />
       </MapErrorBoundary>
+      )}
 
       {/* Enhanced Mapbox Map Overlay */}
       <MapboxMapOverlay

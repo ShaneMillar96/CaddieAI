@@ -9,8 +9,8 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { testApiConnection, API_BASE_URL } from '../../config/api';
-import { authApiService } from '../../services/authApi';
-import { courseApiService } from '../../services/courseApi';
+import authApi from '../../services/authApi';
+import courseApi from '../../services/courseApi';
 
 interface ConnectionTest {
   name: string;
@@ -75,7 +75,7 @@ const ApiConnectionTest: React.FC = () => {
       // Test 3: Auth Service
       try {
         // This will likely fail without credentials, but we're testing if the endpoint exists
-        await authApiService.login({ username: 'test', password: 'test' });
+        await authApi.login({ email: 'test@example.com', password: 'test', rememberMe: false });
         testResults[2].status = 'success';
         testResults[2].message = 'Auth endpoint accessible';
       } catch (error: any) {
@@ -102,7 +102,7 @@ const ApiConnectionTest: React.FC = () => {
 
       // Test 4: Course Service
       try {
-        await courseApiService.searchCourses({ query: '', limit: 1, offset: 0 });
+        await courseApi.searchCourses({ query: '', page: 1, pageSize: 1 });
         testResults[3].status = 'success';
         testResults[3].message = 'Course endpoint accessible';
       } catch (error: any) {

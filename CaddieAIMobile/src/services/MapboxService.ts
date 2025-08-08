@@ -1,12 +1,11 @@
 /**
- * Mapbox Service - Placeholder
+ * Mapbox Service for CaddieAI Golf Application
  * 
- * This is a temporary placeholder for the Mapbox service.
- * The original Mapbox functionality has been temporarily disabled
- * while we resolve compatibility issues with React Native 0.80.2.
- * 
- * TODO: Re-implement with compatible Mapbox version or alternative
+ * Provides real Mapbox SDK integration for golf course mapping,
+ * distance calculations, and location services.
  */
+
+import Mapbox from '@rnmapbox/maps';
 
 export interface MapboxConfig {
   accessToken: string;
@@ -23,9 +22,16 @@ export interface GolfDistanceCalculation {
   unit: 'yards' | 'meters';
 }
 
+export interface GolfMapStyle {
+  satellite: string;
+  outdoors: string;
+  streets: string;
+}
+
 class MapboxService {
   private static instance: MapboxService;
   private config: MapboxConfig | null = null;
+  private isInitialized: boolean = false;
 
   private constructor() {}
 
@@ -37,28 +43,62 @@ class MapboxService {
   }
 
   /**
-   * Initialize Mapbox service with configuration - PLACEHOLDER
+   * Initialize Mapbox service with real SDK integration
    */
   public initialize(accessToken: string): void {
-    console.log('🗺️ MapboxService: Initialize called (placeholder mode)');
-    this.config = {
-      accessToken,
-      styleURL: 'placeholder://satellite-streets-v12',
-      defaultZoom: 15,
-      maxZoom: 20,
-      minZoom: 8,
+    console.log('🗺️ MapboxService: Initializing with real Mapbox SDK');
+    
+    if (!accessToken || accessToken === 'pk.your_mapbox_access_token_here') {
+      console.warn('⚠️ MapboxService: Invalid or placeholder token provided');
+      return;
+    }
+
+    try {
+      // Initialize Mapbox with the access token
+      const anyMapbox: any = Mapbox as any;
+      if (typeof anyMapbox.setWellKnownTileServer === 'function') {
+        try {
+          anyMapbox.setWellKnownTileServer('Mapbox');
+        } catch {}
+      }
+      Mapbox.setAccessToken(accessToken);
+      
+      this.config = {
+        accessToken,
+        styleURL: 'mapbox://styles/mapbox/satellite-v9', // Golf-optimized satellite view
+        defaultZoom: 15,
+        maxZoom: 20,
+        minZoom: 8,
+      };
+      
+      this.isInitialized = true;
+      console.log('✅ MapboxService: Successfully initialized with Mapbox SDK');
+    } catch (error) {
+      console.error('❌ MapboxService: Failed to initialize Mapbox SDK:', error);
+      this.isInitialized = false;
+    }
+  }
+
+  /**
+   * Get available golf-optimized map styles
+   */
+  public getGolfMapStyles(): GolfMapStyle {
+    return {
+      satellite: 'mapbox://styles/mapbox/satellite-v9',
+      outdoors: 'mapbox://styles/mapbox/outdoors-v11', 
+      streets: 'mapbox://styles/mapbox/streets-v11',
     };
   }
 
   /**
-   * Get current configuration - PLACEHOLDER
+   * Get current configuration
    */
   public getConfig(): MapboxConfig | null {
     return this.config;
   }
 
   /**
-   * Calculate distances for golf features - PLACEHOLDER
+   * Calculate distances for golf features using precise Haversine formula
    */
   public calculateGolfDistances(
     userLat: number,
@@ -68,68 +108,57 @@ class MapboxService {
     teeLat?: number,
     teeLng?: number,
   ): GolfDistanceCalculation {
-    // Basic distance calculation using Haversine formula
-    const toRadians = (degrees: number) => degrees * (Math.PI / 180);
-    
-    const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
-      const R = 6371e3; // Earth's radius in meters
-      const φ1 = toRadians(lat1);
-      const φ2 = toRadians(lat2);
-      const Δφ = toRadians(lat2 - lat1);
-      const Δλ = toRadians(lng2 - lng1);
-
-      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ/2) * Math.sin(Δλ/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-      return R * c; // Distance in meters
-    };
-
-    const distanceToPin = calculateDistance(userLat, userLng, pinLat, pinLng);
-    const distanceToTee = teeLat && teeLng 
-      ? calculateDistance(userLat, userLng, teeLat, teeLng)
+    const distanceToPin = this.calculateDistance(userLat, userLng, pinLat, pinLng, 'yards');
+    const distanceToTee = (teeLat && teeLng) 
+      ? this.calculateDistance(userLat, userLng, teeLat, teeLng, 'yards')
       : 0;
 
-    // Convert meters to yards
-    const metersToYards = (meters: number) => meters * 1.09361;
-
     return {
-      distanceToPin: Math.round(metersToYards(distanceToPin)),
-      distanceToTee: Math.round(metersToYards(distanceToTee)),
+      distanceToPin: Math.round(distanceToPin),
+      distanceToTee: Math.round(distanceToTee),
       unit: 'yards',
     };
   }
 
   /**
-   * Check if service is properly initialized - PLACEHOLDER
+   * Check if service is properly initialized
    */
-  public isInitialized(): boolean {
-    return this.config !== null;
+  public isServiceInitialized(): boolean {
+    return this.isInitialized && this.config !== null;
   }
 
   /**
-   * Get default map center (Faughan Valley Golf Centre) - PLACEHOLDER
+   * Get default map center (Faughan Valley Golf Centre)
    */
   public getDefaultCenter(): { latitude: number; longitude: number } {
     return {
-      latitude: 54.9783,
-      longitude: -7.2054,
+      latitude: 55.020906,
+      longitude: -7.247879,
     };
   }
 
   /**
-   * Check if Mapbox is configured - PLACEHOLDER
+   * Check if Mapbox is configured
    */
   public isConfigured(): boolean {
-    return this.config !== null && this.config.accessToken !== '';
+    return this.isInitialized && 
+           this.config !== null && 
+           this.config.accessToken !== '' &&
+           this.config.accessToken !== 'pk.your_mapbox_access_token_here';
   }
 
   /**
-   * Get access token - PLACEHOLDER
+   * Get access token
    */
   public getAccessToken(): string {
-    return this.config?.accessToken || 'placeholder_token';
+    return this.config?.accessToken || 'pk.your_mapbox_access_token_here';
+  }
+
+  /**
+   * Get default style URL for golf courses (satellite view)
+   */
+  public getDefaultStyleUrl(): string {
+    return this.getGolfMapStyles().satellite;
   }
 
   /**

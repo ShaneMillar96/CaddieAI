@@ -2,12 +2,10 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { MainTabParamList } from '../types';
-import {
-  HomeScreen,
-  ActiveRoundScreen,
-  AIChatScreen,
-  ProfileScreen,
-} from '../screens/main';
+import HomeScreen from '../screens/main/HomeScreen';
+import ActiveRoundScreen from '../screens/main/ActiveRoundScreen';
+import AIChatScreen from '../screens/main/AIChatScreen';
+import ProfileScreen from '../screens/main/ProfileScreen';
 import CoursesNavigator from './CoursesNavigator';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
