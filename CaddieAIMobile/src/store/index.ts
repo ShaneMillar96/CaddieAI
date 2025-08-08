@@ -5,6 +5,7 @@ import authReducer from './slices/authSlice';
 import courseReducer from './slices/courseSlice';
 import roundReducer from './slices/roundSlice';
 import voiceReducer from './slices/voiceSlice';
+import shotPlacementReducer from './slices/shotPlacementSlice';
 
 // Root reducer combining all slices
 const rootReducer = combineReducers({
@@ -12,6 +13,7 @@ const rootReducer = combineReducers({
   courses: courseReducer,
   rounds: roundReducer,
   voice: voiceReducer,
+  shotPlacement: shotPlacementReducer,
 });
 
 const persistConfig = {

@@ -54,6 +54,8 @@ public partial class CaddieAIDbContext : DbContext
 
     public virtual DbSet<ShotEvent> ShotEvents { get; set; }
 
+    public virtual DbSet<ShotPlacement> ShotPlacements { get; set; }
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         if (!optionsBuilder.IsConfigured)

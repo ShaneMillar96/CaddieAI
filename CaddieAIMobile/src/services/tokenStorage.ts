@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { decode as base64Decode } from 'react-native-base64';
+import base64 from 'react-native-base64';
 
 const ACCESS_TOKEN_KEY = 'caddie_access_token';
 const REFRESH_TOKEN_KEY = 'caddie_refresh_token';
@@ -142,15 +142,15 @@ export class TokenStorage {
   // Base64 URL-safe decode function using reliable library
   private static base64UrlDecode(str: string): string {
     // Convert base64url to base64 by replacing URL-safe characters
-    let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    let base64String = str.replace(/-/g, '+').replace(/_/g, '/');
     
     // Add padding if needed
-    while (base64.length % 4) {
-      base64 += '=';
+    while (base64String.length % 4) {
+      base64String += '=';
     }
     
     // Use reliable base64 decoding library
-    return base64Decode(base64);
+    return base64.decode(base64String);
   }
 
   // Validate JWT token format and expiration

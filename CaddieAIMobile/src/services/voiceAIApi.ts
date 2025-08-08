@@ -28,6 +28,9 @@ export interface VoiceAIRequest {
     hasActiveTarget: boolean;
     currentHole?: number;
     shotType: string;
+    shotPlacementActive?: boolean;
+    targetDistance?: number;
+    clubRecommendationRequested?: boolean;
   };
   metadata?: Record<string, any>;
 }
@@ -228,6 +231,174 @@ class VoiceAIApiService {
     }
   }
 
+  /**
+   * Request club recommendation for shot placement
+   */
+  async requestClubRecommendation(payload: {
+    userId: number;
+    roundId: number;
+    distanceYards: number;
+    currentHole?: number;
+    locationContext?: {
+      latitude: number;
+      longitude: number;
+      accuracyMeters?: number;
+    };
+  }): Promise<VoiceAIResponse> {
+    try {
+      const request: VoiceAIRequest = {
+        userId: payload.userId,
+        roundId: payload.roundId,
+        voiceInput: `I need a club recommendation for ${payload.distanceYards} yards${payload.currentHole ? ` on hole ${payload.currentHole}` : ''}`,
+        locationContext: payload.locationContext ? {
+          latitude: payload.locationContext.latitude,
+          longitude: payload.locationContext.longitude,
+          accuracyMeters: payload.locationContext.accuracyMeters,
+          currentHole: payload.currentHole,
+          distanceToPinMeters: Math.round(payload.distanceYards * 0.9144), // Convert yards to meters
+          withinCourseBoundaries: true,
+          timestamp: new Date().toISOString(),
+        } : undefined,
+        golfContext: {
+          hasActiveTarget: true,
+          currentHole: payload.currentHole,
+          shotType: 'approach',
+          shotPlacementActive: true,
+          targetDistance: payload.distanceYards,
+          clubRecommendationRequested: true,
+        }
+      };
+
+      const response = await this.processVoiceInput(request);
+      return response;
+    } catch (error: any) {
+      console.error('Error requesting club recommendation:', error);
+      
+      // Return fallback recommendation
+      return {
+        message: this.getFallbackClubRecommendation(payload.distanceYards),
+        responseId: `fallback-${Date.now()}`,
+        generatedAt: new Date().toISOString(),
+        confidenceScore: 0.5,
+        suggestedActions: ['Use recommended club', 'Adjust for conditions'],
+        requiresConfirmation: false,
+      };
+    }
+  }
+
+  /**
+   * Announce shot placement status
+   */
+  async announceShotPlacementStatus(payload: {
+    userId: number;
+    roundId: number;
+    status: 'placed' | 'activated' | 'in_progress' | 'completed';
+    distanceYards?: number;
+    currentHole?: number;
+    clubRecommendation?: string;
+  }): Promise<VoiceAIResponse> {
+    try {
+      let voiceInput = '';
+      
+      switch (payload.status) {
+        case 'placed':
+          voiceInput = `Shot target placed${payload.distanceYards ? ` at ${payload.distanceYards} yards` : ''}. Please provide encouragement and next steps.`;
+          break;
+        case 'activated':
+          voiceInput = `Shot tracking is now active. Provide brief encouragement for taking the shot.`;
+          break;
+        case 'in_progress':
+          voiceInput = `Shot is in progress. Provide brief monitoring message.`;
+          break;
+        case 'completed':
+          voiceInput = `Shot completed successfully. Provide positive feedback and next steps.`;
+          break;
+      }
+
+      const request: VoiceAIRequest = {
+        userId: payload.userId,
+        roundId: payload.roundId,
+        voiceInput,
+        golfContext: {
+          hasActiveTarget: payload.status !== 'completed',
+          currentHole: payload.currentHole,
+          shotType: 'status_update',
+          shotPlacementActive: payload.status === 'activated' || payload.status === 'in_progress',
+          targetDistance: payload.distanceYards,
+        }
+      };
+
+      const response = await this.processVoiceInput(request);
+      return response;
+    } catch (error: any) {
+      console.error('Error announcing shot placement status:', error);
+      
+      // Return fallback message
+      return {
+        message: this.getFallbackStatusMessage(payload.status, payload.distanceYards),
+        responseId: `fallback-${Date.now()}`,
+        generatedAt: new Date().toISOString(),
+        confidenceScore: 0.5,
+        suggestedActions: [],
+        requiresConfirmation: false,
+      };
+    }
+  }
+
+  /**
+   * Process shot placement guidance request
+   */
+  async requestShotPlacementGuidance(payload: {
+    userId: number;
+    roundId: number;
+    requestType: 'welcome' | 'instruction' | 'assistance';
+    currentHole?: number;
+    context?: string;
+  }): Promise<VoiceAIResponse> {
+    try {
+      let voiceInput = '';
+      
+      switch (payload.requestType) {
+        case 'welcome':
+          voiceInput = `Welcome the user to shot placement mode and provide brief instructions on how to use it.`;
+          break;
+        case 'instruction':
+          voiceInput = `Provide instructions on how to use shot placement mode for golf.`;
+          break;
+        case 'assistance':
+          voiceInput = payload.context || 'The user needs general assistance with shot placement mode.';
+          break;
+      }
+
+      const request: VoiceAIRequest = {
+        userId: payload.userId,
+        roundId: payload.roundId,
+        voiceInput,
+        golfContext: {
+          hasActiveTarget: false,
+          currentHole: payload.currentHole,
+          shotType: 'guidance',
+          shotPlacementActive: true,
+        }
+      };
+
+      const response = await this.processVoiceInput(request);
+      return response;
+    } catch (error: any) {
+      console.error('Error requesting shot placement guidance:', error);
+      
+      // Return fallback guidance
+      return {
+        message: this.getFallbackGuidanceMessage(payload.requestType),
+        responseId: `fallback-${Date.now()}`,
+        generatedAt: new Date().toISOString(),
+        confidenceScore: 0.5,
+        suggestedActions: ['Tap map to place shot', 'Use voice commands'],
+        requiresConfirmation: false,
+      };
+    }
+  }
+
   // Private helper methods for fallback responses
   private getDefaultHoleCommentary(score: number, par: number): string {
     const difference = score - par;
@@ -279,6 +450,51 @@ class VoiceAIApiService {
     if (difference === 1) return 3;  // Neutral for bogey
     if (difference === 2) return 2;  // Supportive for double bogey
     return 1; // Most supportive for worse scores
+  }
+
+  // Shot placement fallback helper methods
+  private getFallbackClubRecommendation(distanceYards: number): string {
+    if (distanceYards < 100) {
+      return "For this short approach, I recommend a wedge or short iron.";
+    } else if (distanceYards < 150) {
+      return "For this distance, consider a 9 or 8 iron.";
+    } else if (distanceYards < 170) {
+      return "A 7 or 6 iron should work well for this yardage.";
+    } else if (distanceYards < 190) {
+      return "I'd suggest a 5 iron or hybrid for this distance.";
+    } else if (distanceYards < 220) {
+      return "Consider using a 4 iron or fairway wood.";
+    } else {
+      return "For this longer shot, a driver or 3 wood would be appropriate.";
+    }
+  }
+
+  private getFallbackStatusMessage(status: string, distanceYards?: number): string {
+    switch (status) {
+      case 'placed':
+        return `Target set${distanceYards ? ` at ${distanceYards} yards` : ''}. When you're ready, activate shot tracking.`;
+      case 'activated':
+        return "Shot tracking is active. Take your shot when ready.";
+      case 'in_progress':
+        return "Monitoring your shot. Good luck!";
+      case 'completed':
+        return "Nice shot! Ready for your next target.";
+      default:
+        return "Shot placement is ready.";
+    }
+  }
+
+  private getFallbackGuidanceMessage(requestType: string): string {
+    switch (requestType) {
+      case 'welcome':
+        return "Welcome to shot placement mode! Tap anywhere on the map to set your target, and I'll help with club recommendations.";
+      case 'instruction':
+        return "To use shot placement: tap the map to set your target, review the distance, then activate shot tracking when ready.";
+      case 'assistance':
+        return "I'm here to help! Tap the map to place your shot target, and I'll provide club recommendations based on the distance.";
+      default:
+        return "How can I assist you with your shot placement?";
+    }
   }
 }
 
