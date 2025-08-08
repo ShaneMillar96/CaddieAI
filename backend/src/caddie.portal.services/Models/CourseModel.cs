@@ -35,12 +35,33 @@ public class HoleModel
     public int Id { get; set; }
     public int CourseId { get; set; }
     public int HoleNumber { get; set; }
+    public string? Name { get; set; }
     public int Par { get; set; }
+    public int? YardageBlack { get; set; }
+    public int? YardageBlue { get; set; }
+    public int? YardageWhite { get; set; }
+    public int? YardageRed { get; set; }
+    public int? StrokeIndex { get; set; }
+    public int? LadiesYardage { get; set; }
+    public int? LadiesPar { get; set; }
+    public int? LadiesStrokeIndex { get; set; }
+    
+    // PostGIS geometry fields
+    public NetTopologySuite.Geometries.Point? TeeLocation { get; set; }
+    public NetTopologySuite.Geometries.Point? PinLocation { get; set; }
+    
+    public string? HoleDescription { get; set; }
+    public string? HoleTips { get; set; }
+    public string? PlayingTips { get; set; }
+    public string? SimpleHazards { get; set; }
+    public string? HoleMetadata { get; set; }
+    public DateTime? CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    
+    // Legacy properties for backward compatibility
     public int? YardageMen { get; set; }
     public int? YardageWomen { get; set; }
-    public int? YardageWhite { get; set; }
     public int? Handicap { get; set; }
-    public int? StrokeIndex { get; set; }
     public string? Description { get; set; }
 }
 

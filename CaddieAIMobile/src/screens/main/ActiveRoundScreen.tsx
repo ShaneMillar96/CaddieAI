@@ -29,6 +29,23 @@ import {
   endVoiceSession,
   updateCurrentLocation,
 } from '../../store/slices/voiceSlice';
+import {
+  createShotPlacement,
+  activateShotPlacement,
+  cancelShotPlacement,
+  setPlacingShot,
+  setPreviewDistance,
+  clearPreview,
+  updateFromService,
+  selectShotPlacementState,
+  selectCurrentShot,
+  selectIsActive,
+  selectTargetLocation,
+  selectDistances,
+  selectClubRecommendation,
+  selectServiceState,
+  selectIsPlacingShot,
+} from '../../store/slices/shotPlacementSlice';
 import { LoadingSpinner } from '../../components/auth/LoadingSpinner';
 import { ErrorMessage } from '../../components/auth/ErrorMessage';
 import VoiceAIInterface from '../../components/voice/VoiceAIInterface';
@@ -41,6 +58,12 @@ import {
   isLocationServiceAvailable 
 } from '../../services/SimpleLocationService';
 import { mapboxService } from '../../services/MapboxService';
+import { 
+  shotPlacementService, 
+  ShotPlacementState as ServiceShotPlacementState 
+} from '../../services/ShotPlacementService';
+import { textToSpeechService, golfTTSHelper } from '../../services/TextToSpeechService';
+import voiceAIApiService from '../../services/voiceAIApi';
 
 // Navigation types
 type MainStackParamList = {
@@ -84,6 +107,16 @@ export const ActiveRoundScreen: React.FC = () => {
 
   const { user } = useSelector((state: RootState) => state.auth);
 
+  // Shot placement Redux state
+  const shotPlacementState = useSelector(selectShotPlacementState);
+  const currentShot = useSelector(selectCurrentShot);
+  const isActiveShotPlacement = useSelector(selectIsActive);
+  const targetLocation = useSelector(selectTargetLocation);
+  const distances = useSelector(selectDistances);
+  const clubRecommendation = useSelector(selectClubRecommendation);
+  const serviceState = useSelector(selectServiceState);
+  const isPlacingShot = useSelector(selectIsPlacingShot);
+
   // Local state - keep it simple
   const [currentHole, setCurrentHole] = useState<number>(1);
   const [isLocationTracking, setIsLocationTracking] = useState(false);
@@ -91,6 +124,10 @@ export const ActiveRoundScreen: React.FC = () => {
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
   const [showRoundControls, setShowRoundControls] = useState(false);
   const [isMapboxReady, setIsMapboxReady] = useState(false);
+  
+  // Shot placement mode state
+  const [shotPlacementModeEnabled, setShotPlacementModeEnabled] = useState(false);
+  const [serviceSyncInitialized, setServiceSyncInitialized] = useState(false);
   
   
   // Convert Redux currentLocation to SimpleLocationData format with stable reference
@@ -128,6 +165,33 @@ export const ActiveRoundScreen: React.FC = () => {
     initializeRound();
   }, [dispatch]);
 
+  // Sync Redux state with shot placement service
+  useEffect(() => {
+    if (shotPlacementModeEnabled && !serviceSyncInitialized) {
+      console.log('🎯 ActiveRoundScreen: Initializing shot placement service sync');
+      const unsubscribe = shotPlacementService.onShotPlacementUpdate(
+        (shotData, state) => {
+          console.log('🔄 ActiveRoundScreen: Service state update:', state, shotData);
+          dispatch(updateFromService({ shotData, serviceState: state }));
+        }
+      );
+      
+      setServiceSyncInitialized(true);
+      
+      // Cleanup on unmount or mode disable
+      return () => {
+        unsubscribe();
+        setServiceSyncInitialized(false);
+      };
+    }
+  }, [shotPlacementModeEnabled, dispatch]);
+
+  // Handle shot placement service state changes for voice feedback
+  useEffect(() => {
+    if (shotPlacementModeEnabled && serviceState) {
+      handleShotPlacementStateChange(serviceState);
+    }
+  }, [serviceState, distances.fromCurrent, clubRecommendation, shotPlacementModeEnabled]);
 
   // Initialize Mapbox service
   useEffect(() => {
@@ -309,12 +373,107 @@ export const ActiveRoundScreen: React.FC = () => {
     console.log('GPS tracking stopped');
   }, [dispatch]);
 
+  // Handle shot placement service state changes
+  const handleShotPlacementStateChange = useCallback(async (state: ServiceShotPlacementState) => {
+    switch (state) {
+      case ServiceShotPlacementState.SHOT_PLACEMENT:
+        if (distances.fromCurrent > 0) {
+          await golfTTSHelper.confirmShotPlacement(distances.fromCurrent);
+          
+          // Request club recommendation
+          if (distances.fromCurrent > 0 && user?.id && activeRound?.id) {
+            requestClubRecommendation(distances.fromCurrent);
+          }
+        }
+        break;
+        
+      case ServiceShotPlacementState.SHOT_IN_PROGRESS:
+        await golfTTSHelper.shotInProgress();
+        break;
+        
+      case ServiceShotPlacementState.MOVEMENT_DETECTED:
+        await golfTTSHelper.movementDetected();
+        break;
+        
+      case ServiceShotPlacementState.SHOT_COMPLETED:
+        await golfTTSHelper.shotCompleted();
+        break;
+    }
+  }, [distances.fromCurrent, user?.id, activeRound?.id]);
+
+  // Request club recommendation from Voice AI
+  const requestClubRecommendation = useCallback(async (distanceYards: number) => {
+    if (!user?.id || !activeRound?.id) return;
+    
+    try {
+      const response = await voiceAIApiService.requestClubRecommendation({
+        userId: Number(user.id),
+        roundId: activeRound.id,
+        distanceYards,
+        currentHole,
+        locationContext: currentLocation ? {
+          latitude: currentLocation.latitude,
+          longitude: currentLocation.longitude,
+          accuracyMeters: currentLocation.accuracy,
+        } : undefined,
+      });
+      
+      // Announce club recommendation
+      await golfTTSHelper.announceClubRecommendation(
+        response.message.toLowerCase().includes('iron') ? response.message : 'the recommended club',
+        distanceYards
+      );
+      
+    } catch (error) {
+      console.error('❌ ActiveRoundScreen: Club recommendation error:', error);
+    }
+  }, [user?.id, activeRound?.id, currentHole, currentLocation]);
+
+  // Toggle shot placement mode
+  const handleShotPlacementToggle = useCallback(() => {
+    const newMode = !shotPlacementModeEnabled;
+    setShotPlacementModeEnabled(newMode);
+    
+    if (newMode) {
+      // Enable shot placement mode
+      dispatch(setPlacingShot(true));
+      golfTTSHelper.generalAssistance("Shot placement mode enabled. Tap the map to set your target.");
+      console.log('🎯 ActiveRoundScreen: Shot placement mode enabled');
+    } else {
+      // Disable shot placement mode
+      dispatch(cancelShotPlacement());
+      dispatch(setPlacingShot(false));
+      golfTTSHelper.generalAssistance("Shot placement mode disabled.");
+      console.log('🎯 ActiveRoundScreen: Shot placement mode disabled');
+    }
+  }, [shotPlacementModeEnabled, dispatch]);
+
+  // Activate shot placement (user ready to take shot)
+  const handleActivateShot = useCallback(async () => {
+    try {
+      await dispatch(activateShotPlacement());
+    } catch (error) {
+      console.error('❌ ActiveRoundScreen: Activate shot error:', error);
+      Alert.alert('Activation Error', 'Failed to activate shot tracking');
+    }
+  }, [dispatch]);
+
+  // Cancel shot placement
+  const handleCancelShotPlacement = useCallback(async () => {
+    try {
+      await dispatch(cancelShotPlacement());
+      golfTTSHelper.generalAssistance("Shot placement cancelled.");
+    } catch (error) {
+      console.error('❌ ActiveRoundScreen: Cancel shot error:', error);
+    }
+  }, [dispatch]);
+
   // Handle voice toggle
   const handleVoiceToggle = useCallback(() => {
     dispatch(toggleVoiceInterface());
   }, [dispatch]);
 
-  // Handle map press for distance measurement using Mapbox service
+  // Handle map press for distance measurement or shot placement
   const handleMapPress = useCallback((coordinate: { latitude: number; longitude: number }) => {
     if (!currentLocation) {
       Alert.alert(
@@ -325,7 +484,13 @@ export const ActiveRoundScreen: React.FC = () => {
       return;
     }
 
-    // Use Mapbox service for accurate golf distance calculation
+    // Shot placement mode
+    if (shotPlacementModeEnabled && isPlacingShot) {
+      handleShotPlacementPress(coordinate);
+      return;
+    }
+
+    // Regular distance measurement mode
     const yards = mapboxService.calculateDistance(
       currentLocation.latitude,
       currentLocation.longitude,
@@ -352,7 +517,44 @@ export const ActiveRoundScreen: React.FC = () => {
       `Distance: ${mapboxService.formatDistance(yards, 'yards')} (${mapboxService.formatDistance(meters, 'meters')})\n\nSuggested club: ${yards < 100 ? 'Wedge' : yards < 150 ? 'Short Iron' : yards < 200 ? 'Mid Iron' : 'Long Iron/Driver'}`,
       [{ text: 'OK' }]
     );
-  }, [currentLocation]);
+  }, [currentLocation, shotPlacementModeEnabled, isPlacingShot]);
+
+  // Handle shot placement press
+  const handleShotPlacementPress = useCallback(async (coordinate: { latitude: number; longitude: number }) => {
+    if (!currentLocation || !activeRound?.id || !user?.id) {
+      Alert.alert('Error', 'Current location, round, and user information are required for shot placement');
+      return;
+    }
+
+    try {
+      console.log('🎯 ActiveRoundScreen: Placing shot at:', coordinate);
+      
+      // Calculate distances using Mapbox service
+      const distanceFromCurrent = Math.round(mapboxService.calculateDistance(
+        currentLocation.latitude,
+        currentLocation.longitude,
+        coordinate.latitude,
+        coordinate.longitude,
+        'yards'
+      ));
+      
+      // Create shot placement
+      const result = await dispatch(createShotPlacement({
+        coordinates: coordinate,
+        pinLocation: undefined, // Can be enhanced later with hole pin data
+        currentHole,
+      }));
+
+      if (createShotPlacement.fulfilled.match(result)) {
+        console.log('✅ ActiveRoundScreen: Shot placement created successfully');
+        // Disable placing mode after successful placement
+        dispatch(setPlacingShot(false));
+      }
+    } catch (error) {
+      console.error('❌ ActiveRoundScreen: Shot placement error:', error);
+      Alert.alert('Shot Placement Error', 'Failed to create shot placement');
+    }
+  }, [currentLocation, activeRound?.id, user?.id, currentHole, dispatch]);
 
   // Center map on user location
   const handleCenterOnUser = useCallback(() => {
@@ -510,11 +712,18 @@ export const ActiveRoundScreen: React.FC = () => {
         <MapboxMapView
           currentLocation={simpleLocationData}
           onMapPress={handleMapPress}
+          onShotPlacementPress={shotPlacementModeEnabled ? handleShotPlacementPress : undefined}
           onLocationUpdate={(coord) => {
             console.log('🎯 Map location update:', coord);
           }}
           showUserLocation={true}
           accessToken={mapboxService.getAccessToken()}
+          // Shot placement props
+          shotPlacementMode={shotPlacementModeEnabled}
+          shotPlacementLocation={targetLocation}
+          showDistanceOverlay={Boolean(targetLocation)}
+          distanceToPin={distances.toPin}
+          distanceFromCurrent={distances.fromCurrent}
         />
       </MapErrorBoundary>
       )}
@@ -533,6 +742,17 @@ export const ActiveRoundScreen: React.FC = () => {
         onRoundControlsPress={() => setShowRoundControls(!showRoundControls)}
         onCenterOnUser={handleCenterOnUser}
         onRetryLocation={startLocationTracking}
+        // Shot placement props
+        shotPlacementMode={shotPlacementModeEnabled}
+        shotPlacementActive={isActiveShotPlacement}
+        shotPlacementDistance={distances.fromCurrent}
+        clubRecommendation={clubRecommendation}
+        onShotPlacementToggle={handleShotPlacementToggle}
+        onActivateShot={handleActivateShot}
+        onCancelShotPlacement={handleCancelShotPlacement}
+        shotPlacementState={serviceState === ServiceShotPlacementState.INACTIVE ? 'inactive' : 
+                          serviceState === ServiceShotPlacementState.SHOT_PLACEMENT ? 'placement' :
+                          serviceState === ServiceShotPlacementState.SHOT_IN_PROGRESS ? 'in_progress' : 'completed'}
       />
 
       {/* Round Controls Modal */}

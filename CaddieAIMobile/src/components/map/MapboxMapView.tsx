@@ -31,6 +31,14 @@ export interface MapboxMapViewProps {
   };
   showUserLocation?: boolean;
   accessToken: string;
+  // Shot placement props
+  shotPlacementMode?: boolean;
+  shotPlacementLocation?: { latitude: number; longitude: number } | null;
+  pinLocation?: { latitude: number; longitude: number } | null;
+  onShotPlacementPress?: (coordinate: { latitude: number; longitude: number }) => void;
+  showDistanceOverlay?: boolean;
+  distanceToPin?: number;
+  distanceFromCurrent?: number;
 }
 
 export interface GolfCourseFeature {
@@ -54,6 +62,14 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
   initialRegion: _initialRegion,
   showUserLocation = true,
   accessToken,
+  // Shot placement props
+  shotPlacementMode = false,
+  shotPlacementLocation = null,
+  pinLocation = null,
+  onShotPlacementPress,
+  showDistanceOverlay = false,
+  distanceToPin = 0,
+  distanceFromCurrent = 0,
 }) => {
   const mapRef = useRef<MapView>(null);
   const cameraRef = useRef<Camera>(null);
@@ -120,15 +136,27 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
     setMapError('Map failed to load, falling back to demo tiles');
   }, []);
 
-  // Handle map press for distance measurement
+  // Handle map press for distance measurement and shot placement
   const handleMapPress = useCallback((feature: any) => {
-    if (!onMapPress || !feature?.geometry?.coordinates) return;
+    if (!feature?.geometry?.coordinates) return;
     
     const [lng, lat] = feature.geometry.coordinates;
-    console.log('🎯 MapboxMapView: Map pressed at:', { latitude: lat, longitude: lng });
+    const coordinate = { latitude: lat, longitude: lng };
     
-    onMapPress({ latitude: lat, longitude: lng });
-  }, [onMapPress]);
+    console.log('🎯 MapboxMapView: Map pressed at:', coordinate);
+    
+    // Handle shot placement mode separately
+    if (shotPlacementMode && onShotPlacementPress) {
+      console.log('🏌️ MapboxMapView: Shot placement mode - handling shot placement');
+      onShotPlacementPress(coordinate);
+      return;
+    }
+    
+    // Handle regular map press
+    if (onMapPress) {
+      onMapPress(coordinate);
+    }
+  }, [onMapPress, shotPlacementMode, onShotPlacementPress]);
 
   // Center map on user location
   const centerOnUser = useCallback(() => {
@@ -239,6 +267,69 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
               </View>
             </PointAnnotation>
           </>
+        )}
+
+        {/* Pin location marker (green flag) */}
+        {pinLocation && (
+          <PointAnnotation
+            id="pinLocation"
+            coordinate={[pinLocation.longitude, pinLocation.latitude]}
+          >
+            <View style={styles.pinMarker}>
+              <View style={styles.pinFlag}>
+                <Text style={styles.pinText}>PIN</Text>
+              </View>
+              <View style={styles.pinPole} />
+            </View>
+          </PointAnnotation>
+        )}
+
+        {/* Shot placement target marker */}
+        {shotPlacementLocation && (
+          <PointAnnotation
+            id="shotPlacementTarget"
+            coordinate={[shotPlacementLocation.longitude, shotPlacementLocation.latitude]}
+          >
+            <View style={styles.shotPlacementMarker}>
+              <View style={styles.shotPlacementTarget}>
+                <View style={styles.shotPlacementCenter} />
+              </View>
+              {showDistanceOverlay && (
+                <View style={styles.distanceLabel}>
+                  <Text style={styles.distanceLabelText}>
+                    {distanceFromCurrent}y
+                  </Text>
+                </View>
+              )}
+            </View>
+          </PointAnnotation>
+        )}
+
+        {/* Distance line between current location and shot placement */}
+        {shotPlacementLocation && currentLocation && shotPlacementMode && (
+          <ShapeSource
+            id="shotPlacementLine"
+            shape={{
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'LineString',
+                coordinates: [
+                  [currentLocation.longitude, currentLocation.latitude],
+                  [shotPlacementLocation.longitude, shotPlacementLocation.latitude],
+                ],
+              },
+            }}
+          >
+            <CircleLayer
+              id="shotPlacementLineCircle"
+              style={{
+                circleRadius: 2,
+                circleColor: '#FF6B35',
+                circleOpacity: 0.8,
+              }}
+            />
+          </ShapeSource>
         )}
       </MapView>
 
@@ -370,6 +461,73 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 12,
     fontWeight: '500',
+  },
+
+  // Pin marker styles (green flag)
+  pinMarker: {
+    alignItems: 'center',
+  },
+  pinFlag: {
+    backgroundColor: '#28a745',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  pinText: {
+    color: '#ffffff',
+    fontSize: 8,
+    fontWeight: '700',
+  },
+  pinPole: {
+    width: 2,
+    height: 12,
+    backgroundColor: '#28a745',
+  },
+
+  // Shot placement marker styles (crosshair target)
+  shotPlacementMarker: {
+    alignItems: 'center',
+  },
+  shotPlacementTarget: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255, 107, 53, 0.2)',
+    borderWidth: 2,
+    borderColor: '#FF6B35',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  shotPlacementCenter: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FF6B35',
+  },
+  
+  // Distance label for shot placement
+  distanceLabel: {
+    position: 'absolute',
+    top: -25,
+    backgroundColor: '#FF6B35',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  distanceLabelText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '700',
   },
 });
 

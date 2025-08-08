@@ -25,6 +25,15 @@ export interface MapboxMapOverlayProps {
   onRoundControlsPress: () => void;
   onCenterOnUser?: () => void;
   onRetryLocation?: () => void;
+  // Shot placement props
+  shotPlacementMode?: boolean;
+  shotPlacementActive?: boolean;
+  shotPlacementDistance?: number;
+  clubRecommendation?: string | null;
+  onShotPlacementToggle?: () => void;
+  onActivateShot?: () => void;
+  onCancelShotPlacement?: () => void;
+  shotPlacementState?: 'inactive' | 'placement' | 'in_progress' | 'completed';
 }
 
 /**
@@ -51,6 +60,15 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
   onRoundControlsPress,
   onCenterOnUser,
   onRetryLocation,
+  // Shot placement props
+  shotPlacementMode = false,
+  shotPlacementActive = false,
+  shotPlacementDistance = 0,
+  clubRecommendation = null,
+  onShotPlacementToggle,
+  onActivateShot,
+  onCancelShotPlacement,
+  shotPlacementState = 'inactive',
 }) => {
   
   // Get enhanced GPS status for Mapbox
@@ -155,6 +173,25 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
     return currentLocation ? '285y' : '--';
   };
 
+  // Helper functions for shot placement status
+  const getShotPlacementStatusColor = (state: string): string => {
+    switch (state) {
+      case 'placement': return '#FF6B35';
+      case 'in_progress': return '#28a745';
+      case 'completed': return '#007bff';
+      default: return '#6c757d';
+    }
+  };
+
+  const getShotPlacementStatusText = (state: string): string => {
+    switch (state) {
+      case 'placement': return 'Ready';
+      case 'in_progress': return 'Active';
+      case 'completed': return 'Complete';
+      default: return 'Inactive';
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} pointerEvents="box-none">
       {/* Enhanced Top Information Bar */}
@@ -198,8 +235,55 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
         </TouchableOpacity>
       </View>
 
+      {/* Shot Placement Information Panel */}
+      {shotPlacementMode && shotPlacementState !== 'inactive' && (
+        <View style={styles.shotPlacementPanel}>
+          <View style={styles.shotPlacementHeader}>
+            <Icon name="golf-course" size={18} color="#FF6B35" />
+            <Text style={styles.shotPlacementTitle}>Shot Placement</Text>
+            <View style={[styles.shotPlacementStatusBadge, { 
+              backgroundColor: getShotPlacementStatusColor(shotPlacementState)
+            }]}>
+              <Text style={styles.shotPlacementStatusText}>
+                {getShotPlacementStatusText(shotPlacementState)}
+              </Text>
+            </View>
+          </View>
+          
+          {shotPlacementDistance > 0 && (
+            <View style={styles.shotPlacementDistance}>
+              <Text style={styles.shotPlacementDistanceValue}>{shotPlacementDistance}y</Text>
+              <Text style={styles.shotPlacementDistanceLabel}>Target Distance</Text>
+            </View>
+          )}
+          
+          {clubRecommendation && (
+            <View style={styles.clubRecommendationContainer}>
+              <Icon name="sports-golf" size={14} color="#4a7c59" />
+              <Text style={styles.clubRecommendationText}>{clubRecommendation}</Text>
+            </View>
+          )}
+          
+          <View style={styles.shotPlacementActions}>
+            {shotPlacementState === 'placement' && onActivateShot && (
+              <TouchableOpacity style={styles.activateShotButton} onPress={onActivateShot}>
+                <Icon name="play-arrow" size={16} color="#ffffff" />
+                <Text style={styles.activateShotButtonText}>Take Shot</Text>
+              </TouchableOpacity>
+            )}
+            
+            {onCancelShotPlacement && shotPlacementState !== 'completed' && (
+              <TouchableOpacity style={styles.cancelShotButton} onPress={onCancelShotPlacement}>
+                <Icon name="close" size={16} color="#dc3545" />
+                <Text style={styles.cancelShotButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
+
       {/* Golf Distance Information */}
-      {currentLocation && (
+      {currentLocation && !shotPlacementMode && (
         <View style={styles.distanceBar}>
           <View style={styles.distanceItem}>
             <Icon name="flag" size={16} color="#4a7c59" />
@@ -229,18 +313,24 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
           </TouchableOpacity>
         )}
 
-        {/* Distance Measurement Tool */}
-        <TouchableOpacity
-          style={styles.controlButton}
-          onPress={() => {
-            // TODO: Implement distance measurement mode
-            console.log('Distance measurement tool activated');
-          }}
-          activeOpacity={0.8}
-        >
-          <Icon name="straighten" size={24} color="#4a7c59" />
-          <Text style={styles.controlButtonLabel}>Measure</Text>
-        </TouchableOpacity>
+        {/* Shot Placement Mode Toggle */}
+        {onShotPlacementToggle && (
+          <TouchableOpacity
+            style={[
+              styles.controlButton,
+              shotPlacementMode && styles.controlButtonActive
+            ]}
+            onPress={onShotPlacementToggle}
+            activeOpacity={0.8}
+          >
+            <Icon name="golf-course" size={24} color={shotPlacementMode ? "#ffffff" : "#4a7c59"} />
+            <Text style={[
+              styles.controlButtonLabel,
+              shotPlacementMode && styles.controlButtonLabelActive
+            ]}>Shot</Text>
+          </TouchableOpacity>
+        )}
+
 
         {/* Enhanced Voice Interface Button */}
         <TouchableOpacity
@@ -307,7 +397,10 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
         <View style={styles.instructionsContainer}>
           <Icon name="info" size={16} color="#ffffff" />
           <Text style={styles.instructionsText}>
-            Tap anywhere to measure distance • Voice AI ready for golf assistance
+            {shotPlacementMode 
+              ? 'Tap map to place your shot target • Voice AI provides club recommendations'
+              : 'Tap anywhere to measure distance • Voice AI ready for golf assistance'
+            }
           </Text>
         </View>
       )}
@@ -471,6 +564,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
+  controlButtonActive: {
+    backgroundColor: '#4a7c59',
+    borderColor: '#2c5530',
+  },
+  controlButtonLabelActive: {
+    color: '#ffffff',
+  },
   voiceButton: {
     width: 64,
     height: 64,
@@ -593,6 +693,110 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
     flex: 1,
+  },
+
+  // Shot Placement Panel Styles
+  shotPlacementPanel: {
+    position: 'absolute',
+    top: 100,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  shotPlacementHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 8,
+  },
+  shotPlacementTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2c5530',
+    flex: 1,
+  },
+  shotPlacementStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  shotPlacementStatusText: {
+    fontSize: 10,
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  shotPlacementDistance: {
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  shotPlacementDistanceValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FF6B35',
+  },
+  shotPlacementDistanceLabel: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+  },
+  clubRecommendationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(74, 124, 89, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 12,
+    gap: 6,
+  },
+  clubRecommendationText: {
+    fontSize: 14,
+    color: '#2c5530',
+    fontWeight: '500',
+    flex: 1,
+  },
+  shotPlacementActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  activateShotButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#28a745',
+    paddingVertical: 10,
+    borderRadius: 8,
+    gap: 6,
+  },
+  activateShotButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  cancelShotButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#dc3545',
+    paddingVertical: 10,
+    borderRadius: 8,
+    gap: 6,
+  },
+  cancelShotButtonText: {
+    color: '#dc3545',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 
