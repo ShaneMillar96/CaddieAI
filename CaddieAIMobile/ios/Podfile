@@ -5,6 +5,10 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
+# Import Mapbox configuration
+$RNMapboxMapsImpl = 'mapbox'
+$RNMapboxMapsVersion = '~> 10.16.2'
+
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
@@ -23,6 +27,10 @@ target 'CaddieAIMobile' do
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
+  pre_install do |installer|
+    $RNMapboxMaps.pre_install(installer)
+  end
+
   post_install do |installer|
     # https://github.com/facebook/react-native/blob/main/packages/react-native/scripts/react_native_pods.rb#L197-L202
     react_native_post_install(
@@ -31,5 +39,6 @@ target 'CaddieAIMobile' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+    $RNMapboxMaps.post_install(installer)
   end
 end

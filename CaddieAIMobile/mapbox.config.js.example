@@ -1,0 +1,22 @@
+// Mapbox configuration
+export const MAPBOX_ACCESS_TOKEN = 'pk.YOUR_MAPBOX_ACCESS_TOKEN_HERE';
+
+// Mapbox style URLs
+export const MAPBOX_STYLES = {
+  STREET: 'mapbox://styles/mapbox/streets-v11',
+  SATELLITE: 'mapbox://styles/mapbox/satellite-v9',
+  OUTDOORS: 'mapbox://styles/mapbox/outdoors-v11',
+  LIGHT: 'mapbox://styles/mapbox/light-v10',
+  DARK: 'mapbox://styles/mapbox/dark-v10',
+};
+
+// Default map configuration
+export const DEFAULT_MAP_CONFIG = {
+  style: MAPBOX_STYLES.OUTDOORS, // Good for golf courses
+  centerCoordinate: [-6.2088, 53.3498], // Dublin, Ireland (default)
+  zoomLevel: 10,
+  pitchEnabled: true,
+  rotateEnabled: true,
+  scrollEnabled: true,
+  zoomEnabled: true,
+};

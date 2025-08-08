@@ -32,13 +32,23 @@ export class SimpleLocationService {
   private isTracking = false;
   private locationCallbacks: Array<(location: SimpleLocationData) => void> = [];
   private errorCallbacks: Array<(error: string) => void> = [];
+  private fallbackTimeout: ReturnType<typeof setTimeout> | null = null;
+  private isUsingFallback = false;
 
   // Golf-optimized GPS settings
   private gpsOptions: LocationOptions = {
     enableHighAccuracy: true,
-    timeout: 30000, // 30 seconds
-    maximumAge: 10000, // 10 seconds
+    timeout: 10000, // 10 seconds - faster timeout for better responsiveness
+    maximumAge: 5000, // 5 seconds - fresher location data
     distanceFilter: 2, // Update every 2 meters
+  };
+
+  // Faughan Valley Golf Course fallback location for testing
+  private fallbackLocation: SimpleLocationData = {
+    latitude: 55.020906,
+    longitude: -7.247879,
+    accuracy: 999, // High accuracy number to indicate this is fallback
+    timestamp: 0, // Will be set when used
   };
 
   constructor() {
@@ -55,11 +65,50 @@ export class SimpleLocationService {
   }
 
   /**
+   * Check if location permissions are granted
+   */
+  async checkPermissions(): Promise<boolean> {
+    try {
+      if (Platform.OS === 'android') {
+        const fineLocationGranted = await PermissionsAndroid.check(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+        );
+        const coarseLocationGranted = await PermissionsAndroid.check(
+          PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION
+        );
+        
+        console.log('🔍 SimpleLocationService: Permission check results:', {
+          fineLocation: fineLocationGranted,
+          coarseLocation: coarseLocationGranted
+        });
+        
+        return fineLocationGranted || coarseLocationGranted;
+      } else {
+        // iOS permissions handled automatically
+        return true;
+      }
+    } catch (error) {
+      console.error('❌ SimpleLocationService: Error checking permissions:', error);
+      return false;
+    }
+  }
+
+  /**
    * Request location permissions for both platforms
    */
   async requestPermissions(): Promise<boolean> {
     try {
+      console.log('📱 SimpleLocationService: Requesting location permissions...');
+      
       if (Platform.OS === 'android') {
+        // First check if we already have permissions
+        const hasPermissions = await this.checkPermissions();
+        if (hasPermissions) {
+          console.log('✅ SimpleLocationService: Permissions already granted');
+          return true;
+        }
+
+        console.log('🔐 SimpleLocationService: Requesting FINE_LOCATION permission...');
         const granted = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
           {
@@ -70,13 +119,18 @@ export class SimpleLocationService {
             buttonPositive: 'OK',
           }
         );
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
+        
+        const isGranted = granted === PermissionsAndroid.RESULTS.GRANTED;
+        console.log('🔍 SimpleLocationService: Permission request result:', granted, 'isGranted:', isGranted);
+        
+        return isGranted;
       } else {
-        // iOS permissions handled automatically
+        // iOS permissions handled automatically by react-native-geolocation
+        console.log('🍎 SimpleLocationService: iOS permissions handled automatically');
         return true;
       }
     } catch (error) {
-      console.error('Error requesting location permissions:', error);
+      console.error('❌ SimpleLocationService: Error requesting location permissions:', error);
       return false;
     }
   }
@@ -86,17 +140,43 @@ export class SimpleLocationService {
    */
   async startTracking(): Promise<boolean> {
     try {
+      console.log('🚀 SimpleLocationService: Starting GPS tracking...');
+      
       // Check permissions first
+      console.log('🔐 SimpleLocationService: Checking permissions...');
       const hasPermission = await this.requestPermissions();
       if (!hasPermission) {
-        this.notifyError('Location permission denied');
+        console.error('❌ SimpleLocationService: Location permission denied');
+        this.notifyError('Location permission denied. Please enable location access in settings.');
         return false;
       }
 
+      console.log('✅ SimpleLocationService: Permissions granted, starting location watch...');
+
       // Start location updates
       this.watchId = Geolocation.watchPosition(
-        (position) => this.handleLocationUpdate(position),
-        (error) => this.handleLocationError(error),
+        (position) => {
+          console.log('📍 SimpleLocationService: Got position from GPS:', {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            timestamp: position.timestamp
+          });
+          
+          // Clear fallback timeout since we got real GPS
+          if (this.fallbackTimeout) {
+            clearTimeout(this.fallbackTimeout);
+            this.fallbackTimeout = null;
+            console.log('✅ SimpleLocationService: Real GPS acquired, cancelling fallback');
+          }
+          
+          this.isUsingFallback = false;
+          this.handleLocationUpdate(position);
+        },
+        (error) => {
+          console.error('❌ SimpleLocationService: GPS error:', error);
+          this.handleLocationError(error);
+        },
         {
           enableHighAccuracy: this.gpsOptions.enableHighAccuracy,
           timeout: this.gpsOptions.timeout,
@@ -105,11 +185,20 @@ export class SimpleLocationService {
         }
       );
 
+      // Set up fallback timeout (8 seconds - faster than GPS timeout)
+      console.log('⏰ SimpleLocationService: Setting up 8s fallback timeout...');
+      this.fallbackTimeout = setTimeout(() => {
+        if (!this.currentLocation && this.isTracking) {
+          console.log('🏌️ SimpleLocationService: GPS timeout - activating Faughan Valley fallback location');
+          this.activateFallbackLocation();
+        }
+      }, 8000);
+
       this.isTracking = true;
-      console.log('GPS tracking started successfully');
+      console.log('✅ SimpleLocationService: GPS tracking started successfully with watchId:', this.watchId);
       return true;
     } catch (error) {
-      console.error('Error starting GPS tracking:', error);
+      console.error('❌ SimpleLocationService: Error starting GPS tracking:', error);
       this.notifyError('Failed to start GPS tracking');
       return false;
     }
@@ -124,8 +213,15 @@ export class SimpleLocationService {
       this.watchId = null;
     }
     
+    // Clear fallback timeout
+    if (this.fallbackTimeout) {
+      clearTimeout(this.fallbackTimeout);
+      this.fallbackTimeout = null;
+    }
+    
     this.isTracking = false;
     this.currentLocation = null;
+    this.isUsingFallback = false;
     console.log('GPS tracking stopped');
   }
 
@@ -134,6 +230,8 @@ export class SimpleLocationService {
    */
   async getCurrentLocation(): Promise<SimpleLocationData | null> {
     return new Promise((resolve) => {
+      console.log('⚡ SimpleLocationService: Getting current location...');
+      
       Geolocation.getCurrentPosition(
         (position) => {
           const locationData: SimpleLocationData = {
@@ -142,15 +240,17 @@ export class SimpleLocationService {
             accuracy: position.coords.accuracy,
             timestamp: position.timestamp,
           };
+          
+          console.log('✅ SimpleLocationService: Got current location:', locationData);
           resolve(locationData);
         },
         (error) => {
-          console.error('Error getting current location:', error);
+          console.error('❌ SimpleLocationService: Error getting current location:', error);
           resolve(null);
         },
         {
           enableHighAccuracy: true,
-          timeout: 15000,
+          timeout: 10000, // Match GPS timeout
           maximumAge: 5000,
         }
       );
@@ -204,6 +304,44 @@ export class SimpleLocationService {
    */
   isCurrentlyTracking(): boolean {
     return this.isTracking;
+  }
+
+  /**
+   * Check if using fallback location
+   */
+  isUsingFallbackLocation(): boolean {
+    return this.isUsingFallback;
+  }
+
+  /**
+   * Activate fallback location for testing purposes
+   */
+  private activateFallbackLocation(): void {
+    console.log('🏌️ SimpleLocationService: Activating Faughan Valley fallback location');
+    
+    const fallbackWithTimestamp: SimpleLocationData = {
+      ...this.fallbackLocation,
+      timestamp: Date.now(),
+    };
+    
+    this.isUsingFallback = true;
+    this.currentLocation = fallbackWithTimestamp;
+    
+    // Notify all subscribers of fallback location
+    this.locationCallbacks.forEach(callback => {
+      try {
+        callback(fallbackWithTimestamp);
+      } catch (error) {
+        console.error('Error in fallback location callback:', error);
+      }
+    });
+    
+    console.log('✅ SimpleLocationService: Fallback location activated:', {
+      lat: fallbackWithTimestamp.latitude,
+      lng: fallbackWithTimestamp.longitude,
+      accuracy: fallbackWithTimestamp.accuracy,
+      isFallback: true
+    });
   }
 
   /**

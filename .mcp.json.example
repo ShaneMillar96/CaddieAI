@@ -8,10 +8,10 @@
       "command": "node",
       "args": ["/Users/shane.millar/Desktop/Projects/CaddieAI/jira-mcp/build/index.js"],
       "env": {
-        "JIRA_HOST": "caddieaiapp.atlassian.net",
-        "JIRA_USERNAME": "shanemillar1996@gmail.com",
+        "JIRA_HOST": "your-jira-instance.atlassian.net",
+        "JIRA_USERNAME": "your-email@example.com",
         "JIRA_API_TOKEN": "YOUR_JIRA_API_TOKEN_HERE",
-        "JIRA_PROJECT_KEY": "ECS",
+        "JIRA_PROJECT_KEY": "YOUR_PROJECT_KEY",
         "AUTO_CREATE_TEST_TICKETS": "false"
       }
     }

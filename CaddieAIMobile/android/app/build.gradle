@@ -2,13 +2,6 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
-// Load secrets from secrets.properties file
-def secretsPropertiesFile = rootProject.file("secrets.properties")
-def secretsProperties = new Properties()
-if (secretsPropertiesFile.exists()) {
-    secretsProperties.load(new FileInputStream(secretsPropertiesFile))
-}
-
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
@@ -91,16 +84,6 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
-        
-        // Enable MultiDex for large apps
-        multiDexEnabled true
-        
-        // Add Google Maps API key as build config field and manifest placeholder
-        def mapsApiKey = secretsProperties.getProperty('MAPS_API_KEY', '')
-        buildConfigField "String", "MAPS_API_KEY", "\"${mapsApiKey}\""
-        manifestPlaceholders = [
-            mapsApiKey: mapsApiKey
-        ]
     }
     signingConfigs {
         debug {
@@ -122,41 +105,66 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
+    
+    packagingOptions {
+        pickFirst 'lib/x86/libc++_shared.so'
+        pickFirst 'lib/x86_64/libc++_shared.so'
+        pickFirst 'lib/arm64-v8a/libc++_shared.so'
+        pickFirst 'lib/armeabi-v7a/libc++_shared.so'
+        
+        // Handle AndroidX vs Support library conflicts
+        pickFirst 'META-INF/androidx.appcompat_appcompat.version'
+        pickFirst 'META-INF/androidx.core_core.version'
+        pickFirst 'META-INF/androidx.versionedparcelable_versionedparcelable.version'
+        pickFirst 'META-INF/androidx.fragment_fragment.version'
+        pickFirst 'META-INF/androidx.activity_activity.version'
+        pickFirst 'META-INF/androidx.annotation_annotation.version'
+        pickFirst 'META-INF/androidx.collection_collection.version'
+        pickFirst 'META-INF/androidx.customview_customview.version'
+        pickFirst 'META-INF/androidx.drawerlayout_drawerlayout.version'
+        pickFirst 'META-INF/androidx.interpolator_interpolator.version'
+        pickFirst 'META-INF/androidx.legacy_legacy-support-core-utils.version'
+        pickFirst 'META-INF/androidx.lifecycle_lifecycle-common.version'
+        pickFirst 'META-INF/androidx.lifecycle_lifecycle-livedata.version'
+        pickFirst 'META-INF/androidx.lifecycle_lifecycle-livedata-core.version'
+        pickFirst 'META-INF/androidx.lifecycle_lifecycle-runtime.version'
+        pickFirst 'META-INF/androidx.lifecycle_lifecycle-viewmodel.version'
+        pickFirst 'META-INF/androidx.loader_loader.version'
+        pickFirst 'META-INF/androidx.savedstate_savedstate.version'
+        pickFirst 'META-INF/androidx.vectordrawable_vectordrawable.version'
+        pickFirst 'META-INF/androidx.vectordrawable_vectordrawable-animated.version'
+        pickFirst 'META-INF/androidx.viewpager_viewpager.version'
+    }
 }
 
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
-    // MultiDex support for large apps
-    implementation 'androidx.multidex:multidex:2.0.1'
-
-    // Google Play Services for react-native-maps (updated versions for compatibility)
-    implementation 'com.google.android.gms:play-services-base:18.5.0'
-    implementation 'com.google.android.gms:play-services-maps:19.1.0'
-    implementation 'com.google.android.gms:play-services-location:21.3.0'
-    
-    // Additional Google Maps dependencies
-    implementation 'com.google.maps.android:android-maps-utils:3.8.2'
-    
-    // Force resolution of compatible versions to prevent NPE issues
-    implementation 'com.google.android.gms:play-services-auth:21.2.0'
-    implementation 'com.google.android.gms:play-services-basement:18.4.0'
-
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
     } else {
         implementation jscFlavor
     }
+    
+    // Force AndroidX versions to avoid duplicate class issues
+    implementation 'androidx.core:core:1.16.0'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.versionedparcelable:versionedparcelable:1.1.1'
 }
 
-// Force resolution of AndroidX libraries to avoid conflicts with legacy support libraries
+// Exclude old Android Support libraries from all dependencies
 configurations.all {
-    resolutionStrategy {
-        force 'androidx.core:core:1.13.1'
-        force 'androidx.lifecycle:lifecycle-process:2.8.4'
-        force 'androidx.startup:startup-runtime:1.1.1'
-    }
-    
-    exclude group: 'com.android.support'
+    exclude group: 'com.android.support', module: 'support-compat'
+    exclude group: 'com.android.support', module: 'support-core-ui'
+    exclude group: 'com.android.support', module: 'support-core-utils'
+    exclude group: 'com.android.support', module: 'support-fragment'
+    exclude group: 'com.android.support', module: 'support-annotations'
+    exclude group: 'com.android.support', module: 'animated-vector-drawable'
+    exclude group: 'com.android.support', module: 'support-vector-drawable'
+    exclude group: 'com.android.support', module: 'versionedparcelable'
+    exclude group: 'com.android.support', module: 'appcompat-v7'
+    exclude group: 'com.android.support', module: 'recyclerview-v7'
+    exclude group: 'com.android.support', module: 'cardview-v7'
+    exclude group: 'com.android.support', module: 'design'
 }
