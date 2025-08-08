@@ -42,4 +42,4 @@ newArchEnabled=true
 hermesEnabled=true
 
 # Mapbox Downloads token - Replace with your actual Mapbox secret token
-MAPBOX_DOWNLOADS_TOKEN=sk.eyJ1Ijoic2hhbmVtaWxsYXI5NiIsImEiOiJjbWUwMTdrNHcwMDB3MmtvZjZ5dG1veTJzIn0.mh7-3Fi1MjyzEsp6P_tg1g
+MAPBOX_DOWNLOADS_TOKEN=sk.YOUR_MAPBOX_SECRET_TOKEN_HERE

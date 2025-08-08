@@ -9,8 +9,7 @@ import {
   RoundStatus
 } from '../types';
 import TokenStorage from './tokenStorage';
-
-const API_BASE_URL = 'http://localhost:5277/api';
+import { API_BASE_URL, API_TIMEOUT } from '../config/api';
 
 class RoundApiService {
   private api: AxiosInstance;
@@ -18,7 +17,7 @@ class RoundApiService {
   constructor() {
     this.api = axios.create({
       baseURL: API_BASE_URL,
-      timeout: 10000,
+      timeout: API_TIMEOUT,
       headers: {
         'Content-Type': 'application/json',
       },

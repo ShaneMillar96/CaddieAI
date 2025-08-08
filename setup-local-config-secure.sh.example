@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# CaddieAI Secure Local Configuration Setup Script  
+# COPY THIS FILE TO setup-local-config-secure.sh AND ADD YOUR ACTUAL API KEYS
+# This file should be in .gitignore and never committed to the repository
+
+echo "🔧 Setting up CaddieAI local configuration with actual API keys..."
+
+# Your actual API keys (replace these with real values)
+MAPBOX_PUBLIC_TOKEN="pk.YOUR_ACTUAL_MAPBOX_PUBLIC_TOKEN_HERE"
+MAPBOX_SECRET_TOKEN="sk.YOUR_ACTUAL_MAPBOX_SECRET_TOKEN_HERE"  
+GOOGLE_MAPS_API_KEY="YOUR_ACTUAL_GOOGLE_MAPS_API_KEY_HERE"
+JIRA_API_TOKEN="YOUR_ACTUAL_JIRA_API_TOKEN_HERE"
+OPENAI_API_KEY="sk-YOUR_ACTUAL_OPENAI_API_KEY_HERE"
+
+# Create the local mapbox config
+echo "📍 Setting up Mapbox configuration..."
+cp CaddieAIMobile/mapbox.config.js.example CaddieAIMobile/mapbox.config.js
+sed -i '' "s/pk.YOUR_MAPBOX_ACCESS_TOKEN_HERE/$MAPBOX_PUBLIC_TOKEN/g" CaddieAIMobile/mapbox.config.js
+
+# Set up gradle properties
+echo "🏗️ Setting up Android Gradle properties..."
+cp CaddieAIMobile/android/gradle.properties.example CaddieAIMobile/android/gradle.properties
+sed -i '' "s/sk.YOUR_MAPBOX_SECRET_TOKEN_HERE/$MAPBOX_SECRET_TOKEN/g" CaddieAIMobile/android/gradle.properties
+
+# Set up Google Maps API key
+echo "🗺️ Setting up Google Maps API key..."
+mkdir -p CaddieAIMobile/android/app/src/main/res/values
+cp CaddieAIMobile/android/app/src/main/res/values/google_maps_api.xml.example CaddieAIMobile/android/app/src/main/res/values/google_maps_api.xml
+sed -i '' "s/YOUR_GOOGLE_MAPS_API_KEY_HERE/$GOOGLE_MAPS_API_KEY/g" CaddieAIMobile/android/app/src/main/res/values/google_maps_api.xml
+
+# Set up MCP configuration
+echo "🔗 Setting up MCP configuration..."
+cp .mcp.json.example .mcp.json
+sed -i '' "s/YOUR_JIRA_API_TOKEN_HERE/$JIRA_API_TOKEN/g" .mcp.json
+
+# Set up backend OpenAI configuration (create local override)
+echo "🤖 Setting up OpenAI configuration..."
+cp backend/src/caddie.portal.api/appsettings.json backend/src/caddie.portal.api/appsettings.Development.json
+sed -i '' "s/sk-YOUR_OPENAI_API_KEY_HERE/$OPENAI_API_KEY/g" backend/src/caddie.portal.api/appsettings.Development.json
+
+echo "✅ Local configuration setup complete with your actual API keys!"
+echo ""
+echo "🔒 Security Notes:"
+echo "- Your API keys are now configured locally"
+echo "- These files are in .gitignore and won't be committed"
+echo "- NEVER share your actual API keys in commits or public channels"
+echo "- This script itself should not be committed (use .example version instead)"
+echo ""
+echo "🚀 Next steps:"
+echo "1. Run 'npm install' in CaddieAIMobile directory"
+echo "2. Run 'npm run android' or 'npm run ios' to build and test"

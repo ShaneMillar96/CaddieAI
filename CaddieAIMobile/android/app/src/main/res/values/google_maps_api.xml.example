@@ -1,0 +1,6 @@
+<resources>
+  <!-- Google Maps API key for resolving gray screen issues on Android -->
+  <!-- This ensures the API key is correctly provided to the native Google Maps SDK -->
+  <!-- Replace YOUR_GOOGLE_MAPS_API_KEY_HERE with your actual API key -->
+  <string name="google_maps_key" templateMergeStrategy="preserve" translatable="false">YOUR_GOOGLE_MAPS_API_KEY_HERE</string>
+</resources>
