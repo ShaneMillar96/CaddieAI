@@ -28,7 +28,7 @@ import { CourseSearchBar } from '../../components/common/CourseSearchBar';
 import { LoadingSpinner } from '../../components/auth/LoadingSpinner';
 import { ErrorMessage } from '../../components/auth/ErrorMessage';
 import { CourseListItem } from '../../types/golf';
-import { CoursesStackParamList } from '../../navigation/CoursesNavigator';
+import type { CoursesStackParamList } from '../../navigation/CoursesNavigator';
 
 type CoursesScreenNavigationProp = StackNavigationProp<CoursesStackParamList, 'CoursesList'>;
 type CoursesScreenRouteProp = RouteProp<CoursesStackParamList, 'CoursesList'>;

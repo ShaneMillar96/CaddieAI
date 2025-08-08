@@ -1,8 +1,10 @@
 /**
  * Mapbox Configuration Utility
  * 
- * Provides access to Mapbox access token from Android BuildConfig
- * and iOS configuration for React Native applications.
+ * Provides access to Mapbox access token from multiple sources:
+ * - Android: BuildConfig 
+ * - iOS/Fallback: Static configuration
+ * - JavaScript config file fallback
  */
 
 import { NativeModules, Platform } from 'react-native';
@@ -12,7 +14,7 @@ interface MapboxConfig {
 }
 
 /**
- * Get Mapbox configuration from native platform
+ * Get Mapbox configuration from native platform or fallback
  */
 export const getMapboxConfig = (): MapboxConfig => {
   let accessToken = '';
@@ -24,27 +26,42 @@ export const getMapboxConfig = (): MapboxConfig => {
       accessToken = BuildConfig.MAPBOX_ACCESS_TOKEN || '';
       
       if (!accessToken) {
-        console.warn('⚠️ Mapbox: No access token found in Android BuildConfig');
-        accessToken = 'pk.your_mapbox_access_token_here'; // Fallback
+        console.warn('⚠️ Mapbox: No access token found in Android BuildConfig, using fallback');
+        accessToken = getJavaScriptFallbackToken();
       }
     } catch (error) {
-      console.error('❌ Mapbox: Error reading BuildConfig:', error);
-      accessToken = 'pk.your_mapbox_access_token_here'; // Fallback
+      console.error('❌ Mapbox: Error reading BuildConfig, using fallback:', error);
+      accessToken = getJavaScriptFallbackToken();
     }
   } else if (Platform.OS === 'ios') {
-    // On iOS, we'll need to implement native module or use a different approach
-    // For now, use a fallback - this should be improved for production
-    console.warn('⚠️ Mapbox: iOS token configuration not implemented yet');
-    accessToken = 'pk.your_mapbox_access_token_here'; // Fallback
+    // On iOS, use JavaScript fallback token
+    console.log('🍎 Mapbox: Using JavaScript fallback token for iOS');
+    accessToken = getJavaScriptFallbackToken();
   }
 
+  const isValidToken = validateMapboxToken(accessToken);
+  
   console.log('🗺️ Mapbox Config:', {
     platform: Platform.OS,
-    hasToken: !!accessToken && accessToken !== 'pk.your_mapbox_access_token_here',
+    hasValidToken: isValidToken,
     tokenPrefix: accessToken.substring(0, 15) + '...'
   });
 
   return { accessToken };
+};
+
+/**
+ * Get fallback token from JavaScript configuration
+ */
+const getJavaScriptFallbackToken = (): string => {
+  try {
+    // Import the token from our config file
+    const { MAPBOX_ACCESS_TOKEN } = require('../../mapbox.config.js');
+    return MAPBOX_ACCESS_TOKEN || 'pk.your_mapbox_access_token_here';
+  } catch (error) {
+    console.warn('⚠️ Mapbox: Could not load JavaScript config, using placeholder');
+    return 'pk.your_mapbox_access_token_here';
+  }
 };
 
 /**

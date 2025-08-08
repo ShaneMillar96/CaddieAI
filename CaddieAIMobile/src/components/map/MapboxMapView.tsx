@@ -1,16 +1,23 @@
-import React from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   View,
   StyleSheet,
-  Dimensions,
   Text,
   TouchableOpacity,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import Mapbox, { 
+  MapView, 
+  Camera, 
+  PointAnnotation, 
+  CircleLayer,
+  ShapeSource,
+} from '@rnmapbox/maps';
 
 import { SimpleLocationData } from '../../services/SimpleLocationService';
+import { validateMapboxToken } from '../../utils/mapboxConfig';
 
-const { width, height } = Dimensions.get('window');
+
 
 export interface MapboxMapViewProps {
   currentLocation: SimpleLocationData | null;
@@ -35,28 +42,113 @@ export interface GolfCourseFeature {
 }
 
 /**
- * MapboxMapView Component - Placeholder
+ * MapboxMapView Component - Real Implementation
  * 
- * This is a temporary placeholder for the Mapbox map component.
- * The original Mapbox functionality has been temporarily disabled
- * while we resolve compatibility issues with React Native 0.80.2.
- * 
- * TODO: Re-implement with compatible Mapbox version or alternative
+ * Golf-optimized Mapbox map with satellite view, GPS tracking,
+ * and distance measurement capabilities.
  */
 const MapboxMapView: React.FC<MapboxMapViewProps> = ({
   currentLocation,
   onMapPress,
-  onLocationUpdate,
-  initialRegion,
+  onLocationUpdate: _onLocationUpdate,
+  initialRegion: _initialRegion,
   showUserLocation = true,
   accessToken,
 }) => {
-  const defaultRegion = initialRegion || {
-    latitude: 54.9783,
-    longitude: -7.2054,
-    latitudeDelta: 0.01,
-    longitudeDelta: 0.01,
-  };
+  const mapRef = useRef<MapView>(null);
+  const cameraRef = useRef<Camera>(null);
+  const [isMapReady, setIsMapReady] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [styleUrl, setStyleUrl] = useState<string>(
+    validateMapboxToken(accessToken)
+      ? 'mapbox://styles/mapbox/satellite-v9'
+      : 'https://demotiles.maplibre.org/style.json'
+  );
+  
+  // Default center on Faughan Valley Golf Centre
+  const defaultCenter = currentLocation ? [currentLocation.longitude, currentLocation.latitude] : [-7.247879, 55.020906];
+  const defaultZoom = 15;
+
+  // Initialize Mapbox
+  useEffect(() => {
+    if (validateMapboxToken(accessToken)) {
+      console.log('🗺️ MapboxMapView: Setting access token');
+      // For MapLibre, set well-known tile server when using Mapbox tiles
+      const anyMapbox: any = Mapbox as any;
+      if (typeof anyMapbox.setWellKnownTileServer === 'function') {
+        try {
+          anyMapbox.setWellKnownTileServer('Mapbox');
+        } catch {}
+      }
+      Mapbox.setAccessToken(accessToken);
+      setMapError(null);
+      // Preflight style access to avoid 403 logs; fallback if unauthorized
+      (async () => {
+        try {
+          const res = await fetch(
+            `https://api.mapbox.com/styles/v1/mapbox/satellite-v9?access_token=${accessToken}`
+          );
+          if (res.ok) {
+            setStyleUrl('mapbox://styles/mapbox/satellite-v9');
+          } else {
+            console.warn('⚠️ MapboxMapView: Style access check failed, using demo tiles');
+            setStyleUrl('https://demotiles.maplibre.org/style.json');
+          }
+        } catch {
+          setStyleUrl('https://demotiles.maplibre.org/style.json');
+        }
+      })();
+    } else {
+      // Token not ready yet; avoid hard error to allow later re-init
+      console.warn('⚠️ MapboxMapView: Invalid or missing access token');
+      setStyleUrl('https://demotiles.maplibre.org/style.json');
+    }
+  }, [accessToken]);
+
+  // Handle map ready
+  const handleMapReady = useCallback(() => {
+    console.log('✅ MapboxMapView: Map is ready');
+    setIsMapReady(true);
+    setMapError(null);
+  }, []);
+
+  // Handle map error
+  const handleMapError = useCallback(() => {
+    console.error('❌ MapboxMapView: Map error occurred');
+    // Fallback to open demo style if Mapbox style fails (e.g., 403)
+    setStyleUrl('https://demotiles.maplibre.org/style.json');
+    setMapError('Map failed to load, falling back to demo tiles');
+  }, []);
+
+  // Handle map press for distance measurement
+  const handleMapPress = useCallback((feature: any) => {
+    if (!onMapPress || !feature?.geometry?.coordinates) return;
+    
+    const [lng, lat] = feature.geometry.coordinates;
+    console.log('🎯 MapboxMapView: Map pressed at:', { latitude: lat, longitude: lng });
+    
+    onMapPress({ latitude: lat, longitude: lng });
+  }, [onMapPress]);
+
+  // Center map on user location
+  const centerOnUser = useCallback(() => {
+    if (!currentLocation || !cameraRef.current) return;
+    
+    console.log('🎯 MapboxMapView: Centering on user location');
+    
+    cameraRef.current.setCamera({
+      centerCoordinate: [currentLocation.longitude, currentLocation.latitude],
+      zoomLevel: 17,
+      animationDuration: 1000,
+    });
+  }, [currentLocation]);
+
+  // Auto-center when location changes (initial load only)
+  useEffect(() => {
+    if (currentLocation && isMapReady && cameraRef.current) {
+      centerOnUser();
+    }
+  }, [currentLocation, isMapReady, centerOnUser]);
 
   // Get GPS accuracy status
   const getAccuracyStatus = (accuracy?: number) => {
@@ -67,36 +159,88 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
     return { color: '#FF4444', quality: 'Poor' };
   };
 
+  // Show error state
+  if (mapError) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Icon name="error" size={64} color="#ff4444" />
+          <Text style={styles.errorTitle}>Map Error</Text>
+          <Text style={styles.errorText}>{mapError}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => setMapError(null)}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <View style={styles.mapPlaceholder}>
-        <Icon name="map" size={64} color="#ccc" />
-        <Text style={styles.placeholderTitle}>Map View</Text>
-        <Text style={styles.placeholderSubtitle}>
-          Mapbox integration temporarily disabled
-        </Text>
-        <Text style={styles.placeholderDetails}>
-          React Native 0.80.2 compatibility in progress
-        </Text>
-        
-        {/* Location Info */}
+      <MapView
+        ref={mapRef}
+        style={styles.map}
+        styleURL={styleUrl}
+        onDidFinishLoadingMap={handleMapReady}
+        onDidFailLoadingMap={handleMapError}
+        onPress={handleMapPress}
+        pitchEnabled={false}
+        rotateEnabled={true}
+        scrollEnabled={true}
+        zoomEnabled={true}
+        compassEnabled={false}
+        logoEnabled={false}
+        attributionEnabled={false}
+      >
+        {/* Camera configuration */}
+        <Camera
+          ref={cameraRef}
+          centerCoordinate={defaultCenter}
+          zoomLevel={defaultZoom}
+          followUserLocation={false}
+        />
+
+        {/* User location display (disabled to avoid native location module crash) */}
+
+        {/* Custom user location marker with accuracy circle */}
         {currentLocation && (
-          <View style={styles.locationInfo}>
-            <Text style={styles.locationTitle}>Current Location:</Text>
-            <Text style={styles.locationText}>
-              Lat: {currentLocation.latitude.toFixed(6)}
-            </Text>
-            <Text style={styles.locationText}>
-              Lng: {currentLocation.longitude.toFixed(6)}
-            </Text>
-            {currentLocation.accuracy && (
-              <Text style={[styles.locationText, { color: getAccuracyStatus(currentLocation.accuracy).color }]}>
-                Accuracy: {currentLocation.accuracy.toFixed(1)}m ({getAccuracyStatus(currentLocation.accuracy).quality})
-              </Text>
-            )}
-          </View>
+          <>
+            <ShapeSource
+              id="userLocationAccuracy"
+              shape={{
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                  type: 'Point',
+                  coordinates: [currentLocation.longitude, currentLocation.latitude],
+                },
+              }}
+            >
+              <CircleLayer
+                id="accuracyCircle"
+                style={{
+                  circleRadius: Math.max(currentLocation.accuracy || 0, 5),
+                  circleColor: 'rgba(70, 130, 180, 0.2)',
+                  circleStrokeColor: '#4682B4',
+                  circleStrokeWidth: 1,
+                }}
+              />
+            </ShapeSource>
+
+            <PointAnnotation
+              id="userLocation"
+              coordinate={[currentLocation.longitude, currentLocation.latitude]}
+            >
+              <View style={styles.userLocationMarker}>
+                <View style={[styles.userLocationDot, { backgroundColor: getAccuracyStatus(currentLocation.accuracy).color }]} />
+              </View>
+            </PointAnnotation>
+          </>
         )}
-      </View>
+      </MapView>
 
       {/* GPS Status Indicator */}
       {currentLocation && (
@@ -104,11 +248,19 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
           <Icon 
             name={currentLocation.accuracy && currentLocation.accuracy <= 10 ? 'gps-fixed' : 'gps-not-fixed'} 
             size={14} 
-            color={currentLocation.accuracy && currentLocation.accuracy <= 10 ? '#4CAF50' : '#ff9800'} 
+            color={getAccuracyStatus(currentLocation.accuracy).color} 
           />
           <Text style={styles.gpsStatusText}>
             {currentLocation.accuracy ? `${currentLocation.accuracy.toFixed(0)}m` : 'GPS'}
           </Text>
+        </View>
+      )}
+
+      {/* Loading indicator */}
+      {!isMapReady && !mapError && (
+        <View style={styles.loadingContainer}>
+          <Icon name="map" size={48} color="#ccc" />
+          <Text style={styles.loadingText}>Loading Map...</Text>
         </View>
       )}
     </View>
@@ -119,59 +271,84 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  mapPlaceholder: {
+  map: {
+    flex: 1,
+  },
+  
+  // Error state styles
+  errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#f5f5f5',
     padding: 20,
   },
-  placeholderTitle: {
+  errorTitle: {
     fontSize: 24,
     fontWeight: '600',
-    color: '#666',
+    color: '#ff4444',
     marginTop: 16,
     marginBottom: 8,
     textAlign: 'center',
   },
-  placeholderSubtitle: {
+  errorText: {
     fontSize: 16,
-    color: '#888',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  placeholderDetails: {
-    fontSize: 14,
-    color: '#aaa',
-    textAlign: 'center',
-    marginBottom: 24,
-    fontStyle: 'italic',
-  },
-  locationInfo: {
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
-    minWidth: 250,
-  },
-  locationTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  locationText: {
-    fontSize: 14,
     color: '#666',
     textAlign: 'center',
-    marginBottom: 4,
-    fontFamily: 'monospace',
+    marginBottom: 20,
   },
+  retryButton: {
+    backgroundColor: '#4a7c59',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  // Loading state styles
+  loadingContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(245, 245, 245, 0.9)',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+
+  // User location marker styles
+  userLocationMarker: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  userLocationDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#4682B4',
+  },
+
+  // GPS status indicator styles
   gpsStatus: {
     position: 'absolute',
     top: 60,

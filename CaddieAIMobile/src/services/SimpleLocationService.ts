@@ -9,6 +9,18 @@ export interface SimpleLocationData {
   timestamp: number;
 }
 
+// Import golf location configuration
+let MAPBOX_GOLF_LOCATION = false;
+let FAUGHAN_VALLEY_LOCATION = { latitude: 55.020906, longitude: -7.247879 };
+
+try {
+  const config = require('../../mapbox.config.js');
+  MAPBOX_GOLF_LOCATION = config.MAPBOX_GOLF_LOCATION || false;
+  FAUGHAN_VALLEY_LOCATION = config.FAUGHAN_VALLEY_LOCATION || FAUGHAN_VALLEY_LOCATION;
+} catch (error) {
+  console.warn('⚠️ SimpleLocationService: Could not load mapbox config, using defaults');
+}
+
 // GPS options optimized for golf
 interface LocationOptions {
   enableHighAccuracy: boolean;
@@ -45,9 +57,9 @@ export class SimpleLocationService {
 
   // Faughan Valley Golf Course fallback location for testing
   private fallbackLocation: SimpleLocationData = {
-    latitude: 55.020906,
-    longitude: -7.247879,
-    accuracy: 999, // High accuracy number to indicate this is fallback
+    latitude: FAUGHAN_VALLEY_LOCATION.latitude,
+    longitude: FAUGHAN_VALLEY_LOCATION.longitude,
+    accuracy: MAPBOX_GOLF_LOCATION ? 5 : 999, // Low accuracy if using golf mock location, high if real fallback
     timestamp: 0, // Will be set when used
   };
 
@@ -141,6 +153,19 @@ export class SimpleLocationService {
   async startTracking(): Promise<boolean> {
     try {
       console.log('🚀 SimpleLocationService: Starting GPS tracking...');
+      console.log('⚙️ SimpleLocationService: Configuration:', {
+        MAPBOX_GOLF_LOCATION,
+        fallbackCoords: `${FAUGHAN_VALLEY_LOCATION.latitude}, ${FAUGHAN_VALLEY_LOCATION.longitude}`
+      });
+      
+      // If MAPBOX_GOLF_LOCATION is true, immediately use mock location
+      if (MAPBOX_GOLF_LOCATION) {
+        console.log('🏌️ SimpleLocationService: Using mock golf location (MAPBOX_GOLF_LOCATION=true)');
+        setTimeout(() => {
+          this.activateFallbackLocation();
+        }, 1000); // Small delay to simulate GPS acquisition
+        return true;
+      }
       
       // Check permissions first
       console.log('🔐 SimpleLocationService: Checking permissions...');
@@ -185,14 +210,16 @@ export class SimpleLocationService {
         }
       );
 
-      // Set up fallback timeout (8 seconds - faster than GPS timeout)
-      console.log('⏰ SimpleLocationService: Setting up 8s fallback timeout...');
-      this.fallbackTimeout = setTimeout(() => {
-        if (!this.currentLocation && this.isTracking) {
-          console.log('🏌️ SimpleLocationService: GPS timeout - activating Faughan Valley fallback location');
-          this.activateFallbackLocation();
-        }
-      }, 8000);
+      // Set up fallback timeout (8 seconds - faster than GPS timeout) only if not using mock location
+      if (!MAPBOX_GOLF_LOCATION) {
+        console.log('⏰ SimpleLocationService: Setting up 8s fallback timeout...');
+        this.fallbackTimeout = setTimeout(() => {
+          if (!this.currentLocation && this.isTracking) {
+            console.log('🏌️ SimpleLocationService: GPS timeout - activating Faughan Valley fallback location');
+            this.activateFallbackLocation();
+          }
+        }, 8000);
+      }
 
       this.isTracking = true;
       console.log('✅ SimpleLocationService: GPS tracking started successfully with watchId:', this.watchId);
@@ -317,7 +344,8 @@ export class SimpleLocationService {
    * Activate fallback location for testing purposes
    */
   private activateFallbackLocation(): void {
-    console.log('🏌️ SimpleLocationService: Activating Faughan Valley fallback location');
+    const locationSource = MAPBOX_GOLF_LOCATION ? 'mock golf location' : 'fallback location';
+    console.log(`🏌️ SimpleLocationService: Activating Faughan Valley ${locationSource}`);
     
     const fallbackWithTimestamp: SimpleLocationData = {
       ...this.fallbackLocation,
@@ -336,12 +364,30 @@ export class SimpleLocationService {
       }
     });
     
-    console.log('✅ SimpleLocationService: Fallback location activated:', {
+    console.log(`✅ SimpleLocationService: ${locationSource} activated:`, {
       lat: fallbackWithTimestamp.latitude,
       lng: fallbackWithTimestamp.longitude,
       accuracy: fallbackWithTimestamp.accuracy,
-      isFallback: true
+      isMockLocation: MAPBOX_GOLF_LOCATION,
+      source: locationSource
     });
+  }
+
+  /**
+   * Check if using mock golf location
+   */
+  public isUsingMockGolfLocation(): boolean {
+    return MAPBOX_GOLF_LOCATION;
+  }
+
+  /**
+   * Get golf location configuration
+   */
+  public getGolfLocationConfig(): { enabled: boolean; coordinates: { latitude: number; longitude: number } } {
+    return {
+      enabled: MAPBOX_GOLF_LOCATION,
+      coordinates: FAUGHAN_VALLEY_LOCATION,
+    };
   }
 
   /**

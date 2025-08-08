@@ -1,6 +1,7 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
-import { CoursesScreen, CourseDetailScreen } from '../screens/main';
+import CoursesScreen from '../screens/main/CoursesScreen';
+import CourseDetailScreen from '../screens/main/CourseDetailScreen';
 
 export type CoursesStackParamList = {
   CoursesList: { fromActiveRound?: boolean } | undefined;
