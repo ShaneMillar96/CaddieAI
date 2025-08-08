@@ -56,7 +56,6 @@ android/local.properties
 CaddieAIMobile/android/secrets.properties
 CaddieAIMobile/android/gradle.properties
 CaddieAIMobile/mapbox.config.js
-CaddieAIMobile/android/app/src/main/res/values/google_maps_api.xml
 .mcp.json
 backend/src/caddie.portal.api/appsettings.Development.json
 setup-local-config-secure.sh
