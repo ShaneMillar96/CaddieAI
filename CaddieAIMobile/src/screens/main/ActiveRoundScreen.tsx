@@ -7,7 +7,6 @@ import {
   Alert,
   SafeAreaView,
   Dimensions,
-  NativeModules,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -34,8 +33,6 @@ import {
   activateShotPlacement,
   cancelShotPlacement,
   setPlacingShot,
-  setPreviewDistance,
-  clearPreview,
   updateFromService,
   selectShotPlacementState,
   selectCurrentShot,
@@ -62,8 +59,10 @@ import {
   shotPlacementService, 
   ShotPlacementState as ServiceShotPlacementState 
 } from '../../services/ShotPlacementService';
-import { textToSpeechService, golfTTSHelper } from '../../services/TextToSpeechService';
+import { golfTTSHelper, CaddieContext } from '../../services/TextToSpeechService';
+import { dynamicCaddieService } from '../../services/DynamicCaddieService';
 import voiceAIApiService from '../../services/voiceAIApi';
+import { realtimeAudioService } from '../../services/RealtimeAudioService';
 
 // Navigation types
 type MainStackParamList = {
@@ -254,21 +253,6 @@ export const ActiveRoundScreen: React.FC = () => {
     console.log('🚀 ActiveRoundScreen: Starting location tracking...');
     setIsRequestingLocation(true);
     
-    // Mapbox readiness check
-    try {
-      const isMapboxConfigured = mapboxService.isConfigured();
-      console.log('🗺️ Mapbox Service Status:', {
-        configured: isMapboxConfigured,
-        accessToken: mapboxService.getAccessToken().substring(0, 20) + '...'
-      });
-      
-      if (!isMapboxConfigured) {
-        console.warn('⚠️ Mapbox not properly configured, using placeholder token');
-      }
-    } catch (error) {
-      console.log('ℹ️ Mapbox service check:', error);
-    }
-    
     if (!isLocationServiceAvailable()) {
       console.error('❌ ActiveRoundScreen: Location service not available');
       setLocationError('Location service not available');
@@ -279,10 +263,19 @@ export const ActiveRoundScreen: React.FC = () => {
     try {
       console.log('📡 ActiveRoundScreen: Setting up location subscriptions...');
       
-      // Start voice session
-      if (activeRound?.id) {
+      // Start voice session and realtime audio connection
+      if (activeRound?.id && user?.id) {
         console.log('🎙️ ActiveRoundScreen: Starting voice session for round', activeRound.id);
         dispatch(startVoiceSession({ roundId: activeRound.id }));
+        
+        // Establish realtime audio connection
+        console.log('🔌 ActiveRoundScreen: Connecting to realtime audio...');
+        const realtimeConnected = await realtimeAudioService.connect(Number(user.id), activeRound.id);
+        if (realtimeConnected) {
+          console.log('✅ ActiveRoundScreen: Realtime audio connected successfully');
+        } else {
+          console.warn('⚠️ ActiveRoundScreen: Realtime audio connection failed, using TTS fallback');
+        }
       }
 
       // Subscribe to location updates
@@ -351,9 +344,15 @@ export const ActiveRoundScreen: React.FC = () => {
 
       // Store cleanup functions
       return () => {
-        console.log('🧹 ActiveRoundScreen: Cleaning up location subscriptions');
+        console.log('🧹 ActiveRoundScreen: Cleaning up location subscriptions and realtime audio');
         unsubscribeLocation();
         unsubscribeError();
+        
+        // Disconnect realtime audio
+        if (realtimeAudioService.isConnectionActive()) {
+          realtimeAudioService.disconnect();
+          console.log('🔌 ActiveRoundScreen: Realtime audio disconnected');
+        }
       };
     } catch (error) {
       console.error('❌ ActiveRoundScreen: Error starting location tracking:', error);
@@ -375,78 +374,271 @@ export const ActiveRoundScreen: React.FC = () => {
 
   // Handle shot placement service state changes
   const handleShotPlacementStateChange = useCallback(async (state: ServiceShotPlacementState) => {
-    switch (state) {
-      case ServiceShotPlacementState.SHOT_PLACEMENT:
-        if (distances.fromCurrent > 0) {
-          await golfTTSHelper.confirmShotPlacement(distances.fromCurrent);
-          
-          // Request club recommendation
-          if (distances.fromCurrent > 0 && user?.id && activeRound?.id) {
-            requestClubRecommendation(distances.fromCurrent);
-          }
-        }
-        break;
-        
-      case ServiceShotPlacementState.SHOT_IN_PROGRESS:
-        await golfTTSHelper.shotInProgress();
-        break;
-        
-      case ServiceShotPlacementState.MOVEMENT_DETECTED:
-        await golfTTSHelper.movementDetected();
-        break;
-        
-      case ServiceShotPlacementState.SHOT_COMPLETED:
-        await golfTTSHelper.shotCompleted();
-        break;
+    if (!user?.id || !activeRound?.id) {
+      console.warn('Missing user or round context for caddie response');
+      return;
     }
-  }, [distances.fromCurrent, user?.id, activeRound?.id]);
+
+    // Build context for dynamic caddie responses
+    const buildCaddieContext = (): CaddieContext => ({
+      location: currentLocation ? {
+        currentHole: currentLocation.currentHole || activeRound.currentHole,
+        distanceToPinMeters: currentLocation.distanceToPin,
+        distanceToTeeMeters: currentLocation.distanceToTee,
+        positionOnHole: currentLocation.positionOnHole,
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
+        accuracyMeters: currentLocation.accuracy || 10,
+        withinCourseBoundaries: true,
+        timestamp: new Date().toISOString(),
+      } : undefined,
+      golfContext: {
+        currentHole: activeRound.currentHole,
+        targetDistanceYards: distances.fromCurrent,
+        recommendedClub: clubRecommendation || getRecommendedClub(distances.fromCurrent),
+        shotType: determineShotType(distances.fromCurrent),
+        shotPlacementActive: true,
+      },
+      player: {
+        skillLevel: 'intermediate', // Could be enhanced with user profile data
+        communicationStyle: 'encouraging',
+      }
+    });
+
+    try {
+      switch (state) {
+        case ServiceShotPlacementState.SHOT_PLACEMENT:
+          if (distances.fromCurrent > 0) {
+            await dynamicCaddieService.generateResponse(
+              'ShotPlacementConfirmation',
+              buildCaddieContext(),
+              Number(user.id),
+              activeRound.id,
+              undefined,
+              7 // High priority
+            );
+            
+            // Request club recommendation if needed
+            if (distances.fromCurrent > 0) {
+              requestClubRecommendation(distances.fromCurrent);
+            }
+          }
+          break;
+          
+        case ServiceShotPlacementState.SHOT_IN_PROGRESS:
+          await dynamicCaddieService.generateResponse(
+            'ShotInProgress',
+            buildCaddieContext(),
+            Number(user.id),
+            activeRound.id,
+            undefined,
+            6
+          );
+          break;
+          
+        case ServiceShotPlacementState.MOVEMENT_DETECTED:
+          await dynamicCaddieService.generateResponse(
+            'MovementDetected',
+            buildCaddieContext(),
+            Number(user.id),
+            activeRound.id,
+            undefined,
+            6
+          );
+          break;
+          
+        case ServiceShotPlacementState.SHOT_COMPLETED:
+          await dynamicCaddieService.generateResponse(
+            'ShotCompletion',
+            buildCaddieContext(),
+            Number(user.id),
+            activeRound.id,
+            undefined,
+            5
+          );
+          break;
+      }
+    } catch (error) {
+      console.error('Error generating dynamic caddie response:', error);
+      // Fallback to legacy static responses if dynamic service fails
+      switch (state) {
+        case ServiceShotPlacementState.SHOT_PLACEMENT:
+          if (distances.fromCurrent > 0) {
+            await golfTTSHelper.confirmShotPlacement(distances.fromCurrent);
+          }
+          break;
+        case ServiceShotPlacementState.SHOT_IN_PROGRESS:
+          await golfTTSHelper.shotInProgress();
+          break;
+        case ServiceShotPlacementState.MOVEMENT_DETECTED:
+          await golfTTSHelper.movementDetected();
+          break;
+        case ServiceShotPlacementState.SHOT_COMPLETED:
+          await golfTTSHelper.shotCompleted();
+          break;
+      }
+    }
+  }, [distances.fromCurrent, user?.id, activeRound?.id, currentLocation, clubRecommendation]);
+
+  // Helper function to get recommended club based on distance
+  const getRecommendedClub = useCallback((distanceYards: number): string => {
+    if (distanceYards < 80) return 'Wedge';
+    if (distanceYards < 120) return '9 Iron';
+    if (distanceYards < 150) return '7 Iron';
+    if (distanceYards < 170) return '5 Iron';
+    if (distanceYards < 200) return 'Hybrid';
+    return 'Driver';
+  }, []);
+
+  // Helper function to determine shot type based on distance
+  const determineShotType = useCallback((distanceYards: number): string => {
+    if (distanceYards < 50) return 'short-game';
+    if (distanceYards < 100) return 'wedge-shot';
+    if (distanceYards < 150) return 'approach-shot';
+    if (distanceYards < 200) return 'mid-iron';
+    if (distanceYards < 250) return 'long-iron';
+    return 'driver-shot';
+  }, []);
 
   // Request club recommendation from Voice AI
   const requestClubRecommendation = useCallback(async (distanceYards: number) => {
     if (!user?.id || !activeRound?.id) return;
     
     try {
-      const response = await voiceAIApiService.requestClubRecommendation({
-        userId: Number(user.id),
-        roundId: activeRound.id,
-        distanceYards,
-        currentHole,
-        locationContext: currentLocation ? {
+      // Build context for club recommendation
+      const context: CaddieContext = {
+        location: currentLocation ? {
+          currentHole: currentLocation.currentHole || activeRound.currentHole,
+          distanceToPinMeters: currentLocation.distanceToPin,
+          distanceToTeeMeters: currentLocation.distanceToTee,
+          positionOnHole: currentLocation.positionOnHole,
           latitude: currentLocation.latitude,
           longitude: currentLocation.longitude,
-          accuracyMeters: currentLocation.accuracy,
+          accuracyMeters: currentLocation.accuracy || 10,
+          withinCourseBoundaries: true,
+          timestamp: new Date().toISOString(),
         } : undefined,
-      });
-      
-      // Announce club recommendation
-      await golfTTSHelper.announceClubRecommendation(
-        response.message.toLowerCase().includes('iron') ? response.message : 'the recommended club',
-        distanceYards
+        golfContext: {
+          currentHole: activeRound.currentHole,
+          targetDistanceYards: distanceYards,
+          shotType: determineShotType(distanceYards),
+          shotPlacementActive: true,
+        },
+        player: {
+          skillLevel: 'intermediate',
+          communicationStyle: 'encouraging',
+        }
+      };
+
+      // Generate dynamic club recommendation
+      await dynamicCaddieService.generateResponse(
+        'ClubRecommendation',
+        context,
+        Number(user.id),
+        activeRound.id,
+        undefined,
+        8 // High priority for club recommendations
       );
       
     } catch (error) {
       console.error('❌ ActiveRoundScreen: Club recommendation error:', error);
+      
+      // Fallback to legacy method
+      try {
+        const response = await voiceAIApiService.requestClubRecommendation({
+          userId: Number(user.id),
+          roundId: activeRound.id,
+          distanceYards,
+          currentHole,
+          locationContext: currentLocation ? {
+            latitude: currentLocation.latitude,
+            longitude: currentLocation.longitude,
+            accuracyMeters: currentLocation.accuracy,
+          } : undefined,
+        });
+        
+        await golfTTSHelper.announceClubRecommendation(
+          response.message.toLowerCase().includes('iron') ? response.message : 'the recommended club',
+          distanceYards
+        );
+      } catch (fallbackError) {
+        console.error('❌ ActiveRoundScreen: Fallback club recommendation failed:', fallbackError);
+      }
     }
   }, [user?.id, activeRound?.id, currentHole, currentLocation]);
 
   // Toggle shot placement mode
-  const handleShotPlacementToggle = useCallback(() => {
+  const handleShotPlacementToggle = useCallback(async () => {
     const newMode = !shotPlacementModeEnabled;
     setShotPlacementModeEnabled(newMode);
     
     if (newMode) {
       // Enable shot placement mode
       dispatch(setPlacingShot(true));
-      golfTTSHelper.generalAssistance("Shot placement mode enabled. Tap the map to set your target.");
+      
+      // Use dynamic caddie service for welcome message
+      if (user?.id && activeRound?.id) {
+        const context: CaddieContext = {
+          golfContext: {
+            currentHole: activeRound.currentHole,
+            shotPlacementActive: true,
+            shotType: 'general',
+          },
+          player: {
+            skillLevel: 'intermediate',
+            communicationStyle: 'encouraging',
+          }
+        };
+        
+        await dynamicCaddieService.generateResponse(
+          'ShotPlacementWelcome',
+          context,
+          Number(user.id),
+          activeRound.id,
+          undefined,
+          10 // High priority for welcome
+        );
+      } else {
+        // Fallback to static message
+        golfTTSHelper.generalAssistance("Shot placement mode enabled. Tap the map to set your target.");
+      }
+      
       console.log('🎯 ActiveRoundScreen: Shot placement mode enabled');
     } else {
       // Disable shot placement mode
       dispatch(cancelShotPlacement());
       dispatch(setPlacingShot(false));
-      golfTTSHelper.generalAssistance("Shot placement mode disabled.");
+      
+      // Use dynamic caddie service for disabled message
+      if (user?.id && activeRound?.id) {
+        const context: CaddieContext = {
+          golfContext: {
+            currentHole: activeRound.currentHole,
+            shotPlacementActive: false,
+            shotType: 'general',
+          },
+          player: {
+            skillLevel: 'intermediate',
+            communicationStyle: 'encouraging',
+          }
+        };
+        
+        await dynamicCaddieService.generateResponse(
+          'GeneralAssistance',
+          context,
+          Number(user.id),
+          activeRound.id,
+          'Shot placement mode disabled',
+          5
+        );
+      } else {
+        // Fallback to static message
+        golfTTSHelper.generalAssistance("Shot placement mode disabled.");
+      }
+      
       console.log('🎯 ActiveRoundScreen: Shot placement mode disabled');
     }
-  }, [shotPlacementModeEnabled, dispatch]);
+  }, [shotPlacementModeEnabled, dispatch, user?.id, activeRound?.id]);
 
   // Activate shot placement (user ready to take shot)
   const handleActivateShot = useCallback(async () => {
@@ -462,11 +654,37 @@ export const ActiveRoundScreen: React.FC = () => {
   const handleCancelShotPlacement = useCallback(async () => {
     try {
       await dispatch(cancelShotPlacement());
-      golfTTSHelper.generalAssistance("Shot placement cancelled.");
+      
+      // Use dynamic caddie service for cancellation message
+      if (user?.id && activeRound?.id) {
+        const context: CaddieContext = {
+          golfContext: {
+            currentHole: activeRound.currentHole,
+            shotPlacementActive: false,
+            shotType: 'general',
+          },
+          player: {
+            skillLevel: 'intermediate',
+            communicationStyle: 'encouraging',
+          }
+        };
+        
+        await dynamicCaddieService.generateResponse(
+          'GeneralAssistance',
+          context,
+          Number(user.id),
+          activeRound.id,
+          'Shot placement cancelled',
+          5
+        );
+      } else {
+        // Fallback to static message
+        golfTTSHelper.generalAssistance("Shot placement cancelled.");
+      }
     } catch (error) {
       console.error('❌ ActiveRoundScreen: Cancel shot error:', error);
     }
-  }, [dispatch]);
+  }, [dispatch, user?.id, activeRound?.id]);
 
   // Handle voice toggle
   const handleVoiceToggle = useCallback(() => {

@@ -19,8 +19,7 @@ import {
   LocationData, 
   MapLocationContext,
   ShotMarkerData,
-  isLocationServiceAvailable, 
-  safeLocationServiceCall 
+  isLocationServiceAvailable
 } from '../../services/LocationService';
 import { DistanceCalculator, formatGolfDistance } from '../../utils/DistanceCalculator';
 
@@ -98,7 +97,7 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
   // Animation values
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  // const scaleAnim = useRef(new Animated.Value(1)).current; // Unused for now
 
   // Initialize voice services
   useEffect(() => {
@@ -117,7 +116,7 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
       duration: 300,
       useNativeDriver: true,
     }).start();
-  }, [isVisible]);
+  }, [isVisible, fadeAnim]);
 
   // Pulse animation when listening
   useEffect(() => {

@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Dimensions,
   Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -310,7 +309,7 @@ class MapErrorBoundary extends Component<Props, State> {
   }
 }
 
-const { width } = Dimensions.get('window');
+// const { width } = Dimensions.get('window'); // Unused for now
 
 const styles = StyleSheet.create({
   fallbackContainer: {

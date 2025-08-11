@@ -6,6 +6,7 @@ using System.Text.Json;
 using caddie.portal.services.Configuration;
 using caddie.portal.services.Interfaces;
 using caddie.portal.services.Exceptions;
+using caddie.portal.services.Models;
 using caddie.portal.dal.Models;
 using caddie.portal.dal.Repositories.Interfaces;
 using OpenAIChatMessage = OpenAI.Chat.ChatMessage;
@@ -780,5 +781,374 @@ VOICE INTERACTION: Keep responses brief and conversational for voice delivery. P
                 ex.Message.Contains("503") ||
                 ex.Message.Contains("504"));
     }
+
+    #region Dynamic Caddie Response Methods
+
+    /// <summary>
+    /// Generate dynamic caddie response for specific golf scenarios
+    /// </summary>
+    public async Task<string> GenerateCaddieResponseAsync(int userId, int roundId, CaddieScenario scenario, CaddieContext? context = null, string? userInput = null)
+    {
+        try
+        {
+            _logger.LogDebug("Generating caddie response for user {UserId}, scenario {Scenario}", userId, scenario);
+
+            // Check rate limits
+            if (await IsRateLimitExceededAsync(userId))
+            {
+                throw new OpenAIQuotaExceededException("Rate limit exceeded", "user_rate_limit");
+            }
+
+            // Build scenario-specific prompt
+            var systemPrompt = await BuildCaddiePromptAsync(scenario, context, userInput);
+
+            // Create user message based on scenario and context
+            var userMessage = BuildUserMessageForScenario(scenario, context, userInput);
+
+            // Prepare messages for OpenAI
+            var messages = new List<OpenAIChatMessage>
+            {
+                new SystemChatMessage(systemPrompt),
+                new UserChatMessage(userMessage)
+            };
+
+            // Get ChatClient from OpenAIClient
+            var chatClient = _openAIClient.GetChatClient("gpt-4o-mini");
+
+            // Generate response with optimized settings for voice
+            var chatOptions = new ChatCompletionOptions
+            {
+                Temperature = 0.7f, // Slightly more creative for natural speech
+                MaxOutputTokenCount = 150,    // Limit for TTS optimization
+                TopP = 0.9f,
+                FrequencyPenalty = 0.1f,
+                PresencePenalty = 0.1f
+            };
+
+            var completion = await ExecuteWithRetryAsync(async () => 
+                await chatClient.CompleteChatAsync(messages, chatOptions));
+
+            var response = completion.Value.Content[0].Text;
+
+            // Optimize response for TTS delivery
+            var optimizedResponse = await OptimizeForTTSAsync(response, scenario);
+
+            _logger.LogInformation("Generated caddie response for user {UserId}, scenario {Scenario}, length {Length} chars", 
+                userId, scenario, optimizedResponse.Length);
+
+            return optimizedResponse;
+        }
+        catch (Exception ex) when (IsQuotaExceededException(ex))
+        {
+            _logger.LogWarning(ex, "OpenAI quota exceeded for caddie response, user {UserId}, scenario {Scenario}", userId, scenario);
+            throw new OpenAIQuotaExceededException("AI service temporarily unavailable", "quota_exceeded", 3600);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating caddie response for user {UserId}, scenario {Scenario}", userId, scenario);
+            
+            // Return fallback response based on scenario
+            return GetFallbackCaddieResponse(scenario, context);
+        }
+    }
+
+    /// <summary>
+    /// Build caddie-optimized prompt for specific scenarios
+    /// </summary>
+    public async Task<string> BuildCaddiePromptAsync(CaddieScenario scenario, CaddieContext? context = null, string? userInput = null)
+    {
+        try
+        {
+            var basePersona = @"You are CaddieAI, an expert golf caddie and trusted companion for solo golfers. You provide intelligent, contextual golf advice with the warmth and expertise of a professional caddie.
+
+CADDIE PERSONA:
+- Professional, encouraging, and personable golf caddie
+- Use casual golf terminology while remaining professional  
+- Knowledgeable about golf strategy, club selection, and course management
+- Supportive and realistic, prioritizing safety and proper golf etiquette
+- Adapt advice to player skill level and current situation
+
+RESPONSE REQUIREMENTS:
+- Keep responses brief (1-3 sentences, under 50 words)
+- Optimize for natural text-to-speech delivery
+- Be conversational and encouraging
+- Provide specific, actionable advice
+- Consider current golf context and conditions";
+
+            var scenarioPrompt = GetScenarioSpecificPrompt(scenario);
+            var contextPrompt = await BuildContextPromptAsync(context);
+
+            return $"{basePersona}\n\n{scenarioPrompt}\n\n{contextPrompt}";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error building caddie prompt for scenario {Scenario}", scenario);
+            return GetDefaultCaddiePrompt();
+        }
+    }
+
+    /// <summary>
+    /// Optimize response text for text-to-speech delivery
+    /// </summary>
+    public async Task<string> OptimizeForTTSAsync(string text, CaddieScenario scenario)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return await Task.FromResult("I'm here to help with your golf game!");
+
+            // Remove any markdown formatting
+            var cleaned = text.Replace("*", "").Replace("#", "").Replace("`", "");
+            
+            // Ensure proper punctuation for natural speech
+            cleaned = cleaned.Trim();
+            if (!cleaned.EndsWith('.') && !cleaned.EndsWith('!') && !cleaned.EndsWith('?'))
+            {
+                cleaned += ".";
+            }
+
+            // Limit length for optimal TTS delivery (under 200 characters for ~30 seconds)
+            if (cleaned.Length > 200)
+            {
+                var sentences = cleaned.Split('.', StringSplitOptions.RemoveEmptyEntries);
+                if (sentences.Length > 0)
+                {
+                    cleaned = sentences[0].Trim() + ".";
+                }
+                
+                if (cleaned.Length > 200)
+                {
+                    cleaned = cleaned.Substring(0, 197) + "...";
+                }
+            }
+
+            // Replace technical terms with more natural speech equivalents
+            cleaned = cleaned
+                .Replace(" yds", " yards")
+                .Replace(" ft", " feet")
+                .Replace("°", " degrees")
+                .Replace("mph", " miles per hour");
+
+            return await Task.FromResult(cleaned);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error optimizing text for TTS: {Text}", text);
+            return await Task.FromResult(text); // Return original if optimization fails
+        }
+    }
+
+    #endregion
+
+    #region Private Helper Methods for Caddie Responses
+
+    private string GetScenarioSpecificPrompt(CaddieScenario scenario)
+    {
+        return scenario switch
+        {
+            CaddieScenario.ShotPlacementWelcome => 
+                "SCENARIO: Welcome the golfer to shot placement mode. Provide brief, encouraging instructions on how to place their target on the map.",
+
+            CaddieScenario.ClubRecommendation => 
+                "SCENARIO: Provide a club recommendation based on distance and conditions. Be confident but acknowledge that conditions may affect the choice.",
+
+            CaddieScenario.ShotPlacementConfirmation => 
+                "SCENARIO: Confirm the shot target placement and provide encouragement for the upcoming shot.",
+
+            CaddieScenario.ShotTrackingActivation => 
+                "SCENARIO: Shot tracking is now active. Provide brief, confident encouragement for taking the shot.",
+
+            CaddieScenario.ShotInProgress => 
+                "SCENARIO: Shot is in progress. Provide brief monitoring or encouragement message.",
+
+            CaddieScenario.ShotCompletion => 
+                "SCENARIO: Shot has been completed. Provide positive feedback and guidance for next steps.",
+
+            CaddieScenario.MovementDetected => 
+                "SCENARIO: Movement has been detected, ending shot tracking. Provide brief update.",
+
+            CaddieScenario.DistanceAnnouncement => 
+                "SCENARIO: Announce distance to target or pin. Include relevant strategic advice if appropriate.",
+
+            CaddieScenario.HoleCompletion => 
+                "SCENARIO: Hole has been completed. Provide encouraging commentary based on performance.",
+
+            CaddieScenario.ErrorHandling => 
+                "SCENARIO: An error or issue has occurred. Provide helpful guidance and encouragement to continue.",
+
+            CaddieScenario.GeneralAssistance => 
+                "SCENARIO: Provide general golf assistance and advice based on the current context.",
+
+            CaddieScenario.CourseStrategy => 
+                "SCENARIO: Provide strategic advice for playing the hole or course based on conditions and context.",
+
+            CaddieScenario.PerformanceEncouragement => 
+                "SCENARIO: Provide performance-based encouragement and motivation.",
+
+            CaddieScenario.WeatherConditions => 
+                "SCENARIO: Provide advice related to weather conditions and how they affect play.",
+
+            _ => "SCENARIO: Provide helpful golf advice and encouragement based on the current situation."
+        };
+    }
+
+    private async Task<string> BuildContextPromptAsync(CaddieContext? context)
+    {
+        if (context == null)
+            return await Task.FromResult("CONTEXT: Limited context available. Provide general golf advice.");
+
+        var contextParts = new List<string>();
+
+        // Location context
+        if (context.Location != null)
+        {
+            contextParts.Add($"LOCATION: Hole {context.Location.CurrentHole}, " +
+                           $"{context.Location.DistanceToPinMeters?.ToString("F0") ?? "unknown"} meters to pin");
+        }
+
+        // Golf situation context
+        if (context.GolfContext != null)
+        {
+            var golf = context.GolfContext;
+            var situationInfo = new List<string>();
+            
+            if (golf.TargetDistanceYards.HasValue)
+                situationInfo.Add($"{golf.TargetDistanceYards:F0} yards to target");
+            
+            if (!string.IsNullOrEmpty(golf.RecommendedClub))
+                situationInfo.Add($"suggested {golf.RecommendedClub}");
+            
+            if (!string.IsNullOrEmpty(golf.PositionOnHole))
+                situationInfo.Add($"position: {golf.PositionOnHole}");
+
+            if (situationInfo.Any())
+                contextParts.Add($"SHOT: {string.Join(", ", situationInfo)}");
+        }
+
+        // Player context
+        if (context.Player != null)
+        {
+            var player = context.Player;
+            var playerInfo = new List<string>();
+            
+            if (player.HandicapIndex.HasValue)
+                playerInfo.Add($"handicap {player.HandicapIndex:F1}");
+            
+            playerInfo.Add($"skill level: {player.SkillLevel.ToString().ToLower()}");
+            
+            contextParts.Add($"PLAYER: {string.Join(", ", playerInfo)}");
+        }
+
+        // Course conditions
+        if (context.Conditions != null)
+        {
+            var conditions = context.Conditions;
+            var conditionInfo = new List<string>();
+            
+            if (!string.IsNullOrEmpty(conditions.WeatherDescription))
+                conditionInfo.Add(conditions.WeatherDescription);
+            
+            if (conditions.WindSpeedMph.HasValue)
+                conditionInfo.Add($"wind {conditions.WindSpeedMph:F0}mph {conditions.WindDirection}");
+            
+            if (conditionInfo.Any())
+                contextParts.Add($"CONDITIONS: {string.Join(", ", conditionInfo)}");
+        }
+
+        return await Task.FromResult(contextParts.Any() ? string.Join("\n", contextParts) : "CONTEXT: General golf situation.");
+    }
+
+    private string BuildUserMessageForScenario(CaddieScenario scenario, CaddieContext? context, string? userInput)
+    {
+        if (!string.IsNullOrWhiteSpace(userInput))
+            return userInput;
+
+        return scenario switch
+        {
+            CaddieScenario.ShotPlacementWelcome => 
+                "Welcome me to shot placement mode and explain how to use it.",
+
+            CaddieScenario.ClubRecommendation => 
+                $"What club should I use for this {context?.GolfContext?.TargetDistanceYards ?? 150} yard shot?",
+
+            CaddieScenario.ShotPlacementConfirmation => 
+                $"I've placed my target at {context?.GolfContext?.TargetDistanceYards ?? 150} yards. Confirm this is ready.",
+
+            CaddieScenario.ShotTrackingActivation => 
+                "Shot tracking is now active. Give me encouragement.",
+
+            CaddieScenario.ShotInProgress => 
+                "I'm about to take my shot. Provide monitoring.",
+
+            CaddieScenario.ShotCompletion => 
+                "I've completed my shot. Give me feedback.",
+
+            CaddieScenario.MovementDetected => 
+                "Movement detected, shot tracking complete.",
+
+            CaddieScenario.DistanceAnnouncement => 
+                $"Announce the distance: {context?.GolfContext?.TargetDistanceYards ?? 150} yards to target.",
+
+            CaddieScenario.ErrorHandling => 
+                "There was an error. Help me continue playing.",
+
+            _ => "Provide appropriate golf advice for this situation."
+        };
+    }
+
+    private string GetFallbackCaddieResponse(CaddieScenario scenario, CaddieContext? context)
+    {
+        return scenario switch
+        {
+            CaddieScenario.ShotPlacementWelcome => 
+                "Welcome to shot placement! Tap the map to set your target, and I'll help with club selection.",
+
+            CaddieScenario.ClubRecommendation => 
+                GetFallbackClubRecommendation(context?.GolfContext?.TargetDistanceYards ?? 150),
+
+            CaddieScenario.ShotPlacementConfirmation => 
+                $"Target set at {context?.GolfContext?.TargetDistanceYards ?? 150} yards. Ready when you are!",
+
+            CaddieScenario.ShotTrackingActivation => 
+                "Shot tracking active. Take your time and trust your swing.",
+
+            CaddieScenario.ShotInProgress => 
+                "Looking good! Stay focused and finish strong.",
+
+            CaddieScenario.ShotCompletion => 
+                "Nice shot! Ready for your next target.",
+
+            CaddieScenario.MovementDetected => 
+                "Shot tracking complete. Great effort out there!",
+
+            CaddieScenario.DistanceAnnouncement => 
+                $"Distance to target: {context?.GolfContext?.TargetDistanceYards ?? 150} yards.",
+
+            CaddieScenario.ErrorHandling => 
+                "No worries! Let's get back to your game. I'm here to help.",
+
+            _ => "I'm here to help with your golf game! What do you need?"
+        };
+    }
+
+    private string GetFallbackClubRecommendation(decimal yards)
+    {
+        return yards switch
+        {
+            < 80m => "Try a wedge for this short approach.",
+            < 120m => "A 9 or 8 iron should work well here.",
+            < 150m => "Consider a 7 or 6 iron for this distance.",
+            < 170m => "A 5 iron or hybrid might be perfect.",
+            < 200m => "Try a 4 iron or fairway wood.",
+            _ => "For this longer shot, consider a driver or 3 wood."
+        };
+    }
+
+    private string GetDefaultCaddiePrompt()
+    {
+        return @"You are CaddieAI, a helpful golf caddie. Provide brief, encouraging golf advice optimized for voice delivery. Keep responses under 50 words and be conversational and supportive.";
+    }
+
+    #endregion
 
 }
