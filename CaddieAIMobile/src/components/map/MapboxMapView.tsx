@@ -60,7 +60,7 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
   onMapPress,
   onLocationUpdate: _onLocationUpdate,
   initialRegion: _initialRegion,
-  showUserLocation = true,
+  // showUserLocation = true, // Unused prop
   accessToken,
   // Shot placement props
   shotPlacementMode = false,
@@ -68,7 +68,7 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
   pinLocation = null,
   onShotPlacementPress,
   showDistanceOverlay = false,
-  distanceToPin = 0,
+  // distanceToPin = 0, // Unused prop
   distanceFromCurrent = 0,
 }) => {
   const mapRef = useRef<MapView>(null);
@@ -87,6 +87,8 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
 
   // Initialize Mapbox
   useEffect(() => {
+    let isMounted = true;
+    
     if (validateMapboxToken(accessToken)) {
       console.log('🗺️ MapboxMapView: Setting access token');
       // For MapLibre, set well-known tile server when using Mapbox tiles
@@ -101,17 +103,28 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
       // Preflight style access to avoid 403 logs; fallback if unauthorized
       (async () => {
         try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+          
           const res = await fetch(
-            `https://api.mapbox.com/styles/v1/mapbox/satellite-v9?access_token=${accessToken}`
+            `https://api.mapbox.com/styles/v1/mapbox/satellite-v9?access_token=${accessToken}`,
+            { signal: controller.signal }
           );
-          if (res.ok) {
-            setStyleUrl('mapbox://styles/mapbox/satellite-v9');
-          } else {
-            console.warn('⚠️ MapboxMapView: Style access check failed, using demo tiles');
+          
+          clearTimeout(timeoutId);
+          
+          if (isMounted) {
+            if (res.ok) {
+              setStyleUrl('mapbox://styles/mapbox/satellite-v9');
+            } else {
+              console.warn('⚠️ MapboxMapView: Style access check failed, using demo tiles');
+              setStyleUrl('https://demotiles.maplibre.org/style.json');
+            }
+          }
+        } catch (error: any) {
+          if (isMounted && error.name !== 'AbortError') {
             setStyleUrl('https://demotiles.maplibre.org/style.json');
           }
-        } catch {
-          setStyleUrl('https://demotiles.maplibre.org/style.json');
         }
       })();
     } else {
@@ -119,6 +132,10 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
       console.warn('⚠️ MapboxMapView: Invalid or missing access token');
       setStyleUrl('https://demotiles.maplibre.org/style.json');
     }
+    
+    return () => {
+      isMounted = false;
+    };
   }, [accessToken]);
 
   // Handle map ready

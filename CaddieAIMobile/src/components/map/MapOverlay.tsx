@@ -13,7 +13,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { DistanceResult } from '../../utils/DistanceCalculator';
 import { LocationData } from '../../services/LocationService';
 
-const { width, height } = Dimensions.get('window');
+const { height } = Dimensions.get('window');
 
 // Enhanced interfaces
 export interface ShotMarker {

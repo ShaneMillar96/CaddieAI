@@ -1,5 +1,5 @@
 import Geolocation from '@react-native-community/geolocation';
-import { Platform, PermissionsAndroid, Alert } from 'react-native';
+import { Platform, PermissionsAndroid } from 'react-native';
 
 // Simple location data interface
 export interface SimpleLocationData {
@@ -50,8 +50,8 @@ export class SimpleLocationService {
   // Golf-optimized GPS settings
   private gpsOptions: LocationOptions = {
     enableHighAccuracy: true,
-    timeout: 10000, // 10 seconds - faster timeout for better responsiveness
-    maximumAge: 5000, // 5 seconds - fresher location data
+    timeout: 15000, // 15 seconds - increased for better GPS acquisition
+    maximumAge: 8000, // 8 seconds - balance between freshness and availability
     distanceFilter: 2, // Update every 2 meters
   };
 
@@ -210,15 +210,15 @@ export class SimpleLocationService {
         }
       );
 
-      // Set up fallback timeout (8 seconds - faster than GPS timeout) only if not using mock location
+      // Set up fallback timeout (12 seconds - faster than GPS timeout) only if not using mock location
       if (!MAPBOX_GOLF_LOCATION) {
-        console.log('⏰ SimpleLocationService: Setting up 8s fallback timeout...');
+        console.log('⏰ SimpleLocationService: Setting up 12s fallback timeout...');
         this.fallbackTimeout = setTimeout(() => {
           if (!this.currentLocation && this.isTracking) {
             console.log('🏌️ SimpleLocationService: GPS timeout - activating Faughan Valley fallback location');
             this.activateFallbackLocation();
           }
-        }, 8000);
+        }, 12000);
       }
 
       this.isTracking = true;
@@ -277,8 +277,8 @@ export class SimpleLocationService {
         },
         {
           enableHighAccuracy: true,
-          timeout: 10000, // Match GPS timeout
-          maximumAge: 5000,
+          timeout: 15000, // Match GPS timeout
+          maximumAge: 8000,
         }
       );
     });
@@ -437,7 +437,7 @@ export class SimpleLocationService {
         errorMessage = 'GPS signal unavailable';
         break;
       case 3: // TIMEOUT
-        errorMessage = 'GPS timeout - trying again...';
+        errorMessage = 'GPS taking longer than expected - using fallback location if available...';
         break;
       default:
         errorMessage = `GPS error: ${error.message}`;

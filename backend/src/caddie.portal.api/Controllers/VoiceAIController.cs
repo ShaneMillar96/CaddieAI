@@ -439,6 +439,105 @@ public class VoiceAIController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Generate dynamic caddie response for specific golf scenarios
+    /// </summary>
+    /// <param name="request">Caddie response request</param>
+    /// <returns>AI-generated caddie response optimized for TTS</returns>
+    [HttpPost("caddie-response")]
+    [ProducesResponseType(typeof(CaddieResponseResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<CaddieResponseResponse>> GenerateCaddieResponse([FromBody] CaddieResponseRequest request)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            if (userId != request.UserId)
+            {
+                return Forbid("User ID mismatch");
+            }
+
+            // Validate that the round exists and belongs to the user
+            var round = await _roundService.GetRoundByIdAsync(request.RoundId);
+            if (round == null)
+            {
+                return NotFound($"Round {request.RoundId} not found");
+            }
+
+            if (round.UserId != userId)
+            {
+                return Forbid("Round does not belong to the current user");
+            }
+
+            // Check rate limits
+            if (await _openAIService.IsRateLimitExceededAsync(userId))
+            {
+                return StatusCode(StatusCodes.Status429TooManyRequests, 
+                    new { message = "Rate limit exceeded. Please wait before making another request." });
+            }
+
+            // Generate dynamic caddie response
+            var caddieMessage = await _openAIService.GenerateCaddieResponseAsync(
+                userId,
+                request.RoundId,
+                request.Scenario,
+                request.Context,
+                request.UserInput
+            );
+
+            // Create response model
+            var response = new CaddieResponseResponse
+            {
+                Message = caddieMessage,
+                ResponseId = Guid.NewGuid().ToString(),
+                Scenario = request.Scenario,
+                GeneratedAt = DateTime.UtcNow,
+                ConfidenceScore = 0.9m, // High confidence for caddie responses
+                SuggestedActions = GenerateCaddieActions(request.Scenario, request.Context),
+                RequiresConfirmation = false,
+                AdviceCategory = GetAdviceCategory(request.Scenario)
+            };
+
+            _logger.LogInformation("Generated caddie response for user {UserId}, scenario {Scenario}, round {RoundId}", 
+                userId, request.Scenario, request.RoundId);
+
+            return Ok(response);
+        }
+        catch (OpenAIQuotaExceededException ex)
+        {
+            _logger.LogWarning(ex, "OpenAI quota exceeded for caddie response, user {UserId}, scenario {Scenario}", 
+                request.UserId, request.Scenario);
+            
+            var retryAfter = ex.RetryAfterSeconds ?? 3600;
+            Response.Headers["Retry-After"] = retryAfter.ToString();
+            
+            // Return fallback response
+            var fallbackResponse = new CaddieResponseResponse
+            {
+                Message = GetFallbackCaddieMessage(request.Scenario, request.Context),
+                ResponseId = Guid.NewGuid().ToString(),
+                Scenario = request.Scenario,
+                GeneratedAt = DateTime.UtcNow,
+                ConfidenceScore = 0.5m,
+                SuggestedActions = GenerateCaddieActions(request.Scenario, request.Context),
+                RequiresConfirmation = false,
+                AdviceCategory = GetAdviceCategory(request.Scenario)
+            };
+            
+            return Ok(fallbackResponse);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating caddie response for user {UserId}, scenario {Scenario}", 
+                request.UserId, request.Scenario);
+            return StatusCode(StatusCodes.Status500InternalServerError, 
+                new { message = "An error occurred while generating caddie response" });
+        }
+    }
+
     #region Private Helper Methods
 
     private int GetCurrentUserId()
@@ -557,6 +656,129 @@ public class VoiceAIController : ControllerBase
             0 => "Nice par! Solid golf right there.",
             1 => "Good bogey. Stay positive and focus on the next hole.",
             _ => "Tough hole, but that's golf! Let's bounce back on the next one."
+        };
+    }
+
+    private static List<string> GenerateCaddieActions(CaddieScenario scenario, CaddieContext? context)
+    {
+        return scenario switch
+        {
+            CaddieScenario.ShotPlacementWelcome => new List<string>
+            {
+                "Tap map to place target",
+                "Ask for course strategy",
+                "Get weather conditions"
+            },
+
+            CaddieScenario.ClubRecommendation => new List<string>
+            {
+                "Confirm club selection",
+                "Ask about conditions",
+                "Get distance adjustment"
+            },
+
+            CaddieScenario.ShotPlacementConfirmation => new List<string>
+            {
+                "Activate shot tracking",
+                "Adjust target position",
+                "Ask for advice"
+            },
+
+            CaddieScenario.ShotTrackingActivation => new List<string>
+            {
+                "Take your shot",
+                "Cancel shot tracking",
+                "Ask for swing tip"
+            },
+
+            CaddieScenario.ShotCompletion => new List<string>
+            {
+                "Place next target",
+                "View shot statistics",
+                "Move to next hole"
+            },
+
+            CaddieScenario.HoleCompletion => new List<string>
+            {
+                "View scorecard",
+                "Get strategy for next hole",
+                "Review hole performance"
+            },
+
+            _ => new List<string>
+            {
+                "Ask for advice",
+                "Get club recommendation",
+                "Check course strategy"
+            }
+        };
+    }
+
+    private static string GetAdviceCategory(CaddieScenario scenario)
+    {
+        return scenario switch
+        {
+            CaddieScenario.ClubRecommendation => "Club Selection",
+            CaddieScenario.CourseStrategy => "Course Strategy",
+            CaddieScenario.ShotPlacementWelcome or 
+            CaddieScenario.ShotPlacementConfirmation or 
+            CaddieScenario.ShotTrackingActivation => "Shot Placement",
+            CaddieScenario.PerformanceEncouragement or 
+            CaddieScenario.HoleCompletion => "Performance",
+            CaddieScenario.WeatherConditions => "Course Conditions",
+            CaddieScenario.ErrorHandling => "Support",
+            _ => "General Advice"
+        };
+    }
+
+    private static string GetFallbackCaddieMessage(CaddieScenario scenario, CaddieContext? context)
+    {
+        return scenario switch
+        {
+            CaddieScenario.ShotPlacementWelcome => 
+                "Welcome to shot placement! Tap the map to set your target.",
+
+            CaddieScenario.ClubRecommendation => 
+                GetFallbackClubAdvice(context?.GolfContext?.TargetDistanceYards ?? 150),
+
+            CaddieScenario.ShotPlacementConfirmation => 
+                $"Target set at {context?.GolfContext?.TargetDistanceYards ?? 150} yards. You're ready to go!",
+
+            CaddieScenario.ShotTrackingActivation => 
+                "Shot tracking active. Trust your swing and follow through.",
+
+            CaddieScenario.ShotInProgress => 
+                "Looking good! Stay committed to your shot.",
+
+            CaddieScenario.ShotCompletion => 
+                "Well played! Ready for your next target.",
+
+            CaddieScenario.MovementDetected => 
+                "Shot complete. Nice work out there!",
+
+            CaddieScenario.DistanceAnnouncement => 
+                $"Distance: {context?.GolfContext?.TargetDistanceYards ?? 150} yards to target.",
+
+            CaddieScenario.HoleCompletion => 
+                "Good hole! Let's keep the momentum going.",
+
+            CaddieScenario.ErrorHandling => 
+                "No problem! I'm here to help you get back on track.",
+
+            _ => "I'm here to help with your golf game!"
+        };
+    }
+
+    private static string GetFallbackClubAdvice(decimal yards)
+    {
+        return yards switch
+        {
+            < 80m => "Try a wedge for this short approach.",
+            < 120m => "An 8 or 9 iron should work well.",
+            < 150m => "Consider a 6 or 7 iron.",
+            < 170m => "A 5 iron or hybrid looks good.",
+            < 200m => "Try a 4 iron or fairway wood.",
+            _ => "A driver or 3 wood for this distance."
         };
     }
 

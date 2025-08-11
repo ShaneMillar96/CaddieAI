@@ -6,6 +6,7 @@ using caddie.portal.services.Interfaces;
 using caddie.portal.services.Models;
 using caddie.portal.dal.Repositories.Interfaces;
 using caddie.portal.dal.Models;
+using DalModels = caddie.portal.dal.Models;
 
 namespace caddie.portal.services.Services;
 

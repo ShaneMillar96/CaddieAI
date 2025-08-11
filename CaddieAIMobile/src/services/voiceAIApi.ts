@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import TokenStorage from './tokenStorage';
 import { API_BASE_URL } from '../config/api';
+import { CaddieContext, CaddieScenario } from './TextToSpeechService';
 
 // Types for Voice AI API
 export interface VoiceAIRequest {
@@ -92,6 +93,32 @@ export interface UsageStats {
   totalMessages: number;
   estimatedCost: number;
   currency: string;
+}
+
+export interface CaddieResponseRequest {
+  userId: number;
+  roundId: number;
+  scenario: CaddieScenario;
+  context?: CaddieContext;
+  userInput?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface CaddieResponseResponse {
+  message: string;
+  responseId: string;
+  scenario: CaddieScenario;
+  generatedAt: string;
+  confidenceScore: number;
+  suggestedActions?: string[];
+  requiresConfirmation: boolean;
+  adviceCategory?: string;
+  tokenUsage?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    estimatedCost: number;
+  };
 }
 
 class VoiceAIApiService {
@@ -228,6 +255,38 @@ class VoiceAIApiService {
     } catch (error) {
       console.error('Voice AI service health check failed:', error);
       return false;
+    }
+  }
+
+  /**
+   * Generate dynamic caddie response for specific golf scenarios
+   */
+  async generateCaddieResponse(request: CaddieResponseRequest): Promise<CaddieResponseResponse> {
+    try {
+      const response = await this.api.post<CaddieResponseResponse>('/voiceai/caddie-response', request);
+      return response.data;
+    } catch (error: any) {
+      console.error('Error generating caddie response:', error);
+      
+      if (error.response?.status === 429) {
+        throw new Error('Rate limit exceeded. Please wait before making another request.');
+      }
+      
+      if (error.response?.status === 404) {
+        throw new Error('Round not found. Please start a new round.');
+      }
+      
+      // Return fallback response on error
+      return {
+        message: this.getFallbackCaddieMessage(request.scenario, request.context),
+        responseId: `fallback-${Date.now()}`,
+        scenario: request.scenario,
+        generatedAt: new Date().toISOString(),
+        confidenceScore: 0.5,
+        suggestedActions: this.getFallbackCaddieActions(request.scenario),
+        requiresConfirmation: false,
+        adviceCategory: this.getAdviceCategory(request.scenario),
+      };
     }
   }
 
@@ -494,6 +553,94 @@ class VoiceAIApiService {
         return "I'm here to help! Tap the map to place your shot target, and I'll provide club recommendations based on the distance.";
       default:
         return "How can I assist you with your shot placement?";
+    }
+  }
+
+  // Caddie response helper methods
+  private getFallbackCaddieMessage(scenario: CaddieScenario, context?: CaddieContext): string {
+    switch (scenario) {
+      case 'ShotPlacementWelcome':
+        return "Welcome to shot placement! Tap the map to set your target.";
+      
+      case 'ClubRecommendation':
+        const distance = context?.golfContext?.targetDistanceYards ?? 150;
+        return this.getFallbackClubRecommendation(distance);
+      
+      case 'ShotPlacementConfirmation':
+        const targetYards = context?.golfContext?.targetDistanceYards ?? 150;
+        return `Target set at ${targetYards} yards. You're ready to go!`;
+      
+      case 'ShotTrackingActivation':
+        return "Shot tracking active. Trust your swing and follow through.";
+      
+      case 'ShotInProgress':
+        return "Looking good! Stay committed to your shot.";
+      
+      case 'ShotCompletion':
+        return "Well played! Ready for your next target.";
+      
+      case 'MovementDetected':
+        return "Shot complete. Nice work out there!";
+      
+      case 'DistanceAnnouncement':
+        const announceDistance = context?.golfContext?.targetDistanceYards ?? 150;
+        return `Distance: ${announceDistance} yards to target.`;
+      
+      case 'HoleCompletion':
+        return "Good hole! Let's keep the momentum going.";
+      
+      case 'ErrorHandling':
+        return "No problem! I'm here to help you get back on track.";
+      
+      default:
+        return "I'm here to help with your golf game!";
+    }
+  }
+
+  private getFallbackCaddieActions(scenario: CaddieScenario): string[] {
+    switch (scenario) {
+      case 'ShotPlacementWelcome':
+        return ['Tap map to place target', 'Ask for course strategy', 'Get weather conditions'];
+      
+      case 'ClubRecommendation':
+        return ['Confirm club selection', 'Ask about conditions', 'Get distance adjustment'];
+      
+      case 'ShotPlacementConfirmation':
+        return ['Activate shot tracking', 'Adjust target position', 'Ask for advice'];
+      
+      case 'ShotTrackingActivation':
+        return ['Take your shot', 'Cancel shot tracking', 'Ask for swing tip'];
+      
+      case 'ShotCompletion':
+        return ['Place next target', 'View shot statistics', 'Move to next hole'];
+      
+      case 'HoleCompletion':
+        return ['View scorecard', 'Get strategy for next hole', 'Review hole performance'];
+      
+      default:
+        return ['Ask for advice', 'Get club recommendation', 'Check course strategy'];
+    }
+  }
+
+  private getAdviceCategory(scenario: CaddieScenario): string {
+    switch (scenario) {
+      case 'ClubRecommendation':
+        return 'Club Selection';
+      case 'CourseStrategy':
+        return 'Course Strategy';
+      case 'ShotPlacementWelcome':
+      case 'ShotPlacementConfirmation':
+      case 'ShotTrackingActivation':
+        return 'Shot Placement';
+      case 'PerformanceEncouragement':
+      case 'HoleCompletion':
+        return 'Performance';
+      case 'WeatherConditions':
+        return 'Course Conditions';
+      case 'ErrorHandling':
+        return 'Support';
+      default:
+        return 'General Advice';
     }
   }
 }

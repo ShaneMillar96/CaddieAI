@@ -10,8 +10,10 @@
     "test": "jest"
   },
   "dependencies": {
+    "@openai/realtime-api-beta": "github:openai/openai-realtime-api-beta",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/geolocation": "^3.4.0",
+    "@react-native-community/netinfo": "^11.4.1",
     "@react-native-voice/voice": "^3.2.4",
     "@react-native/new-app-screen": "0.80.2",
     "@react-navigation/bottom-tabs": "^7.4.5",
@@ -23,14 +25,17 @@
     "react": "19.1.0",
     "react-native": "0.80.2",
     "react-native-base64": "^0.2.1",
+    "react-native-fs": "^2.20.0",
     "react-native-gesture-handler": "^2.28.0",
     "react-native-permissions": "^5.4.2",
     "react-native-reanimated": "^3.16.2",
     "react-native-safe-area-context": "^5.6.0",
     "react-native-screens": "^4.13.1",
+    "react-native-sound": "^0.12.0",
     "react-native-tts": "^4.1.1",
     "react-native-vector-icons": "^10.3.0",
     "react-redux": "^9.2.0",
+    "react-use-websocket": "^4.13.0",
     "redux-persist": "^6.0.0"
   },
   "devDependencies": {

@@ -1,4 +1,4 @@
-import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk, PayloadAction, createSelector } from '@reduxjs/toolkit';
 import { 
   shotPlacementService, 
   ShotPlacementData, 
@@ -391,10 +391,14 @@ export const selectIsActive = (state: { shotPlacement: ShotPlacementState }) =>
 export const selectTargetLocation = (state: { shotPlacement: ShotPlacementState }) => 
   state.shotPlacement.targetLocation;
 
-export const selectDistances = (state: { shotPlacement: ShotPlacementState }) => ({
-  toPin: state.shotPlacement.distanceToPin,
-  fromCurrent: state.shotPlacement.distanceFromCurrentLocation,
-});
+export const selectDistances = createSelector(
+  [(state: { shotPlacement: ShotPlacementState }) => state.shotPlacement.distanceToPin,
+   (state: { shotPlacement: ShotPlacementState }) => state.shotPlacement.distanceFromCurrentLocation],
+  (toPin, fromCurrent) => ({
+    toPin,
+    fromCurrent,
+  })
+);
 
 export const selectClubRecommendation = (state: { shotPlacement: ShotPlacementState }) => 
   state.shotPlacement.clubRecommendation;

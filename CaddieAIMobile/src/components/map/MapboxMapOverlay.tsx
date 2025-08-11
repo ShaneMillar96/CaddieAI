@@ -5,12 +5,11 @@ import {
   StyleSheet,
   TouchableOpacity,
   SafeAreaView,
-  Dimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { SimpleLocationData, simpleLocationService } from '../../services/SimpleLocationService';
 
-const { width } = Dimensions.get('window');
+// const { width } = Dimensions.get('window'); // Unused for now
 
 export interface MapboxMapOverlayProps {
   courseName?: string;
@@ -62,7 +61,7 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
   onRetryLocation,
   // Shot placement props
   shotPlacementMode = false,
-  shotPlacementActive = false,
+  // shotPlacementActive = false, // Unused prop
   shotPlacementDistance = 0,
   clubRecommendation = null,
   onShotPlacementToggle,

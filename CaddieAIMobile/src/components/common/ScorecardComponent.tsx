@@ -116,7 +116,7 @@ const ScorecardComponent: React.FC<ScorecardComponentProps> = ({
     } catch (error) {
       Alert.alert('Error', 'Failed to save score. Please try again.');
     }
-  }, [dispatch, round.id, currentHoleData, modalScore, isEditing, existingScore]);
+  }, [dispatch, round.id, currentHole, currentHoleData, modalScore, isEditing, existingScore]);
 
   // Quick score buttons
   const quickScoreOptions = currentHoleData?.par ? [
@@ -161,7 +161,7 @@ const ScorecardComponent: React.FC<ScorecardComponentProps> = ({
     } catch (error) {
       Alert.alert('Error', 'Failed to save quick score.');
     }
-  }, [dispatch, round.id, currentHoleData]);
+  }, [dispatch, round.id, currentHole, currentHoleData]);
 
   // Get score display info
   const getScoreInfo = (strokes: number, par: number) => {

@@ -5,6 +5,7 @@ using Microsoft.OpenApi.Models;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using Serilog;
+using System.Security.Claims;
 using System.Text;
 using caddie.portal.api.Middleware;
 using caddie.portal.api.Mapping;
@@ -67,7 +68,31 @@ builder.Services.AddAuthentication(options =>
         ValidIssuer = jwtSettings.Issuer,
         ValidAudience = jwtSettings.Audience,
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret)),
-        ClockSkew = TimeSpan.Zero
+        ClockSkew = TimeSpan.Zero,
+        NameClaimType = ClaimTypes.NameIdentifier
+    };
+    
+    // Support JWT authentication for WebSocket connections from query string
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            // Check for token in query string for WebSocket connections
+            var accessToken = context.Request.Query["token"];
+            
+            // If the request is for a WebSocket endpoint and has a token in the query string
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken) && 
+                (path.StartsWithSegments("/api/realtimeaudio", StringComparison.OrdinalIgnoreCase) || 
+                 path.StartsWithSegments("/api/RealtimeAudio") || 
+                 context.HttpContext.WebSockets.IsWebSocketRequest))
+            {
+                // Read the token from the query string
+                context.Token = accessToken;
+            }
+            
+            return Task.CompletedTask;
+        }
     };
 });
 
@@ -135,6 +160,7 @@ builder.Services.AddScoped<IOpenAIService, OpenAIService>();
 builder.Services.AddScoped<IGolfContextService, GolfContextService>();
 builder.Services.AddScoped<IGolfStatisticsService, GolfStatisticsService>();
 builder.Services.AddScoped<IAIScoreService, AIScoreService>();
+builder.Services.AddScoped<IRealtimeAudioService, RealtimeAudioService>();
 
 // Add AutoMapper
 builder.Services.AddAutoMapper(typeof(AuthMappingProfile), typeof(CourseMappingProfile), typeof(RoundMappingProfile), typeof(ChatMappingProfile), typeof(ClubRecommendationMappingProfile), typeof(StatisticsMappingProfile), typeof(ShotMappingProfile));
@@ -185,12 +211,14 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "https://app.caddieai.com") // Add your frontend URLs
+        policy.WithOrigins("http://localhost:3000", "https://app.caddieai.com", "http://localhost:8081") // Add React Native metro server
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
     });
 });
+
+// WebSocket support is built-in to ASP.NET Core
 
 // Configure HTTP Context
 builder.Services.AddHttpContextAccessor();
@@ -215,6 +243,15 @@ app.UseMiddleware<JwtMiddleware>();
 // Standard middleware
 // app.UseHttpsRedirection(); // Commented out for development - causes hanging on HTTP-only setup
 app.UseCors("AllowFrontend");
+
+// Enable WebSockets with options
+app.UseWebSockets(new WebSocketOptions
+{
+    KeepAliveInterval = TimeSpan.FromMinutes(2)
+    // ReceiveBufferSize is obsolete and has no effect in .NET 9
+    // Remove AllowedOrigins restriction for development - React Native WebSocket might not send proper Origin header
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -244,7 +281,8 @@ if (app.Environment.IsDevelopment())
 Log.Information("CaddieAI API starting up");
 
 // Configure URLs explicitly (needed when running DLL directly)
-app.Urls.Add("http://localhost:5277");
+// Bind to all interfaces for development (allows direct IP connections from mobile devices)
+app.Urls.Add("http://0.0.0.0:5277");
 
 try
 {

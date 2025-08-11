@@ -395,30 +395,126 @@ export const isTextToSpeechServiceAvailable = (): boolean => {
   }
 };
 
-// Golf-specific TTS helper functions
+// Dynamic AI-powered caddie helper functions
+export interface CaddieContext {
+  location?: {
+    currentHole?: number;
+    distanceToPinMeters?: number;
+    distanceToTeeMeters?: number;
+    positionOnHole?: string;
+    latitude: number;
+    longitude: number;
+    accuracyMeters?: number;
+    withinCourseBoundaries: boolean;
+    timestamp: string;
+  };
+  golfContext?: {
+    currentHole?: number;
+    targetDistanceYards?: number;
+    recommendedClub?: string;
+    shotType: string;
+    positionOnHole?: string;
+    shotPlacementActive?: boolean;
+    currentScore?: number;
+    holePar?: number;
+    shotHistory?: Array<{
+      shotNumber: number;
+      club?: string;
+      distanceYards: number;
+      accuracy?: string;
+      timestamp: number;
+      result?: string;
+    }>;
+    strategicNotes?: string;
+  };
+  player?: {
+    handicapIndex?: number;
+    skillLevel: 'beginner' | 'intermediate' | 'advanced' | 'professional';
+    communicationStyle: 'encouraging' | 'technical' | 'balanced' | 'casual' | 'professional';
+    currentRoundStats?: {
+      currentScore: number;
+      relativeToPar: number;
+      holesCompleted: number;
+      fairwaysHitPercentage?: number;
+      greensInRegulationPercentage?: number;
+      averagePutts?: number;
+    };
+    clubDistances?: Record<string, number>;
+    preferences?: Record<string, any>;
+  };
+  history?: {
+    recentMessages?: Array<{
+      content: string;
+      role: string;
+      timestamp: string;
+    }>;
+    lastResponse?: string;
+    conversationTopic?: string;
+    recentQueries?: string[];
+  };
+  conditions?: {
+    windSpeedMph?: number;
+    windDirection?: string;
+    temperatureFahrenheit?: number;
+    courseCondition?: string;
+    greenSpeed?: number;
+    timeOfDay?: string;
+    weatherDescription?: string;
+  };
+  metadata?: Record<string, any>;
+}
+
+export type CaddieScenario = 
+  | 'ShotPlacementWelcome'
+  | 'ClubRecommendation'
+  | 'ShotPlacementConfirmation'
+  | 'ShotTrackingActivation'
+  | 'ShotInProgress'
+  | 'ShotCompletion'
+  | 'MovementDetected'
+  | 'DistanceAnnouncement'
+  | 'HoleCompletion'
+  | 'ErrorHandling'
+  | 'GeneralAssistance'
+  | 'CourseStrategy'
+  | 'PerformanceEncouragement'
+  | 'WeatherConditions';
+
+export interface DynamicCaddieHelper {
+  generateResponse: (
+    scenario: CaddieScenario,
+    context: CaddieContext,
+    userId: number,
+    roundId: number,
+    userInput?: string,
+    priority?: number
+  ) => Promise<void>;
+}
+
+// Legacy golfTTSHelper - DEPRECATED: Use dynamicCaddieHelper instead
 export const golfTTSHelper = {
   /**
-   * Welcome message for shot placement mode
+   * @deprecated Use dynamicCaddieHelper.generateResponse with CaddieScenario.ShotPlacementWelcome
    */
   welcomeToShotPlacement: (): Promise<void> => {
     return textToSpeechService.speak(
       "Welcome to shot placement mode. Tap anywhere on the map to select your target location.",
-      10 // High priority
+      10
     );
   },
 
   /**
-   * Club recommendation announcement
+   * @deprecated Use dynamicCaddieHelper.generateResponse with CaddieScenario.ClubRecommendation
    */
   announceClubRecommendation: (club: string, distance: number): Promise<void> => {
     return textToSpeechService.speak(
       `Based on ${distance} yards, I recommend using a ${club}.`,
-      8 // High priority
+      8
     );
   },
 
   /**
-   * Shot placement confirmation
+   * @deprecated Use dynamicCaddieHelper.generateResponse with CaddieScenario.ShotPlacementConfirmation
    */
   confirmShotPlacement: (distance: number): Promise<void> => {
     return textToSpeechService.speak(
@@ -428,7 +524,7 @@ export const golfTTSHelper = {
   },
 
   /**
-   * Shot in progress notification
+   * @deprecated Use dynamicCaddieHelper.generateResponse with CaddieScenario.ShotInProgress
    */
   shotInProgress: (): Promise<void> => {
     return textToSpeechService.speak(
@@ -438,7 +534,7 @@ export const golfTTSHelper = {
   },
 
   /**
-   * Shot completed notification
+   * @deprecated Use dynamicCaddieHelper.generateResponse with CaddieScenario.ShotCompletion
    */
   shotCompleted: (): Promise<void> => {
     return textToSpeechService.speak(
@@ -448,7 +544,7 @@ export const golfTTSHelper = {
   },
 
   /**
-   * Movement detected notification
+   * @deprecated Use dynamicCaddieHelper.generateResponse with CaddieScenario.MovementDetected
    */
   movementDetected: (): Promise<void> => {
     return textToSpeechService.speak(
@@ -458,17 +554,17 @@ export const golfTTSHelper = {
   },
 
   /**
-   * Error notifications
+   * @deprecated Use dynamicCaddieHelper.generateResponse with CaddieScenario.ErrorHandling
    */
   error: (message: string): Promise<void> => {
     return textToSpeechService.speak(
       `Error: ${message}. Please try again.`,
-      9 // High priority for errors
+      9
     );
   },
 
   /**
-   * Distance measurement
+   * @deprecated Use dynamicCaddieHelper.generateResponse with CaddieScenario.DistanceAnnouncement
    */
   announceDistance: (distance: number, target: string = 'target'): Promise<void> => {
     return textToSpeechService.speak(
@@ -478,7 +574,7 @@ export const golfTTSHelper = {
   },
 
   /**
-   * General golf assistance
+   * @deprecated Use dynamicCaddieHelper.generateResponse with CaddieScenario.GeneralAssistance
    */
   generalAssistance: (message: string): Promise<void> => {
     return textToSpeechService.speak(message, 3);
