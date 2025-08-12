@@ -55,12 +55,7 @@ class MapboxService {
 
     try {
       // Initialize Mapbox with the access token
-      const anyMapbox: any = Mapbox as any;
-      if (typeof anyMapbox.setWellKnownTileServer === 'function') {
-        try {
-          anyMapbox.setWellKnownTileServer('Mapbox');
-        } catch {}
-      }
+      // Note: setWellKnownTileServer is deprecated in newer Mapbox SDK versions
       Mapbox.setAccessToken(accessToken);
       
       this.config = {

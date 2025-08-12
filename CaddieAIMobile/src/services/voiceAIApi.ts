@@ -181,12 +181,32 @@ class VoiceAIApiService {
     } catch (error: any) {
       console.error('Error processing voice input:', error);
       
+      // Enhanced error handling for voice AI API
+      if (error.response?.status === 400) {
+        console.error('Bad Request - Invalid voice input parameters:', error.response?.data);
+        throw new Error('Invalid voice input. Please try again.');
+      }
+      
+      if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please log in again.');
+      }
+      
       if (error.response?.status === 429) {
         throw new Error('Rate limit exceeded. Please wait before making another request.');
       }
       
       if (error.response?.status === 404) {
         throw new Error('Round not found. Please start a new round.');
+      }
+      
+      if (error.response?.status >= 500) {
+        console.error('Server error during voice processing:', error.response?.status);
+        throw new Error('Server is temporarily unavailable. Please try again later.');
+      }
+      
+      if (!error.response) {
+        console.error('Network error during voice processing');
+        throw new Error('Network connection issue. Please check your connection.');
       }
       
       throw new Error(
@@ -268,12 +288,23 @@ class VoiceAIApiService {
     } catch (error: any) {
       console.error('Error generating caddie response:', error);
       
-      if (error.response?.status === 429) {
+      // Handle specific HTTP error codes
+      if (error.response?.status === 400) {
+        console.error('Bad Request - Invalid parameters:', error.response?.data);
+        // Don't throw error, return fallback instead for 400 errors
+        // This prevents disruption of the shot placement flow
+      } else if (error.response?.status === 401) {
+        throw new Error('Authentication failed. Please log in again.');
+      } else if (error.response?.status === 429) {
         throw new Error('Rate limit exceeded. Please wait before making another request.');
-      }
-      
-      if (error.response?.status === 404) {
+      } else if (error.response?.status === 404) {
         throw new Error('Round not found. Please start a new round.');
+      } else if (error.response?.status >= 500) {
+        console.error('Server error:', error.response?.status, error.response?.data);
+        // Don't throw error, use fallback for server errors
+      } else if (!error.response) {
+        console.error('Network error or timeout');
+        // Don't throw error, use fallback for network issues
       }
       
       // Return fallback response on error

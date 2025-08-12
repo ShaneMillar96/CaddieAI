@@ -91,13 +91,7 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
     
     if (validateMapboxToken(accessToken)) {
       console.log('🗺️ MapboxMapView: Setting access token');
-      // For MapLibre, set well-known tile server when using Mapbox tiles
-      const anyMapbox: any = Mapbox as any;
-      if (typeof anyMapbox.setWellKnownTileServer === 'function') {
-        try {
-          anyMapbox.setWellKnownTileServer('Mapbox');
-        } catch {}
-      }
+      // Note: setWellKnownTileServer is deprecated in newer Mapbox SDK versions
       Mapbox.setAccessToken(accessToken);
       setMapError(null);
       // Preflight style access to avoid 403 logs; fallback if unauthorized

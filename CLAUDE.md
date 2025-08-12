@@ -21,7 +21,7 @@ CaddieAI is an AI-powered golf companion mobile application designed to enhance 
 - Expo for development workflow
 
 **External Services**
-- OpenAI GPT-4o for AI conversations
+- OpenAI GPT-4o Real-time API for AI conversations and voice responses
 - Garmin Golf API / Mapbox SDK for course data
 - Native GPS for location services (@react-native-community/geolocation)
 - PostgreSQL with PostGIS for geospatial data
@@ -670,6 +670,239 @@ npm run android
 - Avoid `any` type usage
 - Use union types for constrained values
 
+## OpenAI Real-time Audio Integration
+
+### Overview
+The CaddieAI application integrates OpenAI's Real-time API to provide immediate, contextual voice responses during golf rounds. This system replaces static text-to-speech with dynamic, AI-powered audio interactions that respond to shot placement, club recommendations, and other golf scenarios.
+
+### Architecture Components
+
+#### 1. RealtimeAudioService (`src/services/RealtimeAudioService.ts`)
+**Primary responsibility**: Manages WebSocket connection to OpenAI's Real-time API and handles audio streaming.
+
+**Key Features**:
+- WebSocket connection management with auto-reconnection
+- PCM16 audio format processing and playback
+- Sequential audio buffer management to prevent cutoffs
+- Cross-platform audio permissions handling
+
+**Configuration**:
+```typescript
+interface RealtimeAudioConfig {
+  model?: string;              // 'gpt-4o-realtime-preview-2024-12-17'
+  voice?: string;              // 'ash' for natural, warm communication
+  instructions?: string;       // Golf caddie personality and behavior
+  inputAudioFormat?: string;   // 'pcm16'
+  outputAudioFormat?: string;  // 'pcm16'
+  enableVAD?: boolean;         // Voice Activity Detection
+  vadThreshold?: number;       // VAD sensitivity (0.5 default)
+  temperature?: number;        // AI response variability (0.7)
+}
+```
+
+**Audio Processing Pipeline**:
+1. **Audio Chunks Received** → Buffered (no immediate playback)
+2. **OpenAI Signals Complete** → Triggers audio processing
+3. **Chunks Combined** → Single WAV file created using chunked base64 conversion
+4. **Sequential Playback** → Complete response plays without interruption
+
+#### 2. DynamicCaddieService (`src/services/DynamicCaddieService.ts`)
+**Primary responsibility**: Manages contextual AI responses and request queuing for golf scenarios.
+
+**Request Queuing System**:
+- Prevents "conversation_already_has_active_response" errors
+- Priority-based queue processing (shot placement = priority 9, club recommendations = priority 8)
+- Sequential API calls to avoid simultaneous requests
+- Automatic fallback to static responses if OpenAI fails
+
+**Supported Scenarios**:
+```typescript
+type CaddieScenario = 
+  | 'ShotPlacementWelcome'      // Welcome to shot placement mode
+  | 'ShotPlacementConfirmation' // Confirm shot target
+  | 'ClubRecommendation'        // Suggest club for distance
+  | 'ShotTrackingActivation'    // Shot tracking activated
+  | 'ShotInProgress'            // During shot execution
+  | 'ShotCompletion'            // After shot completion
+  | 'MovementDetected'          // Shot tracking complete
+  | 'DistanceAnnouncement'      // Distance to target
+  | 'ErrorHandling';            // Handle error situations
+```
+
+#### 3. Audio Buffer Management
+**Critical Fix**: Sequential audio playback prevents response cutoffs.
+
+**Problem Solved**: Previous implementation played audio chunks immediately as they arrived, causing overlapping playback that cut off responses prematurely.
+
+**Solution Implemented**:
+```typescript
+// Audio state management
+private isAudioResponseComplete = false;
+private pendingPlayback = false;
+
+// Buffer chunks until complete
+private async playAudioDelta(audioData: string) {
+  this.audioBuffer.push(buffer);
+  
+  // Only trigger playback when response is complete
+  if (this.isAudioResponseComplete && !this.isPlayingAudio && !this.pendingPlayback) {
+    this.pendingPlayback = true;
+    setTimeout(() => this.processAudioBuffer(), 100);
+  }
+}
+
+// Process complete audio response
+case 'response.audio.done':
+  this.isAudioResponseComplete = true;
+  if (this.audioBuffer.length > 0 && !this.isPlayingAudio) {
+    this.processAudioBuffer();
+  }
+```
+
+#### 4. Chunked Base64 Conversion
+**Critical Fix**: Prevents stack overflow errors with large audio data.
+
+**Problem Solved**: `String.fromCharCode.apply(null, largeArray)` exceeded maximum call stack size.
+
+**Solution Implemented**:
+```typescript
+private arrayBufferToBase64(buffer: Uint8Array): string {
+  const chunkSize = 8192; // Process 8KB chunks
+  let result = '';
+  
+  for (let i = 0; i < buffer.length; i += chunkSize) {
+    const chunk = buffer.slice(i, i + chunkSize);
+    const chunkStr = String.fromCharCode.apply(null, Array.from(chunk));
+    result += chunkStr;
+  }
+  
+  return btoa(result);
+}
+```
+
+### Integration with Shot Placement
+
+The real-time audio system is tightly integrated with the shot placement feature:
+
+1. **Shot Placement Welcome**: Activates when user enters shot placement mode
+2. **Shot Confirmation**: Confirms target selection with encouraging advice
+3. **Club Recommendation**: Provides club suggestions based on distance and conditions
+4. **Sequential Processing**: Ensures responses play in correct order without overlap
+
+**Example Flow**:
+```typescript
+// Shot placement triggers two sequential responses
+await dynamicCaddieService.generateResponse(
+  'ShotPlacementConfirmation',
+  buildCaddieContext(),
+  userId,
+  roundId,
+  undefined,
+  9 // Very high priority
+);
+
+await dynamicCaddieService.generateResponse(
+  'ClubRecommendation', 
+  buildCaddieContext(),
+  userId,
+  roundId,
+  undefined,
+  8 // High priority but lower than confirmation
+);
+```
+
+### Configuration and Setup
+
+#### Required Dependencies
+```json
+{
+  "react-native-sound": "^0.12.0",
+  "react-native-fs": "^2.20.0", 
+  "react-native-audio-record": "^0.2.2",
+  "react-native-audio-recorder-player": "^3.6.12"
+}
+```
+
+#### OpenAI Configuration
+```typescript
+// src/config/openai.ts
+export const OPENAI_CONFIG = {
+  model: 'gpt-4o-realtime-preview-2024-12-17',
+  voice: 'ash',
+  temperature: 0.7,
+  apiKey: process.env.OPENAI_API_KEY // Never hardcode
+};
+```
+
+#### Backend WebSocket Endpoint
+```csharp
+// RealtimeAudioController.cs
+[Route("api/realtimeaudio")]
+public class RealtimeAudioController : ControllerBase
+{
+    [HttpGet("connect/{roundId}")]
+    public async Task<IActionResult> Connect(int roundId, string token)
+    {
+        // WebSocket connection handling
+        // Validates JWT token and round access
+        // Proxies to OpenAI Real-time API
+    }
+}
+```
+
+### Error Handling and Fallbacks
+
+#### Connection Issues
+- **Auto-reconnection**: Up to 3 attempts with exponential backoff
+- **Fallback Responses**: Static messages if OpenAI unavailable
+- **User Feedback**: Clear connection status indicators
+
+#### Audio Issues
+- **Permission Handling**: Cross-platform audio permission requests
+- **Playback Fallback**: Graceful handling of audio system failures
+- **Buffer Management**: Automatic cleanup of temporary audio files
+
+#### API Rate Limits
+- **Request Queuing**: Prevents simultaneous API calls
+- **Priority System**: Critical responses (shot confirmation) get priority
+- **Timeout Handling**: 15-second timeout with queue continuation
+
+### Performance Optimizations
+
+1. **Chunked Processing**: 8KB chunks prevent memory issues with large audio
+2. **Buffer Management**: Efficient combination of audio chunks before playback
+3. **File Cleanup**: Automatic removal of temporary WAV files
+4. **State Reset**: Proper cleanup between responses to prevent memory leaks
+
+### Testing and Debugging
+
+#### Debug Logging
+Comprehensive logging for all audio processing stages:
+```typescript
+console.log('🎵 Audio chunk added to buffer. Buffer size: X chunks');
+console.log('🎵 Processing complete audio response: X chunks');
+console.log('🎵 Combined X chunks into Y bytes');
+console.log('✅ Complete audio playback sequence finished');
+```
+
+#### Common Issues and Solutions
+- **Audio Cutoffs**: Fixed with sequential buffer processing
+- **Stack Overflow**: Fixed with chunked base64 conversion
+- **Simultaneous Requests**: Fixed with request queuing system
+- **Session Configuration**: Explicitly disable function calls for audio-only responses
+
+### Future Enhancements
+- **Streaming Audio**: Real-time audio streaming without buffering
+- **Voice Recognition**: Two-way voice conversations with the AI caddie
+- **Emotion Detection**: Adjust AI responses based on player state
+- **Multi-language Support**: Support for different languages and accents
+
+### Maintenance Notes
+- **OpenAI Model Updates**: Monitor for new real-time API versions
+- **Audio Format Support**: Test across different devices and platforms
+- **Performance Monitoring**: Track audio latency and buffer sizes
+- **Token Usage**: Monitor OpenAI API usage and costs
+
 ## Infrastructure & DevOps
 
 ### Docker Setup
@@ -968,7 +1201,17 @@ docker-compose exec postgres pg_isready -U caddieai_user -d caddieai_dev
 - **AI Features**: Chat sessions, club recommendations, and user feedback system
 - **Faughan Valley Golf Centre**: Complete course data for MVP development
 
-### Location Tracking Architecture (V1.5.0 - Planned)
+### Real-time AI Audio Features (V1.5.0 - Implemented)
+- **OpenAI Real-time API Integration**: WebSocket-based audio streaming for immediate AI responses
+- **Dynamic Caddie Service**: Contextual, personalized golf advice generated in real-time
+- **Sequential Audio Processing**: Fixed audio cutoffs with proper buffer management
+- **Request Queuing System**: Prevents API conflicts with priority-based processing
+- **Shot Placement Audio**: Voice confirmation and club recommendations during shot targeting
+- **Cross-platform Audio**: Native audio recording and playback on iOS and Android
+- **Fallback Responses**: Static messages when OpenAI API unavailable
+- **Audio Buffer Optimization**: Chunked processing prevents memory issues and stack overflows
+
+### Location Tracking Architecture (V1.6.0 - Planned)
 - **React Native Location Services**: GPS tracking with @react-native-community/geolocation
 - **Location Permissions**: Cross-platform permission handling for iOS and Android
 - **Real-time Tracking**: Continuous location updates during golf rounds
@@ -1015,7 +1258,11 @@ docker-compose exec postgres pg_isready -U caddieai_user -d caddieai_dev
 - `CaddieAIMobile/src/components/` - Reusable UI components
 - `CaddieAIMobile/src/screens/` - Screen components  
 - `CaddieAIMobile/src/services/` - API service layer
+- `CaddieAIMobile/src/services/RealtimeAudioService.ts` - OpenAI real-time audio integration
+- `CaddieAIMobile/src/services/DynamicCaddieService.ts` - AI-powered golf caddie responses
+- `CaddieAIMobile/src/services/AudioRecorderService.ts` - Cross-platform audio recording
 - `CaddieAIMobile/src/services/LocationService.ts` - Location tracking service (planned)
+- `CaddieAIMobile/src/components/voice/VoiceChatModal.tsx` - Voice chat interface
 - `CaddieAIMobile/src/store/` - Redux store configuration
 
 ### Documentation

@@ -135,7 +135,29 @@ export class AudioRecorderService extends ReactNativeEventEmitter {
       wavFile: 'temp_audio.wav',
     };
 
-    AudioRecord.init(options);
+    // Initialize react-native-audio-record
+    // Suppress NativeEventEmitter warnings in development for react-native-audio-record
+    const originalConsoleWarn = console.warn;
+    console.warn = (message, ...args) => {
+      // Suppress specific NativeEventEmitter warnings for AudioRecord
+      if (typeof message === 'string' && 
+          (message.includes('NativeEventEmitter') && message.includes('AudioRecord')) ||
+          message.includes('new NativeEventEmitter')) {
+        return;
+      }
+      originalConsoleWarn(message, ...args);
+    };
+
+    try {
+      AudioRecord.init(options);
+      console.log('AudioRecorderService: Native audio recorder initialized');
+    } catch (error) {
+      console.error('AudioRecorderService: Failed to initialize AudioRecord:', error);
+      throw error;
+    } finally {
+      // Restore original console.warn after initialization
+      console.warn = originalConsoleWarn;
+    }
     
     // Initialize Sound for playback if needed
     Sound.setCategory('PlayAndRecord');

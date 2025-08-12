@@ -234,67 +234,20 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* Shot Placement Information Panel */}
-      {shotPlacementMode && shotPlacementState !== 'inactive' && (
-        <View style={styles.shotPlacementPanel}>
-          <View style={styles.shotPlacementHeader}>
-            <Icon name="golf-course" size={18} color="#FF6B35" />
-            <Text style={styles.shotPlacementTitle}>Shot Placement</Text>
-            <View style={[styles.shotPlacementStatusBadge, { 
-              backgroundColor: getShotPlacementStatusColor(shotPlacementState)
-            }]}>
-              <Text style={styles.shotPlacementStatusText}>
-                {getShotPlacementStatusText(shotPlacementState)}
-              </Text>
-            </View>
-          </View>
-          
-          {shotPlacementDistance > 0 && (
-            <View style={styles.shotPlacementDistance}>
-              <Text style={styles.shotPlacementDistanceValue}>{shotPlacementDistance}y</Text>
-              <Text style={styles.shotPlacementDistanceLabel}>Target Distance</Text>
-            </View>
-          )}
-          
+      {/* Minimal Shot Placement Indicator - Hole19 Style */}
+      {shotPlacementMode && shotPlacementDistance > 0 && (
+        <View style={styles.minimalistShotInfo}>
+          <Text style={styles.shotDistanceText}>{shotPlacementDistance}y</Text>
           {clubRecommendation && (
-            <View style={styles.clubRecommendationContainer}>
-              <Icon name="sports-golf" size={14} color="#4a7c59" />
-              <Text style={styles.clubRecommendationText}>{clubRecommendation}</Text>
-            </View>
+            <Text style={styles.shotClubText}>{clubRecommendation}</Text>
           )}
-          
-          <View style={styles.shotPlacementActions}>
-            {shotPlacementState === 'placement' && onActivateShot && (
-              <TouchableOpacity style={styles.activateShotButton} onPress={onActivateShot}>
-                <Icon name="play-arrow" size={16} color="#ffffff" />
-                <Text style={styles.activateShotButtonText}>Take Shot</Text>
-              </TouchableOpacity>
-            )}
-            
-            {onCancelShotPlacement && shotPlacementState !== 'completed' && (
-              <TouchableOpacity style={styles.cancelShotButton} onPress={onCancelShotPlacement}>
-                <Icon name="close" size={16} color="#dc3545" />
-                <Text style={styles.cancelShotButtonText}>Cancel</Text>
-              </TouchableOpacity>
-            )}
-          </View>
         </View>
       )}
 
-      {/* Golf Distance Information */}
+      {/* Minimal Distance Information - Hole19 Style */}
       {currentLocation && !shotPlacementMode && (
-        <View style={styles.distanceBar}>
-          <View style={styles.distanceItem}>
-            <Icon name="flag" size={16} color="#4a7c59" />
-            <Text style={styles.distanceLabel}>Pin</Text>
-            <Text style={styles.distanceValue}>{calculateDistanceToPin()}</Text>
-          </View>
-          <View style={styles.distanceSeparator} />
-          <View style={styles.distanceItem}>
-            <Icon name="place" size={16} color="#4a7c59" />
-            <Text style={styles.distanceLabel}>Tee</Text>
-            <Text style={styles.distanceValue}>{calculateDistanceToTee()}</Text>
-          </View>
+        <View style={styles.minimalistDistanceInfo}>
+          <Text style={styles.distanceInfoText}>📍 {calculateDistanceToPin()}</Text>
         </View>
       )}
 
@@ -794,6 +747,45 @@ const styles = StyleSheet.create({
   },
   cancelShotButtonText: {
     color: '#dc3545',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  
+  // Minimalist Hole19-style UI Components
+  minimalistShotInfo: {
+    position: 'absolute',
+    top: 100,
+    left: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  shotDistanceText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  shotClubText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '500',
+    opacity: 0.9,
+  },
+  minimalistDistanceInfo: {
+    position: 'absolute',
+    top: 100,
+    left: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  distanceInfoText: {
+    color: '#ffffff',
     fontSize: 14,
     fontWeight: '600',
   },

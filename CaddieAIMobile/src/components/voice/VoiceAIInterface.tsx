@@ -10,7 +10,6 @@ import {
   Dimensions,
 } from 'react-native';
 import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-voice/voice';
-import Tts from 'react-native-tts';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { check, request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import { voiceAIApiService, VoiceAIRequest } from '../../services/voiceAIApi';
@@ -170,18 +169,8 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
         console.warn('Voice module not available');
       }
 
-      // Initialize TTS with error handling
-      if (Tts) {
-        Tts.addEventListener('tts-start', onTtsStart);
-        Tts.addEventListener('tts-finish', onTtsFinish);
-        Tts.addEventListener('tts-cancel', onTtsCancel);
-
-        // Set TTS options
-        await Tts.setDefaultRate(0.5);
-        await Tts.setDefaultPitch(1.0);
-      } else {
-        console.warn('TTS module not available');
-      }
+      // TTS functionality replaced by OpenAI real-time audio
+      console.log('Voice interface initialized - using OpenAI real-time audio');
 
       console.log('Voice services initialized successfully');
     } catch (error) {
@@ -258,11 +247,8 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
         await Voice.destroy();
       }
       
-      if (Tts && typeof Tts.removeAllListeners === 'function') {
-        Tts.removeAllListeners('tts-start');
-        Tts.removeAllListeners('tts-finish');
-        Tts.removeAllListeners('tts-cancel');
-      }
+      // TTS cleanup no longer needed - using OpenAI real-time audio
+      console.log('Voice interface cleanup completed');
     } catch (error) {
       console.error('Error cleaning up voice services:', error);
     }
@@ -496,18 +482,10 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
   };
 
   // Speak AI response using TTS
+  // Speech is now handled by OpenAI real-time audio in DynamicCaddieService
   const speakResponse = async (text: string) => {
-    try {
-      if (Tts && typeof Tts.speak === 'function') {
-        await Tts.speak(text);
-      } else {
-        console.warn('TTS module not available, skipping speech');
-        setVoiceState('idle');
-      }
-    } catch (error) {
-      console.error('Error speaking response:', error);
-      setVoiceState('idle');
-    }
+    console.log('Response handled by OpenAI real-time audio:', text);
+    setVoiceState('idle');
   };
 
   // Start voice recognition
@@ -551,12 +529,10 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
     }
   };
 
-  // Stop TTS
+  // Stop speaking - handled by OpenAI real-time audio
   const stopSpeaking = async () => {
     try {
-      if (Tts && typeof Tts.stop === 'function') {
-        await Tts.stop();
-      }
+      // OpenAI real-time audio handles stopping internally
       setVoiceState('idle');
     } catch (error) {
       console.error('Error stopping TTS:', error);
