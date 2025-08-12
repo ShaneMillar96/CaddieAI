@@ -178,7 +178,7 @@ RESPONSE GUIDELINES:
 - Focus on actionable advice
 - Maintain professional caddie demeanor
 - Adapt communication to the golfer's skill level",
-                voice = "echo", // Professional, clear voice for golf instruction
+                voice = "ash", // Warm, encouraging voice for golf instruction
                 input_audio_format = "pcm16",
                 output_audio_format = "pcm16",
                 input_audio_transcription = new { model = "whisper-1" },

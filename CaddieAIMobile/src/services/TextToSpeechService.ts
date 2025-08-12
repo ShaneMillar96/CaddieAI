@@ -1,4 +1,40 @@
-import Tts from 'react-native-tts';
+// TTS functionality replaced by OpenAI real-time audio
+// import Tts from 'react-native-tts'; // Removed dependency
+
+// Mock TTS object to prevent errors since functionality moved to OpenAI real-time audio
+const Tts = {
+  addEventListener: (event: string, callback: Function) => {
+    console.log(`Mock TTS addEventListener: ${event}`);
+  },
+  removeAllListeners: (event: string) => {
+    console.log(`Mock TTS removeAllListeners: ${event}`);
+  },
+  speak: async (text: string) => {
+    console.log(`Mock TTS speak: ${text} - functionality moved to OpenAI real-time audio`);
+  },
+  stop: async () => {
+    console.log('Mock TTS stop - functionality moved to OpenAI real-time audio');
+  },
+  voices: async () => {
+    console.log('Mock TTS voices - functionality moved to OpenAI real-time audio');
+    return [];
+  },
+  setDefaultLanguage: async (language: string) => {
+    console.log(`Mock TTS setDefaultLanguage: ${language}`);
+  },
+  setDefaultRate: async (rate: number) => {
+    console.log(`Mock TTS setDefaultRate: ${rate}`);
+  },
+  setDefaultPitch: async (pitch: number) => {
+    console.log(`Mock TTS setDefaultPitch: ${pitch}`);
+  },
+  setDefaultVoice: async (voiceId: string) => {
+    console.log(`Mock TTS setDefaultVoice: ${voiceId}`);
+  },
+  setIgnoreSilentSwitch: async (setting: string) => {
+    console.log(`Mock TTS setIgnoreSilentSwitch: ${setting}`);
+  }
+};
 
 export interface TextToSpeechConfig {
   language: string;
@@ -198,7 +234,7 @@ export class TextToSpeechService {
   async getAvailableVoices(): Promise<VoiceInfo[]> {
     try {
       const voices = await Tts.voices();
-      return voices.map(voice => ({
+      return voices.map((voice: any) => ({
         id: voice.id,
         name: voice.name,
         language: voice.language,
