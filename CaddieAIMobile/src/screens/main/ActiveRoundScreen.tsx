@@ -46,6 +46,7 @@ import {
 import { LoadingSpinner } from '../../components/auth/LoadingSpinner';
 import { ErrorMessage } from '../../components/auth/ErrorMessage';
 import VoiceAIInterface from '../../components/voice/VoiceAIInterface';
+import { VoiceChatModalV2 } from '../../components/voice/VoiceChatModalV2';
 import MapboxMapView from '../../components/map/MapboxMapView';
 import MapboxMapOverlay from '../../components/map/MapboxMapOverlay';
 import MapErrorBoundary from '../../components/map/MapErrorBoundary';
@@ -127,6 +128,9 @@ export const ActiveRoundScreen: React.FC = () => {
   // Shot placement mode state
   const [shotPlacementModeEnabled, setShotPlacementModeEnabled] = useState(false);
   const [serviceSyncInitialized, setServiceSyncInitialized] = useState(false);
+  
+  // Voice chat modal state
+  const [isVoiceChatModalVisible, setIsVoiceChatModalVisible] = useState(false);
   
   
   // Convert Redux currentLocation to SimpleLocationData format with stable reference
@@ -691,6 +695,11 @@ export const ActiveRoundScreen: React.FC = () => {
     dispatch(toggleVoiceInterface());
   }, [dispatch]);
 
+  // Handle voice chat modal
+  const handleVoiceChatModalToggle = useCallback(() => {
+    setIsVoiceChatModalVisible(prev => !prev);
+  }, []);
+
   // Handle map press for distance measurement or shot placement
   const handleMapPress = useCallback((coordinate: { latitude: number; longitude: number }) => {
     if (!currentLocation) {
@@ -979,6 +988,18 @@ export const ActiveRoundScreen: React.FC = () => {
           <View style={styles.roundControlsContent}>
             <Text style={styles.roundControlsTitle}>Round Controls</Text>
             
+            {/* Voice Chat Button */}
+            <TouchableOpacity
+              style={[styles.modalButton, styles.voiceChatButton]}
+              onPress={() => {
+                setShowRoundControls(false);
+                handleVoiceChatModalToggle();
+              }}
+            >
+              <Icon name="mic" size={20} color="#fff" />
+              <Text style={styles.modalButtonText}>AI Voice Chat</Text>
+            </TouchableOpacity>
+            
             {activeRound?.status === 'Paused' && (
               <TouchableOpacity
                 style={[styles.modalButton, styles.resumeButton]}
@@ -1040,6 +1061,15 @@ export const ActiveRoundScreen: React.FC = () => {
           isVisible={isVoiceInterfaceVisible}
           onToggle={handleVoiceToggle}
           onConversationUpdate={() => {}}
+        />
+      )}
+
+      {/* Voice Chat Modal V2 (Real-time Audio) */}
+      {activeRound && (
+        <VoiceChatModalV2
+          visible={isVoiceChatModalVisible}
+          onClose={handleVoiceChatModalToggle}
+          roundId={activeRound.id}
         />
       )}
     </SafeAreaView>
@@ -1147,6 +1177,9 @@ const styles = StyleSheet.create({
   },
   abandonButton: {
     backgroundColor: '#dc3545',
+  },
+  voiceChatButton: {
+    backgroundColor: '#9c27b0',
   },
   cancelButton: {
     backgroundColor: 'transparent',
