@@ -95,9 +95,9 @@ public class UserControllerMappingProfile : Profile
 - **Interfaces**: Prefix with 'I' (e.g., `IUserService`, `IGolfRoundRepository`)
 
 ### Constants Management
-- Create dedicated Constants classes per domain area
+- Create dedicated Constants classes per domain area (`backend/src/caddie.portal.services/Constants/`)
 - Use static readonly for complex constants
-- Group related constants together
+- Group related constants together with nested classes
 - Avoid magic numbers and strings in code
 
 ```csharp
@@ -106,8 +106,21 @@ public static class GolfConstants
     public static readonly int STANDARD_HOLES_PER_ROUND = 18;
     public static readonly int MAX_PLAYERS_PER_GROUP = 4;
     public static readonly TimeSpan DEFAULT_ROUND_TIMEOUT = TimeSpan.FromHours(6);
+    
+    public static class ParValues
+    {
+        public static readonly int PAR_3 = 3;
+        public static readonly int PAR_4 = 4;
+        public static readonly int PAR_5 = 5;
+    }
 }
 ```
+
+**Available Constants Classes:**
+- `GolfConstants` - Golf-specific constants (par values, handicaps, distances)
+- `RoundConstants` - Round management constants (timeouts, scoring limits)
+- `AIConstants` - AI service constants (OpenAI settings, rate limits)
+- `ApiConstants` - API constants (HTTP responses, headers, validation limits)
 
 ### Enum Development Pattern
 
@@ -405,10 +418,233 @@ When creating new DAL models:
 ### Dependency Injection
 - Register services with appropriate lifetime (Scoped, Transient, Singleton)
 - Use interfaces for all service dependencies
-- Configure AutoMapper profiles in DI container
-- Group related service registrations
+- Organize registrations using extension methods in `backend/src/caddie.portal.api/Extensions/`
+- Group related service registrations by domain area
+
+**Extension Method Organization:**
+```csharp
+// Program.cs - Clean and organized
+builder.Services.AddDatabase(builder.Configuration);
+builder.Services.AddConfigurationSettings(builder.Configuration);
+builder.Services.AddRepositories();
+builder.Services.AddBusinessServices();
+builder.Services.AddOpenAI(builder.Configuration);
+builder.Services.AddAutoMapperProfiles();
+builder.Services.AddValidation();
+```
+
+**Extension Methods:**
+- `AddDatabase()` - Entity Framework and database configuration
+- `AddConfigurationSettings()` - Application settings with environment variable support
+- `AddRepositories()` - All repository interface/implementation pairs
+- `AddBusinessServices()` - All service interface/implementation pairs grouped by domain
+- `AddOpenAI()` - OpenAI configuration and HTTP client setup
+- `AddAutoMapperProfiles()` - All AutoMapper profiles registration
+- `AddValidation()` - FluentValidation configuration
+
+### Security Configuration & Environment Variables
+
+**CRITICAL**: Never commit API keys, connection strings, or other secrets to the repository.
+
+**Configuration Hierarchy (highest precedence first):**
+1. Environment variables with `CADDIEAI_` prefix
+2. Standard ASP.NET Core environment variables (e.g., `ConnectionStrings__DefaultConnection`)
+3. `appsettings.Local.json` (excluded from git)
+4. `appsettings.{Environment}.json` 
+5. `appsettings.json` (template with empty values)
+
+**Environment Variable Naming Convention:**
+```bash
+# Recommended: Use CADDIEAI_ prefix
+CADDIEAI_CONNECTION_STRING=Host=localhost;Database=caddieai_dev;...
+CADDIEAI_JWT_SECRET=YourSuperSecretJWTKey...
+CADDIEAI_OPENAI_API_KEY=sk-your-openai-key-here
+
+# Alternative: Standard ASP.NET Core format
+ConnectionStrings__DefaultConnection=Host=localhost;Database=caddieai_dev;...
+JwtSettings__Secret=YourSuperSecretJWTKey...
+OpenAISettings__ApiKey=sk-your-openai-key-here
+```
+
+**Required Environment Variables:**
+- `CADDIEAI_CONNECTION_STRING` - PostgreSQL connection string
+- `CADDIEAI_JWT_SECRET` - JWT signing secret (minimum 32 characters)
+- `CADDIEAI_OPENAI_API_KEY` - OpenAI API key for AI features
+
+**Optional Environment Variables:**
+- `CADDIEAI_SMTP_HOST` - Email SMTP server
+- `CADDIEAI_SMTP_USERNAME` - Email username  
+- `CADDIEAI_SMTP_PASSWORD` - Email password
+- `CADDIEAI_FROM_EMAIL` - Sender email address
+
+**Configuration Files:**
+```bash
+# Safe to commit (template with empty values)
+backend/src/caddie.portal.api/appsettings.json
+
+# Excluded from git (local overrides with real values)
+backend/src/caddie.portal.api/appsettings.Local.json
+.env.caddieai
+
+# Mobile configuration (excluded from git)
+CaddieAIMobile/mapbox.config.js
+CaddieAIMobile/android/gradle.properties
+```
+
+**Setup Process:**
+1. Copy `appsettings.Local.json.example` to `appsettings.Local.json`
+2. Copy `.env.example` to `.env.caddieai` 
+3. Configure actual API keys and connection strings
+4. Never commit the files with real secrets
+
+### Type-Safe Enum Usage
+
+**Pattern**: Use database enum IDs with type-safe casting instead of string comparisons.
+
+**Good - Type-safe enum casting:**
+```csharp
+// Repository layer
+var activeRounds = await _context.Rounds
+    .Where(r => r.StatusId == (int)RoundStatus.InProgress || 
+               r.StatusId == (int)RoundStatus.Paused)
+    .ToListAsync();
+
+// Service layer  
+private int GetStatusIdByEnum(RoundStatus status)
+{
+    return (int)status;
+}
+
+// Usage
+round.StatusId = GetStatusIdByEnum(RoundStatus.Completed);
+```
+
+**Avoid - Hardcoded strings and database lookups:**
+```csharp
+// Don't do this
+var activeRounds = await _context.Rounds
+    .Where(r => r.Status.Name == "in_progress" || r.Status.Name == "paused")
+    .ToListAsync();
+
+// Don't do this  
+private async Task<int> GetStatusIdByNameAsync(string statusName)
+{
+    var status = await _context.RoundStatuses
+        .FirstOrDefaultAsync(s => s.Name == statusName);
+    return status?.Id ?? 1;
+}
+```
+
+**Benefits:**
+- **Type Safety**: Compile-time checking prevents invalid values
+- **Performance**: Integer comparisons are faster than string operations  
+- **Refactoring**: Easy to rename and track usage across codebase
+- **IntelliSense**: IDE autocompletion for available values
 
 ## Frontend Development Guidelines
+
+### React Native Android Build Configuration
+
+**IMPORTANT**: React Native 0.80.2 requires specific dependency versions and build configurations for successful Android builds.
+
+#### Required Dependency Versions
+- **React Native Reanimated**: `^3.19.1` (minimum for RN 0.80.2 compatibility)
+- **Mapbox Maps SDK**: `@rnmapbox/maps@^10.1.41-rc.3` (latest RC with RN 0.80.2 fixes)
+
+#### Critical Build Settings
+
+**babel.config.js**:
+```javascript
+module.exports = {
+  presets: ['@react-native/babel-preset'],
+  plugins: [
+    '@babel/plugin-transform-flow-strip-types',
+    ['module:react-native-dotenv', {
+      moduleName: '@env',
+      path: '.env',
+      blacklist: null,
+      whitelist: null,
+      safe: false,
+      allowUndefined: true,
+    }],
+    // Reanimated plugin must be listed last
+    'react-native-reanimated/plugin',
+  ],
+};
+```
+
+**android/app/build.gradle**:
+```gradle
+android {
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    
+    kotlinOptions {
+        jvmTarget = "17"
+        freeCompilerArgs += [
+            "-Xno-param-assertions",
+            "-Xno-call-assertions",
+            "-Xno-receiver-assertions"
+        ]
+    }
+    
+    // Configuration for react-native-vector-icons
+    project.ext.vectoricons = [
+        iconFontNames: [ 'MaterialIcons.ttf', 'EvilIcons.ttf', 'FontAwesome.ttf', 'Ionicons.ttf', 'Feather.ttf' ]
+    ]
+    
+    packagingOptions {
+        pickFirst 'lib/x86/libc++_shared.so'
+        pickFirst 'lib/x86_64/libc++_shared.so'
+        pickFirst 'lib/arm64-v8a/libc++_shared.so'
+        pickFirst 'lib/armeabi-v7a/libc++_shared.so'
+        
+        // Additional Mapbox-specific packagingOptions
+        pickFirst 'META-INF/AL2.0'
+        pickFirst 'META-INF/LGPL2.1'
+        pickFirst 'META-INF/DEPENDENCIES'
+        pickFirst 'META-INF/LICENSE'
+        pickFirst 'META-INF/LICENSE.txt'
+        pickFirst 'META-INF/NOTICE'
+        pickFirst 'META-INF/NOTICE.txt'
+    }
+}
+```
+
+#### Known Issues and Solutions
+
+**Issue**: Reanimated WorkletsModule compilation errors
+- **Cause**: React Native Reanimated 3.16.2 incompatible with RN 0.80.2
+- **Solution**: Update to Reanimated 3.19.1+ and add babel plugin
+
+**Issue**: JVM target mismatch (Java 17 vs Kotlin 1.8)
+- **Cause**: Android build system using different JVM targets for Java and Kotlin
+- **Solution**: Align both to VERSION_17 in build.gradle
+
+**Issue**: Mapbox Kotlin null safety compilation errors
+- **Cause**: Mapbox SDK versions <10.1.41 have Kotlin null safety issues with RN 0.80.2
+- **Solution**: Update to @rnmapbox/maps@10.1.41-rc.3 or newer
+
+#### Build Process
+```bash
+# Clean build cache before major dependency updates
+cd CaddieAIMobile/android && ./gradlew clean
+
+# Install dependencies
+npm install
+
+# Build and run on Android
+npm run android
+```
+
+#### Version Compatibility Matrix
+| React Native | Reanimated | Mapbox Maps |
+|-------------|------------|-------------|
+| 0.80.2 | ≥3.19.1 | ≥10.1.41-rc.3 |
+| 0.76.x | 3.16.2+ | 10.0.11+ |
+| 0.74.x | 3.15.0+ | 10.0.0+ |
 
 ### Component Structure
 - Use functional components with hooks

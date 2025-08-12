@@ -85,6 +85,25 @@ android {
         versionCode 1
         versionName "1.0"
     }
+    
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    
+    kotlinOptions {
+        jvmTarget = "17"
+        freeCompilerArgs += [
+            "-Xno-param-assertions",
+            "-Xno-call-assertions",
+            "-Xno-receiver-assertions"
+        ]
+    }
+    
+    // Configuration for react-native-vector-icons
+    project.ext.vectoricons = [
+        iconFontNames: [ 'MaterialIcons.ttf', 'EvilIcons.ttf', 'FontAwesome.ttf', 'Ionicons.ttf', 'Feather.ttf' ]
+    ]
     signingConfigs {
         debug {
             storeFile file('debug.keystore')
@@ -134,6 +153,15 @@ android {
         pickFirst 'META-INF/androidx.vectordrawable_vectordrawable.version'
         pickFirst 'META-INF/androidx.vectordrawable_vectordrawable-animated.version'
         pickFirst 'META-INF/androidx.viewpager_viewpager.version'
+        
+        // Additional Mapbox-specific packagingOptions
+        pickFirst 'META-INF/AL2.0'
+        pickFirst 'META-INF/LGPL2.1'
+        pickFirst 'META-INF/DEPENDENCIES'
+        pickFirst 'META-INF/LICENSE'
+        pickFirst 'META-INF/LICENSE.txt'
+        pickFirst 'META-INF/NOTICE'
+        pickFirst 'META-INF/NOTICE.txt'
     }
 }
 
