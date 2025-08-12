@@ -1,15 +1,83 @@
-# CaddieAI Development Setup Guide
+# 🚀 CaddieAI Development Setup Guide
 
-## Prerequisites
+Complete setup guide for the CaddieAI golf companion application, covering backend, mobile, and security configuration.
+
+## 📋 Prerequisites
 
 - Node.js 18+
-- .NET 9.0 SDK
+- .NET 9.0 SDK  
 - Docker Desktop
 - React Native CLI (`npm install -g react-native-cli`)
 - Android Studio (for Android development)
 - Xcode (for iOS development - macOS only)
+- Git
 
-## Quick Start
+## 🔒 Security Configuration (Required First)
+
+**⚠️ CRITICAL: Set up API keys and sensitive configuration before starting development.**
+
+### Option 1: Automated Setup (Recommended)
+If you have access to team API keys:
+```bash
+./setup-local-config.sh
+```
+
+### Option 2: Manual Configuration  
+Create your local configuration files:
+
+#### A. Environment Variables for Backend
+Create `.env.caddieai` in the project root:
+```bash
+# Database Configuration  
+CADDIEAI_CONNECTION_STRING=Host=localhost;Database=caddieai_dev;Username=caddieai_user;Password=caddieai_password;Include Error Detail=true
+
+# JWT Configuration
+CADDIEAI_JWT_SECRET=YourSuperSecretJWTKeyThatShouldBeAtLeast32CharactersLong!
+
+# OpenAI Configuration
+CADDIEAI_OPENAI_API_KEY=sk-your-openai-api-key-here
+
+# Email Configuration (Optional for local development)
+CADDIEAI_SMTP_HOST=smtp.gmail.com
+CADDIEAI_SMTP_USERNAME=your-email@gmail.com
+CADDIEAI_SMTP_PASSWORD=your-app-password-here
+CADDIEAI_FROM_EMAIL=noreply@caddieai.com
+```
+
+#### B. Mapbox Configuration (Required for Maps)
+```bash
+# Copy template and configure
+cp CaddieAIMobile/mapbox.config.js.example CaddieAIMobile/mapbox.config.js
+```
+Edit and replace `pk.YOUR_MAPBOX_ACCESS_TOKEN_HERE` with your actual Mapbox token.
+
+```bash  
+# Configure Android Gradle
+cp CaddieAIMobile/android/gradle.properties.example CaddieAIMobile/android/gradle.properties
+```
+Edit and replace `sk.YOUR_MAPBOX_SECRET_TOKEN_HERE` with your Mapbox secret token.
+
+#### C. Backend Configuration
+```bash
+# Copy local configuration template
+cp backend/src/caddie.portal.api/appsettings.Local.json.example backend/src/caddie.portal.api/appsettings.Local.json
+```
+Edit the file with your actual API keys and connection strings.
+
+### 🔑 Getting API Keys
+
+**OpenAI API Key:**
+1. Visit [OpenAI Platform](https://platform.openai.com)  
+2. Sign in or create account
+3. Navigate to API Keys → Create new key
+4. Set usage limits for cost control
+
+**Mapbox Tokens:**
+1. Create account at [mapbox.com](https://mapbox.com)
+2. Go to Account → Access Tokens
+3. Create public token (pk.) and secret token (sk.) with Downloads:Read scope
+
+## 🚀 Quick Start
 
 ### 1. Start Database Infrastructure
 
@@ -96,26 +164,128 @@ This ensures the device can connect to the Metro bundler running on your develop
 3. Register a new account or login
 4. Verify authentication works end-to-end
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
-### Metro Bundler Issues
+### Backend Issues
+
+#### "OpenAI API key not configured"
 ```bash
-# Clear cache and restart
-npm run reset-cache
+# Check if environment variable is set
+echo $CADDIEAI_OPENAI_API_KEY    # Linux/macOS
+echo $env:CADDIEAI_OPENAI_API_KEY # Windows PowerShell
+
+# If not set, add to your environment or .env.caddieai file
+export CADDIEAI_OPENAI_API_KEY="sk-your-key-here"
 ```
 
-### Build Issues
+#### Database Connection Issues
 ```bash
-# Clean builds
+# Reset database completely
+docker-compose down -v
+docker-compose up -d
+
+# Check database logs
+docker-compose logs postgres
+
+# Verify connection
+docker-compose exec postgres psql -U caddieai_user -d caddieai_dev
+```
+
+#### JWT Secret Issues
+- Ensure CADDIEAI_JWT_SECRET is at least 32 characters long
+- Use a cryptographically secure random string
+- Restart the backend after changing environment variables
+
+### Mobile Development Issues
+
+#### Metro Bundler Issues
+```bash
+# Clear cache and restart Metro
+npm run reset-cache
+npx react-native start --reset-cache
+
+# Clean build directories
 npm run clean
 ```
 
-### Database Connection Issues
+#### Android Build Issues
 ```bash
-# Reset database
-docker-compose down -v
-docker-compose up -d
+# Clean Android build
+cd CaddieAIMobile/android
+./gradlew clean
+
+# Reset ADB connection
+adb kill-server
+adb start-server
+
+# Re-establish port forwarding
+adb reverse tcp:8081 tcp:8081
 ```
+
+#### Mapbox Configuration Issues
+
+**Map not loading or "API key invalid":**
+1. Verify your public token (pk.) is correct in `mapbox.config.js`
+2. Check token permissions in your Mapbox account  
+3. Ensure network connectivity
+
+**Android build errors with Mapbox:**
+1. Confirm secret token (sk.) has `Downloads:Read` scope
+2. Clean and rebuild: `cd CaddieAIMobile/android && ./gradlew clean`
+3. Check `gradle.properties` file exists and has correct token
+
+### Security & Configuration Issues
+
+#### Environment Variables Not Loading
+```bash
+# Verify environment variables are set
+env | grep CADDIEAI
+
+# For development, ensure .env.caddieai exists in project root
+ls -la .env.caddieai
+
+# Load environment variables in current session
+source .env.caddieai  # Linux/macOS
+```
+
+#### Git Trying to Commit Sensitive Files
+```bash
+# Check what files are being ignored
+git status --ignored
+
+# If sensitive files appear in git status, check .gitignore
+# NEVER use git add -f on configuration files
+
+# Files that should be ignored:
+# - CaddieAIMobile/mapbox.config.js
+# - CaddieAIMobile/android/gradle.properties  
+# - backend/src/caddie.portal.api/appsettings.Local.json
+# - .env.caddieai
+```
+
+### OpenAI API Issues
+
+#### Quota Exceeded (HTTP 429)
+- Check usage at https://platform.openai.com/usage
+- Add payment method or increase usage limits
+- App includes fallback responses when quota exceeded
+
+#### High Token Usage
+- Current config uses cost-effective `gpt-4o-mini` model
+- Daily estimates: ~$0.02-0.04 for 100 interactions
+- Monitor usage and adjust limits as needed
+
+### Performance Issues
+
+#### Slow Startup
+1. Ensure Docker containers are running efficiently
+2. Check available disk space and memory
+3. Close unnecessary applications during development
+
+#### Mobile App Performance
+1. Use Release builds for performance testing
+2. Profile using React Native Flipper
+3. Check for memory leaks in long-running sessions
 
 ## Environment Variables
 

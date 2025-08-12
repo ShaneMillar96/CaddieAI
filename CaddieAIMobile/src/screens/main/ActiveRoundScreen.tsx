@@ -46,7 +46,7 @@ import {
 import { LoadingSpinner } from '../../components/auth/LoadingSpinner';
 import { ErrorMessage } from '../../components/auth/ErrorMessage';
 import VoiceAIInterface from '../../components/voice/VoiceAIInterface';
-import { VoiceChatModalV2 } from '../../components/voice/VoiceChatModalV2';
+import { VoiceChatModal } from '../../components/voice/VoiceChatModal';
 import MapboxMapView from '../../components/map/MapboxMapView';
 import MapboxMapOverlay from '../../components/map/MapboxMapOverlay';
 import MapErrorBoundary from '../../components/map/MapErrorBoundary';
@@ -63,7 +63,7 @@ import {
 import { golfTTSHelper, CaddieContext } from '../../services/TextToSpeechService';
 import { dynamicCaddieService } from '../../services/DynamicCaddieService';
 import voiceAIApiService from '../../services/voiceAIApi';
-import { realtimeAudioService } from '../../services/RealtimeAudioService';
+// RealtimeAudioServiceV2 is now managed by VoiceChatModalV2 component
 
 // Navigation types
 type MainStackParamList = {
@@ -272,14 +272,8 @@ export const ActiveRoundScreen: React.FC = () => {
         console.log('🎙️ ActiveRoundScreen: Starting voice session for round', activeRound.id);
         dispatch(startVoiceSession({ roundId: activeRound.id }));
         
-        // Establish realtime audio connection
-        console.log('🔌 ActiveRoundScreen: Connecting to realtime audio...');
-        const realtimeConnected = await realtimeAudioService.connect(Number(user.id), activeRound.id);
-        if (realtimeConnected) {
-          console.log('✅ ActiveRoundScreen: Realtime audio connected successfully');
-        } else {
-          console.warn('⚠️ ActiveRoundScreen: Realtime audio connection failed, using TTS fallback');
-        }
+        // Note: Realtime audio is now managed by VoiceChatModalV2 component
+        console.log('✅ ActiveRoundScreen: Voice session started (realtime audio handled by VoiceChatModalV2)');
       }
 
       // Subscribe to location updates
@@ -348,15 +342,12 @@ export const ActiveRoundScreen: React.FC = () => {
 
       // Store cleanup functions
       return () => {
-        console.log('🧹 ActiveRoundScreen: Cleaning up location subscriptions and realtime audio');
+        console.log('🧹 ActiveRoundScreen: Cleaning up location subscriptions');
         unsubscribeLocation();
         unsubscribeError();
         
-        // Disconnect realtime audio
-        if (realtimeAudioService.isConnectionActive()) {
-          realtimeAudioService.disconnect();
-          console.log('🔌 ActiveRoundScreen: Realtime audio disconnected');
-        }
+        // Note: Realtime audio cleanup is now handled by VoiceChatModalV2
+        console.log('🔌 ActiveRoundScreen: Voice session cleanup complete');
       };
     } catch (error) {
       console.error('❌ ActiveRoundScreen: Error starting location tracking:', error);
@@ -1066,7 +1057,7 @@ export const ActiveRoundScreen: React.FC = () => {
 
       {/* Voice Chat Modal V2 (Real-time Audio) */}
       {activeRound && (
-        <VoiceChatModalV2
+        <VoiceChatModal
           visible={isVoiceChatModalVisible}
           onClose={handleVoiceChatModalToggle}
           roundId={activeRound.id}

@@ -83,7 +83,7 @@ public class RoundRepository : IRoundRepository
                 .ThenInclude(u => u.Status)
             .Include(r => r.Course)
             .Include(r => r.Status)
-            .Where(r => r.Status.Name == "in_progress" || r.Status.Name == "paused")
+            .Where(r => r.StatusId == (int)RoundStatus.InProgress || r.StatusId == (int)RoundStatus.Paused)
             .OrderBy(r => r.StartTime)
             .ToListAsync();
     }
@@ -98,6 +98,21 @@ public class RoundRepository : IRoundRepository
             .Include(r => r.Course)
             .Include(r => r.Status)
             .Where(r => r.Status.Name == status)
+            .OrderByDescending(r => r.RoundDate)
+            .ThenByDescending(r => r.StartTime)
+            .ToListAsync();
+    }
+
+    public async Task<IEnumerable<Round>> GetRoundsByStatusAsync(RoundStatus status)
+    {
+        return await _context.Rounds
+            .Include(r => r.User)
+                .ThenInclude(u => u.SkillLevel)
+            .Include(r => r.User)
+                .ThenInclude(u => u.Status)
+            .Include(r => r.Course)
+            .Include(r => r.Status)
+            .Where(r => r.StatusId == (int)status)
             .OrderByDescending(r => r.RoundDate)
             .ThenByDescending(r => r.StartTime)
             .ToListAsync();
@@ -161,6 +176,16 @@ public class RoundRepository : IRoundRepository
         if (roundStatus == null) return false;
 
         round.StatusId = roundStatus.Id;
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<bool> UpdateStatusAsync(int id, RoundStatus status)
+    {
+        var round = await _context.Rounds.FindAsync(id);
+        if (round == null) return false;
+
+        round.StatusId = (int)status;
         await _context.SaveChangesAsync();
         return true;
     }
@@ -251,6 +276,35 @@ public class RoundRepository : IRoundRepository
             .ToListAsync();
     }
 
+    public async Task<IEnumerable<Round>> GetPaginatedAsync(int page, int pageSize, int? userId = null, RoundStatus? status = null)
+    {
+        var query = _context.Rounds
+            .Include(r => r.User)
+                .ThenInclude(u => u.SkillLevel)
+            .Include(r => r.User)
+                .ThenInclude(u => u.Status)
+            .Include(r => r.Course)
+            .Include(r => r.Status)
+            .AsQueryable();
+
+        if (userId.HasValue)
+        {
+            query = query.Where(r => r.UserId == userId.Value);
+        }
+
+        if (status.HasValue)
+        {
+            query = query.Where(r => r.StatusId == (int)status.Value);
+        }
+
+        return await query
+            .OrderByDescending(r => r.RoundDate)
+            .ThenByDescending(r => r.StartTime)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+    }
+
     public async Task<int> GetTotalCountAsync(int? userId = null, string? status = null)
     {
         var query = _context.Rounds.AsQueryable();
@@ -263,6 +317,23 @@ public class RoundRepository : IRoundRepository
         if (!string.IsNullOrEmpty(status))
         {
             query = query.Include(r => r.Status).Where(r => r.Status.Name == status);
+        }
+
+        return await query.CountAsync();
+    }
+
+    public async Task<int> GetTotalCountAsync(int? userId = null, RoundStatus? status = null)
+    {
+        var query = _context.Rounds.AsQueryable();
+
+        if (userId.HasValue)
+        {
+            query = query.Where(r => r.UserId == userId.Value);
+        }
+
+        if (status.HasValue)
+        {
+            query = query.Where(r => r.StatusId == (int)status.Value);
         }
 
         return await query.CountAsync();

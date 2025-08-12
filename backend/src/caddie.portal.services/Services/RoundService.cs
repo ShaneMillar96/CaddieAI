@@ -7,6 +7,7 @@ using caddie.portal.dal.Models;
 using caddie.portal.dal.Context;
 using ServiceRoundStatus = caddie.portal.services.Models.RoundStatus;
 using DalRoundStatus = caddie.portal.dal.Models.RoundStatus;
+using RoundStatusEnum = caddie.portal.dal.Enums.RoundStatus;
 
 namespace caddie.portal.services.Services;
 
@@ -133,8 +134,8 @@ public class RoundService : IRoundService
     {
         try
         {
-            var statusString = MapRoundStatusToString(status);
-            var rounds = await _roundRepository.GetRoundsByStatusAsync(statusString);
+            var statusEnum = MapServiceStatusToEnum(status);
+            var rounds = await _roundRepository.GetRoundsByStatusAsync(statusEnum);
             return rounds.Select(MapToRoundModel);
         }
         catch (Exception ex)
@@ -249,7 +250,7 @@ public class RoundService : IRoundService
             if (model.Status.HasValue)
             {
                 await ValidateStatusTransitionAsync(existingRound, model.Status.Value);
-                var statusId = await GetStatusIdByNameAsync(MapRoundStatusToString(model.Status.Value));
+                var statusId = GetStatusIdByEnum(MapServiceStatusToEnum(model.Status.Value));
                 existingRound.StatusId = statusId;
             }
 
@@ -310,7 +311,7 @@ public class RoundService : IRoundService
             var existingRound = await _roundRepository.GetByIdAsync(round.Id);
             if (existingRound != null)
             {
-                var inProgressStatusId = await GetStatusIdByNameAsync("in_progress");
+                var inProgressStatusId = GetStatusIdByEnum(RoundStatusEnum.InProgress);
                 existingRound.StatusId = inProgressStatusId;
                 existingRound.CurrentHole = 1;
                 existingRound.StartTime = DateTime.UtcNow;
@@ -344,13 +345,13 @@ public class RoundService : IRoundService
                 throw new InvalidOperationException($"Round with ID {roundId} not found");
             }
 
-            var currentStatus = MapStringToRoundStatus(GetRoundStatusFromDatabase(round));
-            if (currentStatus != ServiceRoundStatus.InProgress)
+            var currentStatus = (RoundStatusEnum)round.StatusId;
+            if (currentStatus != RoundStatusEnum.InProgress)
             {
                 throw new InvalidOperationException($"Can only pause rounds that are in progress. Current status: {currentStatus}");
             }
 
-            var pausedStatusId = await GetStatusIdByNameAsync("paused");
+            var pausedStatusId = GetStatusIdByEnum(RoundStatusEnum.Paused);
             round.StatusId = pausedStatusId;
             var updatedRound = await _roundRepository.UpdateAsync(round);
             
@@ -374,13 +375,13 @@ public class RoundService : IRoundService
                 throw new InvalidOperationException($"Round with ID {roundId} not found");
             }
 
-            var currentStatus = MapStringToRoundStatus(GetRoundStatusFromDatabase(round));
-            if (currentStatus != ServiceRoundStatus.Paused)
+            var currentStatus = (RoundStatusEnum)round.StatusId;
+            if (currentStatus != RoundStatusEnum.Paused)
             {
                 throw new InvalidOperationException($"Can only resume rounds that are paused. Current status: {currentStatus}");
             }
 
-            var inProgressStatusId = await GetStatusIdByNameAsync("in_progress");
+            var inProgressStatusId = GetStatusIdByEnum(RoundStatusEnum.InProgress);
             round.StatusId = inProgressStatusId;
             var updatedRound = await _roundRepository.UpdateAsync(round);
             
@@ -404,8 +405,8 @@ public class RoundService : IRoundService
                 throw new InvalidOperationException($"Round with ID {roundId} not found");
             }
 
-            var currentStatus = MapStringToRoundStatus(GetRoundStatusFromDatabase(round));
-            if (currentStatus != ServiceRoundStatus.InProgress && currentStatus != ServiceRoundStatus.Paused)
+            var currentStatus = (RoundStatusEnum)round.StatusId;
+            if (currentStatus != RoundStatusEnum.InProgress && currentStatus != RoundStatusEnum.Paused)
             {
                 throw new InvalidOperationException($"Can only complete rounds that are in progress or paused. Current status: {currentStatus}");
             }
@@ -413,7 +414,7 @@ public class RoundService : IRoundService
             // Validate score if provided
             if (await ValidateRoundScoreAsync(roundId, model.TotalScore))
             {
-                var completedStatusId = await GetStatusIdByNameAsync("completed");
+                var completedStatusId = GetStatusIdByEnum(RoundStatusEnum.Completed);
                 round.StatusId = completedStatusId;
                 round.TotalScore = model.TotalScore;
                 round.TotalPutts = model.TotalPutts;
@@ -449,13 +450,13 @@ public class RoundService : IRoundService
                 throw new InvalidOperationException($"Round with ID {roundId} not found");
             }
 
-            var currentStatus = MapStringToRoundStatus(GetRoundStatusFromDatabase(round));
-            if (currentStatus == ServiceRoundStatus.Completed || currentStatus == ServiceRoundStatus.Abandoned)
+            var currentStatus = (RoundStatusEnum)round.StatusId;
+            if (currentStatus == RoundStatusEnum.Completed || currentStatus == RoundStatusEnum.Abandoned)
             {
                 throw new InvalidOperationException($"Cannot abandon a round that is already {currentStatus.ToString().ToLower()}");
             }
 
-            var abandonedStatusId = await GetStatusIdByNameAsync("abandoned");
+            var abandonedStatusId = GetStatusIdByEnum(RoundStatusEnum.Abandoned);
             round.StatusId = abandonedStatusId;
             round.Notes = string.IsNullOrEmpty(reason) ? round.Notes : $"{round.Notes ?? ""} Abandoned: {reason}".Trim();
             round.EndTime = DateTime.UtcNow;
@@ -481,7 +482,7 @@ public class RoundService : IRoundService
 
             await ValidateStatusTransitionAsync(round, status);
             
-            var statusId = await GetStatusIdByNameAsync(MapRoundStatusToString(status));
+            var statusId = GetStatusIdByEnum(MapServiceStatusToEnum(status));
             round.StatusId = statusId;
             await _roundRepository.UpdateAsync(round);
             
@@ -584,9 +585,9 @@ public class RoundService : IRoundService
     {
         try
         {
-            var statusString = status.HasValue ? MapRoundStatusToString(status.Value) : null;
-            var rounds = await _roundRepository.GetPaginatedAsync(page, pageSize, userId, statusString);
-            var totalCount = await _roundRepository.GetTotalCountAsync(userId, statusString);
+            var statusEnum = status.HasValue ? MapServiceStatusToEnum(status.Value) : (RoundStatusEnum?)null;
+            var rounds = await _roundRepository.GetPaginatedAsync(page, pageSize, userId, statusEnum);
+            var totalCount = await _roundRepository.GetTotalCountAsync(userId, statusEnum);
             var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
 
             return new PaginatedResult<RoundModel>
@@ -640,7 +641,7 @@ public class RoundService : IRoundService
 
     private async Task ValidateStatusTransitionAsync(Round round, ServiceRoundStatus newStatus)
     {
-        var currentStatus = MapStringToRoundStatus(GetRoundStatusFromDatabase(round));
+        var currentStatus = MapEnumToServiceStatus((RoundStatusEnum)round.StatusId);
         
         // Define valid transitions
         var validTransitions = new Dictionary<ServiceRoundStatus, List<ServiceRoundStatus>>
@@ -678,7 +679,7 @@ public class RoundService : IRoundService
             StartTime = round.StartTime,
             EndTime = round.EndTime,
             CurrentHole = round.CurrentHole,
-            Status = MapStringToRoundStatus(GetRoundStatusFromDatabase(round)),
+            Status = MapEnumToServiceStatus((RoundStatusEnum)round.StatusId),
             TotalScore = round.TotalScore,
             TotalPutts = round.TotalPutts,
             FairwaysHit = round.FairwaysHit,
@@ -695,6 +696,32 @@ public class RoundService : IRoundService
     private string GetRoundStatusFromDatabase(Round round)
     {
         return round.Status?.Name ?? "not_started";
+    }
+
+    private ServiceRoundStatus MapEnumToServiceStatus(RoundStatusEnum status)
+    {
+        return status switch
+        {
+            RoundStatusEnum.NotStarted => ServiceRoundStatus.NotStarted,
+            RoundStatusEnum.InProgress => ServiceRoundStatus.InProgress,
+            RoundStatusEnum.Paused => ServiceRoundStatus.Paused,
+            RoundStatusEnum.Completed => ServiceRoundStatus.Completed,
+            RoundStatusEnum.Abandoned => ServiceRoundStatus.Abandoned,
+            _ => ServiceRoundStatus.NotStarted
+        };
+    }
+
+    private RoundStatusEnum MapServiceStatusToEnum(ServiceRoundStatus status)
+    {
+        return status switch
+        {
+            ServiceRoundStatus.NotStarted => RoundStatusEnum.NotStarted,
+            ServiceRoundStatus.InProgress => RoundStatusEnum.InProgress,
+            ServiceRoundStatus.Paused => RoundStatusEnum.Paused,
+            ServiceRoundStatus.Completed => RoundStatusEnum.Completed,
+            ServiceRoundStatus.Abandoned => RoundStatusEnum.Abandoned,
+            _ => RoundStatusEnum.NotStarted
+        };
     }
 
     private ServiceRoundStatus MapStringToRoundStatus(string status)
@@ -728,6 +755,11 @@ public class RoundService : IRoundService
         var status = await _context.RoundStatuses
             .FirstOrDefaultAsync(s => s.Name == statusName);
         return status?.Id ?? 1; // Default to "not_started" if not found
+    }
+
+    private int GetStatusIdByEnum(RoundStatusEnum status)
+    {
+        return (int)status;
     }
 
     // Hole Score Management Implementation

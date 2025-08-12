@@ -5,9 +5,9 @@ buildscript {
         compileSdkVersion = 35
         targetSdkVersion = 35
         ndkVersion = "27.1.12297006"
-        kotlinVersion = "2.1.20"
-        // Set Mapbox SDK version (using stable v10 for reliability)
-        RNMapboxMapsVersion = '10.16.2'
+        kotlinVersion = "1.9.0"
+        // Set Mapbox implementation and use default SDK version
+        RNMapboxMapsImpl = 'mapbox'
     }
     repositories {
         google()

@@ -4,6 +4,7 @@ using caddie.portal.services.Interfaces;
 using caddie.portal.services.Models;
 using caddie.portal.dal.Context;
 using caddie.portal.dal.Models;
+using RoundStatusEnum = caddie.portal.dal.Enums.RoundStatus;
 
 namespace caddie.portal.services.Services;
 
@@ -344,8 +345,8 @@ public class GolfStatisticsService : IGolfStatisticsService
             var fairwayConsistency = fairways.Any() ? CalculateStandardDeviation(fairways.Select(f => (double)f)) : 0;
             var greenConsistency = greens.Any() ? CalculateStandardDeviation(greens.Select(g => (double)g)) : 0;
 
-            var completedRounds = rounds.Where(r => r.StatusId == 4).Count();
-            var abandonedRounds = rounds.Where(r => r.StatusId == 5).Count();
+            var completedRounds = rounds.Where(r => r.StatusId == (int)RoundStatusEnum.Completed).Count();
+            var abandonedRounds = rounds.Where(r => r.StatusId == (int)RoundStatusEnum.Abandoned).Count();
             var completionRate = rounds.Any() ? (double)completedRounds / rounds.Count * 100 : 0;
 
             // Calculate average round time

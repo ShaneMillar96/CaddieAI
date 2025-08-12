@@ -1,6 +1,7 @@
 import { voiceAIApiService, CaddieResponseRequest } from './voiceAIApi';
 import { textToSpeechService } from './TextToSpeechService';
-import { realtimeAudioService } from './RealtimeAudioService';
+// Note: RealtimeAudioServiceV2 requires instantiation and is managed by components
+// This service will focus on API + TTS approach for now
 import { CaddieContext, CaddieScenario, DynamicCaddieHelper } from './TextToSpeechService';
 
 /**
@@ -9,7 +10,7 @@ import { CaddieContext, CaddieScenario, DynamicCaddieHelper } from './TextToSpee
  * Now supports both realtime audio and text-to-speech fallback
  */
 export class DynamicCaddieService implements DynamicCaddieHelper {
-  private useRealtimeAudio: boolean = true; // Prefer realtime audio when available
+  private useRealtimeAudio: boolean = false; // Realtime audio managed by components now
   
   /**
    * Generate and speak dynamic caddie response for specific golf scenarios
@@ -25,15 +26,9 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
     try {
       console.log(`🎯 DynamicCaddieService: Generating response for scenario: ${scenario}`);
 
-      // Try realtime audio first if enabled and connected
-      const isRealtimeActive = realtimeAudioService.isConnectionActive();
-      console.log('🔍 DynamicCaddieService: Realtime audio status:', { useRealtimeAudio: this.useRealtimeAudio, isConnectionActive: isRealtimeActive });
-      
-      if (this.useRealtimeAudio && isRealtimeActive) {
-        console.log('🎙️ DynamicCaddieService: Using realtime audio for response');
-        await this.generateRealtimeResponse(scenario, context, userId, roundId, userInput);
-        return;
-      }
+      // Realtime audio is now managed by components (VoiceChatModalV2)
+      // This service focuses on API + TTS for background golf advice
+      console.log('📢 DynamicCaddieService: Using API + TTS approach (realtime audio handled by components)');
 
       // Fallback to traditional API + TTS approach
       console.log('📢 DynamicCaddieService: Using API + TTS fallback');
@@ -188,30 +183,9 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
   }
 
   /**
-   * Generate realtime audio response using OpenAI Realtime API
+   * Note: Realtime audio functionality moved to VoiceChatModalV2 component
+   * This service now focuses on contextual API responses with TTS
    */
-  private async generateRealtimeResponse(
-    scenario: CaddieScenario,
-    context: CaddieContext,
-    userId: number,
-    roundId: number,
-    userInput?: string
-  ): Promise<void> {
-    try {
-      console.log('🎙️ DynamicCaddieService: Generating realtime audio response');
-
-      // Build contextual message for the AI caddie
-      const contextualMessage = this.buildContextualMessage(scenario, context, userInput);
-      
-      // Send message to realtime audio service
-      await realtimeAudioService.sendTextMessage(contextualMessage);
-      
-      console.log('✅ DynamicCaddieService: Realtime audio response initiated');
-    } catch (error) {
-      console.error('❌ DynamicCaddieService: Error in realtime audio response:', error);
-      throw error; // Will trigger fallback in parent method
-    }
-  }
 
   /**
    * Generate response using traditional API + TTS approach
