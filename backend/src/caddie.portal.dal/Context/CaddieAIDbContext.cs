@@ -58,10 +58,9 @@ public partial class CaddieAIDbContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        if (!optionsBuilder.IsConfigured)
-        {
-            optionsBuilder.UseNpgsql("Host=localhost;Database=caddieai_dev;Username=caddieai_user;Password=caddieai_password", x => x.UseNetTopologySuite());
-        }
+        // Configuration is now handled through dependency injection in Program.cs
+        // This method is kept empty to prevent hardcoded connection strings
+        // Connection string configuration is managed through environment variables and appsettings.json
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

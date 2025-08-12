@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@rnmapbox/maps": "^10.0.11",
     "react-native-maps": "1.25.0"
   }
 }

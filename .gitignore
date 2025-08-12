@@ -57,8 +57,14 @@ CaddieAIMobile/android/secrets.properties
 CaddieAIMobile/android/gradle.properties
 CaddieAIMobile/mapbox.config.js
 .mcp.json
+backend/src/caddie.portal.api/appsettings.Local.json
 backend/src/caddie.portal.api/appsettings.Development.json
+backend/src/caddie.portal.api/appsettings.Production.json
 setup-local-config-secure.sh
+
+# Environment Variable Files
+.env.caddieai
+.env.production
 
 # macOS
 .DS_Store

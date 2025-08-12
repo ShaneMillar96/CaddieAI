@@ -1,23 +1,24 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using FluentValidation;
-using FluentValidation.AspNetCore;
 using Serilog;
 using System.Security.Claims;
 using System.Text;
+using caddie.portal.api.Extensions;
 using caddie.portal.api.Middleware;
-using caddie.portal.api.Mapping;
-using caddie.portal.api.Validators.Auth;
 using caddie.portal.dal.Context;
-using caddie.portal.dal.Repositories;
-using caddie.portal.dal.Repositories.Interfaces;
 using caddie.portal.services.Configuration;
-using caddie.portal.services.Interfaces;
-using caddie.portal.services.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Configure additional configuration sources for environment variables and local config
+builder.Configuration
+    .SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("appsettings.json", optional: false)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
+    .AddJsonFile("appsettings.Local.json", optional: true) // Local development overrides
+    .AddEnvironmentVariables("CADDIEAI_") // Prefix for environment variables
+    .AddEnvironmentVariables(); // Standard environment variables
 
 // Configure Serilog
 Log.Logger = new LoggerConfiguration()
@@ -29,21 +30,11 @@ builder.Host.UseSerilog();
 // Add services to the container
 builder.Services.AddControllers();
 
-// Configure Entity Framework
-builder.Services.AddDbContext<CaddieAIDbContext>(options =>
-{
-    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-    options.UseNpgsql(connectionString, npgsqlOptions =>
-    {
-        npgsqlOptions.UseNetTopologySuite();
-    });
-});
+// Configure database and Entity Framework
+builder.Services.AddDatabase(builder.Configuration);
 
-// Configure Settings
-builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
-builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection(EmailSettings.SectionName));
-builder.Services.Configure<AuthenticationSettings>(builder.Configuration.GetSection(AuthenticationSettings.SectionName));
-builder.Services.Configure<OpenAISettings>(builder.Configuration.GetSection(OpenAISettings.SectionName));
+// Configure application settings
+builder.Services.AddConfigurationSettings(builder.Configuration);
 
 // Add Authentication and Authorization
 var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>();
@@ -51,6 +42,18 @@ if (jwtSettings == null)
 {
     throw new InvalidOperationException("JWT settings are not configured");
 }
+
+// Override JWT secret from environment variables
+var jwtSecret = Environment.GetEnvironmentVariable("CADDIEAI_JWT_SECRET") 
+               ?? Environment.GetEnvironmentVariable("JwtSettings__Secret") 
+               ?? jwtSettings.Secret;
+
+if (string.IsNullOrEmpty(jwtSecret))
+{
+    throw new InvalidOperationException("JWT secret is not configured. Set CADDIEAI_JWT_SECRET environment variable or configure in appsettings.json");
+}
+
+jwtSettings.Secret = jwtSecret;
 
 builder.Services.AddAuthentication(options =>
 {
@@ -98,76 +101,16 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
-// Register Repositories
-builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
-builder.Services.AddScoped<IUserSessionRepository, UserSessionRepository>();
-builder.Services.AddScoped<IPasswordResetTokenRepository, PasswordResetTokenRepository>();
-builder.Services.AddScoped<ICourseRepository, CourseRepository>();
-builder.Services.AddScoped<IRoundRepository, RoundRepository>();
-builder.Services.AddScoped<ILocationRepository, LocationRepository>();
-builder.Services.AddScoped<IChatSessionRepository, ChatSessionRepository>();
-builder.Services.AddScoped<IChatMessageRepository, ChatMessageRepository>();
-builder.Services.AddScoped<IClubRecommendationRepository, ClubRecommendationRepository>();
-builder.Services.AddScoped<IHoleRepository, HoleRepository>();
-builder.Services.AddScoped<IShotPlacementRepository, ShotPlacementRepository>();
-
-// Register Services
-builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
-builder.Services.AddScoped<IPasswordService, PasswordService>();
-builder.Services.AddScoped<ITokenService, TokenService>();
-builder.Services.AddScoped<IEmailService, EmailService>();
-builder.Services.AddScoped<ICourseService, CourseService>();
-builder.Services.AddScoped<IRoundService, RoundService>();
-builder.Services.AddScoped<IClubRecommendationService, ClubRecommendationService>();
-builder.Services.AddScoped<IShotService, ShotService>();
-builder.Services.AddScoped<IHoleService, HoleService>();
+// Register repositories and services
+builder.Services.AddRepositories();
+builder.Services.AddBusinessServices();
 
 // Configure OpenAI
-builder.Services.Configure<OpenAISettings>(options =>
-{
-    builder.Configuration.GetSection(OpenAISettings.SectionName).Bind(options);
-    
-    // Override API key from environment variable if available
-    var envApiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-    if (!string.IsNullOrEmpty(envApiKey))
-    {
-        options.ApiKey = envApiKey;
-    }
-});
+builder.Services.AddOpenAI(builder.Configuration);
 
-var openAISettings = builder.Configuration.GetSection(OpenAISettings.SectionName).Get<OpenAISettings>();
-if (openAISettings == null)
-{
-    throw new InvalidOperationException("OpenAI settings are not configured");
-}
-
-// Get API key from environment variable or configuration
-var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY") ?? openAISettings.ApiKey;
-if (string.IsNullOrEmpty(apiKey))
-{
-    throw new InvalidOperationException("OpenAI API key is not configured. Set OPENAI_API_KEY environment variable or configure in appsettings.json");
-}
-
-builder.Services.AddHttpClient("OpenAI", client =>
-{
-    client.BaseAddress = new Uri(openAISettings.BaseUrl);
-    client.Timeout = TimeSpan.FromSeconds(openAISettings.TimeoutSeconds);
-    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-});
-
-builder.Services.AddScoped<IOpenAIService, OpenAIService>();
-builder.Services.AddScoped<IGolfContextService, GolfContextService>();
-builder.Services.AddScoped<IGolfStatisticsService, GolfStatisticsService>();
-builder.Services.AddScoped<IAIScoreService, AIScoreService>();
-builder.Services.AddScoped<IRealtimeAudioService, RealtimeAudioService>();
-
-// Add AutoMapper
-builder.Services.AddAutoMapper(typeof(AuthMappingProfile), typeof(CourseMappingProfile), typeof(RoundMappingProfile), typeof(ChatMappingProfile), typeof(ClubRecommendationMappingProfile), typeof(StatisticsMappingProfile), typeof(ShotMappingProfile));
-
-// Add FluentValidation
-builder.Services.AddFluentValidationAutoValidation();
-builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
+// Add AutoMapper and FluentValidation
+builder.Services.AddAutoMapperProfiles();
+builder.Services.AddValidation();
 
 // Configure API Documentation
 builder.Services.AddEndpointsApiExplorer();

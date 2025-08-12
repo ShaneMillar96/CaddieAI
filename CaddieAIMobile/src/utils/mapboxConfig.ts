@@ -57,11 +57,16 @@ const getJavaScriptFallbackToken = (): string => {
   try {
     // Import the token from our config file
     const { MAPBOX_ACCESS_TOKEN } = require('../../mapbox.config.js');
-    return MAPBOX_ACCESS_TOKEN || 'pk.your_mapbox_access_token_here';
+    if (MAPBOX_ACCESS_TOKEN && MAPBOX_ACCESS_TOKEN !== 'pk.your_mapbox_access_token_here') {
+      return MAPBOX_ACCESS_TOKEN;
+    }
   } catch (error) {
-    console.warn('⚠️ Mapbox: Could not load JavaScript config, using placeholder');
-    return 'pk.your_mapbox_access_token_here';
+    console.warn('⚠️ Mapbox: Could not load JavaScript config file');
   }
+  
+  // No hardcoded fallback - configuration is required
+  console.error('❌ Mapbox: No valid access token found. Please configure mapbox.config.js or set BuildConfig.MAPBOX_ACCESS_TOKEN');
+  return '';
 };
 
 /**
