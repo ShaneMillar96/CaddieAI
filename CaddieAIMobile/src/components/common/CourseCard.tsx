@@ -40,10 +40,22 @@ export const CourseCard: React.FC<CourseCardProps> = ({
 
   const formatDistance = () => {
     if (!course.distance) return '';
-    if (course.distance < 1) {
-      return `${Math.round(course.distance * 1000)}m away`;
+    // Distance is already in miles from CoursesScreen
+    if (course.distance < 0.1) {
+      // Very close - show in feet
+      const feet = Math.round(course.distance * 5280);
+      return `${feet} ft away`;
+    } else if (course.distance < 1) {
+      // Less than 1 mile - show with 1 decimal
+      return `${course.distance.toFixed(1)} miles away`;
+    } else {
+      // 1 mile or more - show with appropriate precision
+      if (course.distance < 10) {
+        return `${course.distance.toFixed(1)} miles away`;
+      } else {
+        return `${Math.round(course.distance)} miles away`;
+      }
     }
-    return `${course.distance.toFixed(1)}km away`;
   };
 
   return (

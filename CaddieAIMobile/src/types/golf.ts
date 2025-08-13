@@ -160,6 +160,8 @@ export interface CourseListItem {
   difficulty?: Difficulty;
   courseType?: CourseType;
   distance?: number;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 // =============================================================================

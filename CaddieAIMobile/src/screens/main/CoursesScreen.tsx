@@ -29,6 +29,7 @@ import { LoadingSpinner } from '../../components/auth/LoadingSpinner';
 import { ErrorMessage } from '../../components/auth/ErrorMessage';
 import { CourseListItem } from '../../types/golf';
 import type { CoursesStackParamList } from '../../navigation/CoursesNavigator';
+import { golfLocationService, LocationData } from '../../services/LocationService';
 
 type CoursesScreenNavigationProp = StackNavigationProp<CoursesStackParamList, 'CoursesList'>;
 type CoursesScreenRouteProp = RouteProp<CoursesStackParamList, 'CoursesList'>;
@@ -56,6 +57,7 @@ export const CoursesScreen: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showingNearby, setShowingNearby] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [userLocation, setUserLocation] = useState<LocationData | null>(null);
 
   // Load initial courses on mount
   useEffect(() => {
@@ -63,6 +65,28 @@ export const CoursesScreen: React.FC = () => {
       dispatch(fetchCourses({ page: 1, pageSize: 20 }));
     }
   }, [dispatch, courses.length, isLoading]);
+
+  // Get user's location on mount
+  useEffect(() => {
+    const fetchUserLocation = async () => {
+      try {
+        // Request location permissions
+        const hasPermission = await golfLocationService.requestLocationPermissions();
+        if (hasPermission) {
+          // Get current position
+          const location = await golfLocationService.getCurrentPosition();
+          if (location) {
+            setUserLocation(location);
+            console.log('User location acquired:', location.latitude, location.longitude);
+          }
+        }
+      } catch (error) {
+        console.log('Could not get user location:', error);
+      }
+    };
+
+    fetchUserLocation();
+  }, []);
 
   // Handle search
   const handleSearch = useCallback((term: string) => {
@@ -84,45 +108,81 @@ export const CoursesScreen: React.FC = () => {
   }, [dispatch, courses.length]);
 
   // Handle nearby courses
-  const handleNearbyPress = useCallback(() => {
-    // For now, use a default location (Faughan Valley Golf Centre area)
-    // TODO: Integrate with actual location service
-    const defaultLocation = {
-      latitude: 55.0461,
-      longitude: -7.3267,
-      radiusKm: 50,
-    };
+  const handleNearbyPress = useCallback(async () => {
+    try {
+      // Try to get current location or use existing one
+      let location = userLocation;
+      
+      if (!location) {
+        const hasPermission = await golfLocationService.requestLocationPermissions();
+        if (hasPermission) {
+          location = await golfLocationService.getCurrentPosition();
+          if (location) {
+            setUserLocation(location);
+          }
+        }
+      }
 
-    Alert.alert(
-      'Location Access',
-      'This feature will find courses near you. Using demo location for now.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Find Nearby',
-          onPress: () => {
-            setSearchTerm('');
-            setShowingNearby(true);
-            dispatch(fetchNearbyCourses(defaultLocation));
-          },
-        },
-      ]
-    );
-  }, [dispatch]);
+      if (!location) {
+        Alert.alert(
+          'Location Required',
+          'Unable to get your location. Please enable location services and try again.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Use actual user location
+      const nearbyRequest = {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        radiusKm: 50, // 50km radius (about 31 miles)
+      };
+
+      setSearchTerm('');
+      setShowingNearby(true);
+      dispatch(fetchNearbyCourses(nearbyRequest));
+      
+    } catch (error) {
+      console.error('Error getting nearby courses:', error);
+      Alert.alert(
+        'Error',
+        'Failed to get nearby courses. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
+  }, [dispatch, userLocation]);
 
   // Handle pull to refresh
-  const handleRefresh = useCallback(() => {
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     
+    // Try to refresh user location
+    try {
+      const hasPermission = await golfLocationService.requestLocationPermissions();
+      if (hasPermission) {
+        const location = await golfLocationService.getCurrentPosition();
+        if (location) {
+          setUserLocation(location);
+        }
+      }
+    } catch (error) {
+      console.log('Could not refresh user location:', error);
+    }
+    
     if (showingNearby) {
-      // Refresh nearby courses
-      const defaultLocation = {
-        latitude: 55.0461,
-        longitude: -7.3267,
-        radiusKm: 50,
-      };
-      dispatch(fetchNearbyCourses(defaultLocation))
-        .finally(() => setRefreshing(false));
+      // Refresh nearby courses with user's location
+      if (userLocation) {
+        const nearbyRequest = {
+          latitude: userLocation.latitude,
+          longitude: userLocation.longitude,
+          radiusKm: 50,
+        };
+        dispatch(fetchNearbyCourses(nearbyRequest))
+          .finally(() => setRefreshing(false));
+      } else {
+        setRefreshing(false);
+      }
     } else if (searchTerm.trim()) {
       // Refresh search results
       dispatch(searchCourses({
@@ -135,7 +195,7 @@ export const CoursesScreen: React.FC = () => {
       dispatch(fetchCourses({ page: 1, pageSize: 20 }))
         .finally(() => setRefreshing(false));
     }
-  }, [dispatch, showingNearby, searchTerm]);
+  }, [dispatch, showingNearby, searchTerm, userLocation]);
 
   // Handle load more
   const handleLoadMore = useCallback(() => {
@@ -280,11 +340,62 @@ export const CoursesScreen: React.FC = () => {
     }
   }, [dispatch, showingNearby, searchTerm, handleNearbyPress, handleSearch]);
 
+  // Helper function to calculate distance between two coordinates
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  // Calculate and add distances to courses, then sort by distance
+  const processCoursesWithDistance = (coursesList: CourseListItem[]): CourseListItem[] => {
+    if (!userLocation) return coursesList;
+
+    // Calculate distances for each course
+    const coursesWithDistance = coursesList.map(course => {
+      // Check if course has latitude and longitude
+      if (course.latitude && course.longitude) {
+        const distanceKm = calculateDistance(
+          userLocation.latitude,
+          userLocation.longitude,
+          course.latitude,
+          course.longitude
+        );
+        // Convert to miles
+        const distanceMiles = distanceKm * 0.621371;
+        return { ...course, distance: distanceMiles };
+      }
+      return course;
+    });
+
+    // Sort by distance (closest first)
+    return coursesWithDistance.sort((a, b) => {
+      if (a.distance === undefined && b.distance === undefined) return 0;
+      if (a.distance === undefined) return 1;
+      if (b.distance === undefined) return -1;
+      return a.distance - b.distance;
+    });
+  };
+
   // Determine which course list to show
   const getCourseList = (): CourseListItem[] => {
-    if (showingNearby) return nearbyCourses;
-    if (searchTerm.trim()) return searchResults;
-    return courses;
+    let baseList: CourseListItem[];
+    if (showingNearby) {
+      baseList = nearbyCourses;
+    } else if (searchTerm.trim()) {
+      baseList = searchResults;
+    } else {
+      baseList = courses;
+    }
+    
+    // Process courses with distance calculation and sorting
+    return processCoursesWithDistance(baseList);
   };
 
   const courseList = getCourseList();
@@ -296,7 +407,7 @@ export const CoursesScreen: React.FC = () => {
       course={item}
       onPress={() => handleCoursePress(item)}
       onSelect={() => handleCourseSelect(item)}
-      showDistance={showingNearby}
+      showDistance={true} // Always show distance when available
     />
   );
 
