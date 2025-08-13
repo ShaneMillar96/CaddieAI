@@ -651,50 +651,22 @@ export const ActiveRoundScreen: React.FC = () => {
     setIsVoiceChatModalVisible(prev => !prev);
   }, []);
 
-  // Handle map press for distance measurement or shot placement
+  // Handle map press for shot placement only
   const handleMapPress = useCallback((coordinate: { latitude: number; longitude: number }) => {
     if (!currentLocation) {
       Alert.alert(
         'GPS Required',
-        'Please wait for GPS to acquire your location before measuring distances.',
+        'Please wait for GPS to acquire your location.',
         [{ text: 'OK' }]
       );
       return;
     }
 
-    // Shot placement mode
+    // Only handle map press in shot placement mode
     if (shotPlacementModeEnabled && isPlacingShot) {
       handleShotPlacementPress(coordinate);
-      return;
     }
-
-    // Regular distance measurement mode
-    const yards = mapboxService.calculateDistance(
-      currentLocation.latitude,
-      currentLocation.longitude,
-      coordinate.latitude,
-      coordinate.longitude,
-      'yards'
-    );
-    
-    const meters = mapboxService.calculateDistance(
-      currentLocation.latitude,
-      currentLocation.longitude,
-      coordinate.latitude,
-      coordinate.longitude,
-      'meters'
-    );
-
-    if (yards < 5) {
-      Alert.alert('Target Too Close', 'Please select a target at least 5 yards away.');
-      return;
-    }
-
-    Alert.alert(
-      'Golf Distance Measurement',
-      `Distance: ${mapboxService.formatDistance(yards, 'yards')} (${mapboxService.formatDistance(meters, 'meters')})\n\nSuggested club: ${yards < 100 ? 'Wedge' : yards < 150 ? 'Short Iron' : yards < 200 ? 'Mid Iron' : 'Long Iron/Driver'}`,
-      [{ text: 'OK' }]
-    );
+    // Do nothing if shot placement mode is not active
   }, [currentLocation, shotPlacementModeEnabled, isPlacingShot]);
 
   // Handle shot placement press
@@ -933,72 +905,109 @@ export const ActiveRoundScreen: React.FC = () => {
                           serviceState === ServiceShotPlacementState.SHOT_IN_PROGRESS ? 'in_progress' : 'completed'}
       />
 
-      {/* Round Controls Modal */}
+      {/* Premium Round Controls Modal */}
       {showRoundControls && (
-        <View style={styles.roundControlsModal}>
-          <View style={styles.roundControlsContent}>
-            <Text style={styles.roundControlsTitle}>Round Controls</Text>
-            
-            {/* Voice Chat Button */}
-            <TouchableOpacity
-              style={[styles.modalButton, styles.voiceChatButton]}
-              onPress={() => {
-                setShowRoundControls(false);
-                handleVoiceChatModalToggle();
-              }}
-            >
-              <Icon name="mic" size={20} color="#fff" />
-              <Text style={styles.modalButtonText}>AI Voice Chat</Text>
-            </TouchableOpacity>
-            
-            {activeRound?.status === 'Paused' && (
+        <TouchableOpacity 
+          style={styles.roundControlsModal}
+          onPress={() => setShowRoundControls(false)}
+          activeOpacity={1}
+        >
+          <TouchableOpacity 
+            style={styles.roundControlsContent}
+            activeOpacity={1}
+          >
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeader}>
+              <Text style={styles.roundControlsTitle}>Round Controls</Text>
               <TouchableOpacity
-                style={[styles.modalButton, styles.resumeButton]}
-                onPress={roundControlHandlers.resume}
-                disabled={isUpdating}
+                onPress={() => setShowRoundControls(false)}
+                style={styles.closeButton}
               >
-                <Icon name="play-arrow" size={20} color="#fff" />
-                <Text style={styles.modalButtonText}>Resume Round</Text>
+                <Icon name="close" size={28} color="#2c5530" />
               </TouchableOpacity>
-            )}
+            </View>
+            
+            <View style={styles.controlsContainer}>
+              {activeRound?.status === 'Paused' && (
+                <TouchableOpacity
+                  style={[styles.controlButton, styles.resumeButton]}
+                  onPress={roundControlHandlers.resume}
+                  disabled={isUpdating}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.buttonContent}>
+                    <View style={[styles.iconContainer, styles.resumeIconBg]}>
+                      <Icon name="play-arrow" size={28} color="#fff" />
+                    </View>
+                    <View style={styles.buttonTextContainer}>
+                      <Text style={styles.buttonTitle}>Resume Round</Text>
+                      <Text style={styles.buttonSubtitle}>Continue playing</Text>
+                    </View>
+                    <Icon name="chevron-right" size={24} color="#28a745" />
+                  </View>
+                </TouchableOpacity>
+              )}
 
-            {activeRound?.status === 'InProgress' && (
+              {activeRound?.status === 'InProgress' && (
+                <TouchableOpacity
+                  style={[styles.controlButton, styles.pauseButton]}
+                  onPress={roundControlHandlers.pause}
+                  disabled={isUpdating}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.buttonContent}>
+                    <View style={[styles.iconContainer, styles.pauseIconBg]}>
+                      <Icon name="pause" size={28} color="#fff" />
+                    </View>
+                    <View style={styles.buttonTextContainer}>
+                      <Text style={styles.buttonTitle}>Pause Round</Text>
+                      <Text style={styles.buttonSubtitle}>Take a break</Text>
+                    </View>
+                    <Icon name="chevron-right" size={24} color="#f59e0b" />
+                  </View>
+                </TouchableOpacity>
+              )}
+
               <TouchableOpacity
-                style={[styles.modalButton, styles.pauseButton]}
-                onPress={roundControlHandlers.pause}
-                disabled={isUpdating}
+                style={[styles.controlButton, styles.completeButton]}
+                onPress={roundControlHandlers.complete}
+                disabled={isCompleting}
+                activeOpacity={0.8}
               >
-                <Icon name="pause" size={20} color="#fff" />
-                <Text style={styles.modalButtonText}>Pause Round</Text>
+                <View style={styles.buttonContent}>
+                  <View style={[styles.iconContainer, styles.completeIconBg]}>
+                    <Icon name="check" size={28} color="#fff" />
+                  </View>
+                  <View style={styles.buttonTextContainer}>
+                    <Text style={styles.buttonTitle}>Complete Round</Text>
+                    <Text style={styles.buttonSubtitle}>Finish and save score</Text>
+                  </View>
+                  <Icon name="chevron-right" size={24} color="#3b82f6" />
+                </View>
               </TouchableOpacity>
-            )}
 
-            <TouchableOpacity
-              style={[styles.modalButton, styles.completeButton]}
-              onPress={roundControlHandlers.complete}
-              disabled={isCompleting}
-            >
-              <Icon name="check" size={20} color="#fff" />
-              <Text style={styles.modalButtonText}>Complete Round</Text>
-            </TouchableOpacity>
+              <View style={styles.divider} />
 
-            <TouchableOpacity
-              style={[styles.modalButton, styles.abandonButton]}
-              onPress={roundControlHandlers.abandon}
-              disabled={isUpdating}
-            >
-              <Icon name="close" size={20} color="#fff" />
-              <Text style={styles.modalButtonText}>Abandon Round</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.modalButton, styles.cancelButton]}
-              onPress={() => setShowRoundControls(false)}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+              <TouchableOpacity
+                style={[styles.controlButton, styles.abandonButton]}
+                onPress={roundControlHandlers.abandon}
+                disabled={isUpdating}
+                activeOpacity={0.8}
+              >
+                <View style={styles.buttonContent}>
+                  <View style={[styles.iconContainer, styles.abandonIconBg]}>
+                    <Icon name="close" size={28} color="#fff" />
+                  </View>
+                  <View style={styles.buttonTextContainer}>
+                    <Text style={[styles.buttonTitle, styles.abandonText]}>Abandon Round</Text>
+                    <Text style={styles.buttonSubtitle}>Exit without saving</Text>
+                  </View>
+                  <Icon name="chevron-right" size={24} color="#ef4444" />
+                </View>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       )}
 
       {/* Voice AI Interface */}
@@ -1071,77 +1080,132 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   
-  // Round Controls Modal Styles
+  // Premium Round Controls Modal Styles
   roundControlsModal: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'flex-end',
     zIndex: 1000,
   },
   roundControlsContent: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 24,
-    width: width - 40,
-    maxWidth: 400,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingTop: 8,
+    paddingBottom: 40,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#d1d5db',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginVertical: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    marginBottom: 8,
   },
   roundControlsTitle: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '700',
-    color: '#2c5530',
-    marginBottom: 20,
-    textAlign: 'center',
+    color: '#1f2937',
+    letterSpacing: -0.5,
   },
-  modalButton: {
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f3f4f6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  controlsContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  controlButton: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#f3f4f6',
+  },
+  buttonContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    marginBottom: 12,
-    gap: 8,
+    padding: 16,
   },
-  modalButtonText: {
-    color: '#ffffff',
+  iconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  buttonTextContainer: {
+    flex: 1,
+  },
+  buttonTitle: {
     fontSize: 16,
     fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 2,
+  },
+  buttonSubtitle: {
+    fontSize: 13,
+    color: '#6b7280',
   },
   resumeButton: {
-    backgroundColor: '#28a745',
+    borderColor: '#dcfce7',
+  },
+  resumeIconBg: {
+    backgroundColor: '#22c55e',
   },
   pauseButton: {
-    backgroundColor: '#ffc107',
+    borderColor: '#fef3c7',
+  },
+  pauseIconBg: {
+    backgroundColor: '#f59e0b',
   },
   completeButton: {
-    backgroundColor: '#007bff',
+    borderColor: '#dbeafe',
+  },
+  completeIconBg: {
+    backgroundColor: '#3b82f6',
   },
   abandonButton: {
-    backgroundColor: '#dc3545',
+    borderColor: '#fee2e2',
   },
-  voiceChatButton: {
-    backgroundColor: '#9c27b0',
+  abandonIconBg: {
+    backgroundColor: '#ef4444',
   },
-  cancelButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#6c757d',
-    marginTop: 8,
+  abandonText: {
+    color: '#ef4444',
   },
-  cancelButtonText: {
-    color: '#6c757d',
-    fontSize: 16,
-    fontWeight: '600',
+  divider: {
+    height: 1,
+    backgroundColor: '#f3f4f6',
+    marginVertical: 12,
+    marginHorizontal: 4,
   },
 });
 

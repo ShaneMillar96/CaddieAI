@@ -282,75 +282,41 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
         )}
 
 
-        {/* Enhanced Voice Interface Button */}
-        <TouchableOpacity
-          style={[
-            styles.voiceButton,
-            isVoiceInterfaceVisible && styles.voiceButtonActive
-          ]}
-          onPress={onVoiceToggle}
-          activeOpacity={0.8}
-        >
-          <Icon 
-            name="mic" 
-            size={28} 
-            color={isVoiceInterfaceVisible ? "#fff" : "#4a7c59"} 
-          />
-          {isLocationTracking && (
-            <View style={styles.voiceActivityIndicator}>
-              <View style={styles.activityDot} />
-            </View>
-          )}
-        </TouchableOpacity>
       </View>
 
-      {/* Enhanced Bottom Control Bar */}
+      {/* Modern Bottom Control Bar */}
       <View style={styles.bottomBar}>
-        {/* Left side - Enhanced GPS Details */}
-        <View style={styles.gpsDetails}>
-          {isLocationTracking && (
-            <View style={styles.trackingIndicator}>
-              <View style={styles.trackingDot} />
-              <Text style={styles.trackingText}>Tracking</Text>
-            </View>
-          )}
-          {currentLocation && !simpleLocationService.isUsingFallbackLocation() && (
-            <Text style={styles.gpsDetailText}>
-              Mapbox • {gpsStatus.description}
-            </Text>
-          )}
-        </View>
-
-        {/* Center - Enhanced Round Status */}
-        <View style={styles.roundStatusContainer}>
-          <View style={styles.roundStatusBadge}>
-            <Icon name="sports-golf" size={16} color="#4a7c59" />
-            <Text style={styles.roundStatus}>
-              {roundStatus || 'Active Round'}
-            </Text>
+        {/* Tracking Status */}
+        {isLocationTracking && (
+          <View style={styles.trackingPill}>
+            <View style={styles.trackingDot} />
+            <Text style={styles.trackingText}>Tracking</Text>
           </View>
+        )}
+
+        {/* Round Status */}
+        <View style={styles.roundStatusPill}>
+          <Icon name="sports-golf" size={14} color="#4a7c59" />
+          <Text style={styles.roundStatus}>
+            {roundStatus || 'InProgress'}
+          </Text>
         </View>
 
-        {/* Right side - Round Controls */}
+        {/* Menu Button */}
         <TouchableOpacity
-          style={styles.controlButton}
+          style={styles.menuButton}
           onPress={onRoundControlsPress}
           activeOpacity={0.7}
         >
-          <Icon name="more-vert" size={24} color="#4a7c59" />
-          <Text style={styles.controlButtonLabel}>Menu</Text>
+          <Icon name="more-horiz" size={24} color="#4a7c59" />
         </TouchableOpacity>
       </View>
 
-      {/* Enhanced Instructions for Golf Features */}
-      {currentLocation && (
+      {/* Minimal Instructions - Only show in shot placement mode */}
+      {currentLocation && shotPlacementMode && (
         <View style={styles.instructionsContainer}>
-          <Icon name="info" size={16} color="#ffffff" />
           <Text style={styles.instructionsText}>
-            {shotPlacementMode 
-              ? 'Tap map to place your shot target • Voice AI provides club recommendations'
-              : 'Tap anywhere to measure distance • Voice AI ready for golf assistance'
-            }
+            Tap to place shot target
           </Text>
         </View>
       )}
@@ -485,11 +451,11 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 
-  // Enhanced Right Controls
+  // Modern Right Controls
   rightControls: {
     position: 'absolute',
     right: 20,
-    top: '35%',
+    top: '40%',
     alignItems: 'center',
     gap: 12,
   },
@@ -521,72 +487,31 @@ const styles = StyleSheet.create({
   controlButtonLabelActive: {
     color: '#ffffff',
   },
-  voiceButton: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#ffffff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-    borderWidth: 2,
-    borderColor: '#4a7c59',
-    position: 'relative',
-  },
-  voiceButtonActive: {
-    backgroundColor: '#4a7c59',
-    borderColor: '#2c5530',
-  },
-  voiceActivityIndicator: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#00C851',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  activityDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#ffffff',
-  },
 
-  // Enhanced Bottom Bar Styles
+  // Modern Bottom Bar Styles
   bottomBar: {
     position: 'absolute',
     bottom: 20,
     left: 20,
     right: 20,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
+    gap: 12,
+  },
+  trackingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  gpsDetails: {
-    minWidth: 80,
-    alignItems: 'flex-start',
-  },
-  trackingIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   trackingDot: {
     width: 8,
@@ -595,54 +520,60 @@ const styles = StyleSheet.create({
     backgroundColor: '#28a745',
   },
   trackingText: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#28a745',
     fontWeight: '600',
   },
-  gpsDetailText: {
-    fontSize: 10,
-    color: '#666',
-    fontWeight: '500',
-  },
-  roundStatusContainer: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  roundStatusBadge: {
+  roundStatusPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(74, 124, 89, 0.1)',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   roundStatus: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: '#2c5530',
   },
+  menuButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    position: 'absolute',
+    right: 0,
+  },
 
-  // Enhanced Instructions
+  // Minimal Instructions
   instructionsContainer: {
     position: 'absolute',
     bottom: 100,
-    left: 20,
-    right: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    borderRadius: 12,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
+    paddingVertical: 8,
   },
   instructionsText: {
     color: '#ffffff',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
     textAlign: 'center',
-    flex: 1,
   },
 
   // Shot Placement Panel Styles
