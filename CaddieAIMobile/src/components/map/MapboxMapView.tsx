@@ -360,21 +360,38 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
             </ShapeSource>
 
             {/* Distance label along the line */}
-            {showDistanceOverlay && distanceFromCurrent > 0 && (
-              <PointAnnotation
-                id="shotPlacementDistance"
-                coordinate={[
-                  (shotPlacementLocation.longitude + currentLocation.longitude) / 2,
-                  (shotPlacementLocation.latitude + currentLocation.latitude) / 2,
-                ]}
-              >
-                <View style={styles.distanceLabelAlongLine}>
-                  <Text style={styles.distanceLabelText}>
-                    {distanceFromCurrent}y
-                  </Text>
-                </View>
-              </PointAnnotation>
-            )}
+            {showDistanceOverlay && distanceFromCurrent > 0 && (() => {
+              // Calculate the angle of the line
+              const deltaX = shotPlacementLocation.longitude - currentLocation.longitude;
+              const deltaY = shotPlacementLocation.latitude - currentLocation.latitude;
+              const angleRad = Math.atan2(deltaY, deltaX);
+              const angleDeg = angleRad * (180 / Math.PI);
+              
+              // Calculate offset to position label above the line
+              const offsetDistance = 0.00015; // Adjust this value to control distance from line
+              const perpAngle = angleRad + Math.PI / 2; // Perpendicular to the line
+              const offsetLng = Math.sin(perpAngle) * offsetDistance;
+              const offsetLat = Math.cos(perpAngle) * offsetDistance;
+              
+              return (
+                <PointAnnotation
+                  id="shotPlacementDistance"
+                  coordinate={[
+                    (shotPlacementLocation.longitude + currentLocation.longitude) / 2 + offsetLng,
+                    (shotPlacementLocation.latitude + currentLocation.latitude) / 2 + offsetLat,
+                  ]}
+                >
+                  <View style={[
+                    styles.distanceLabelAlongLine,
+                    { transform: [{ rotate: `${angleDeg}deg` }] }
+                  ]}>
+                    <Text style={styles.distanceLabelText}>
+                      {distanceFromCurrent}y
+                    </Text>
+                  </View>
+                </PointAnnotation>
+              );
+            })()}
           </>
         )}
       </MapView>
@@ -571,20 +588,24 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   distanceLabelAlongLine: {
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.4,
     shadowRadius: 4,
-    elevation: 4,
+    elevation: 5,
+    minWidth: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   distanceLabelText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
+    textAlign: 'center',
   },
 });
 
