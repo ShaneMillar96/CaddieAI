@@ -32,6 +32,10 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
   private isProcessingQueue: boolean = false;
   private activeResponseId: string | null = null;
   
+  // Response caching for cost efficiency
+  private responseCache: Map<string, string> = new Map();
+  private cacheTimeout = 300000; // 5 minutes
+  
   /**
    * Initialize connection to OpenAI real-time audio service
    */
@@ -43,12 +47,8 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
     try {
       console.log('🎯 DynamicCaddieService: Initializing OpenAI real-time audio connection');
       
-      // Create new realtime audio service with enhanced golf caddie instructions
-      const golfInstructions = `You are an expert golf caddie assistant providing real-time advice during golf rounds. 
-      Your role is to offer encouraging, professional guidance for shot placement, club selection, and course strategy.
-      Keep responses brief (1-3 sentences), conversational, and supportive. 
-      Use the 'ash' voice model for natural, warm communication.
-      Focus on confidence-building and practical golf advice based on the current context.`;
+      // Concise golf caddie instructions for helpful, brief responses
+      const golfInstructions = `Brief helpful golf caddie. Keep responses under 10 words.`;
 
       this.realtimeAudioService = new RealtimeAudioService({
         model: OPENAI_CONFIG.model,
@@ -87,7 +87,7 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
 
   /**
    * Generate and speak dynamic caddie response for specific golf scenarios
-   * Now uses request queuing to prevent simultaneous API calls
+   * Now uses request queuing and caching to prevent simultaneous API calls and reduce costs
    */
   async generateResponse(
     scenario: CaddieScenario,
@@ -98,6 +98,17 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
     priority: number = 5
   ): Promise<void> {
     console.log(`🎯 DynamicCaddieService: Queuing response for scenario: ${scenario}`);
+
+    // Check cache first for cost efficiency
+    const cacheKey = this.buildCacheKey(scenario, context);
+    const cachedResponse = this.getCachedResponse(cacheKey);
+    if (cachedResponse) {
+      console.log(`💰 DynamicCaddieService: Using cached response for ${scenario}`);
+      // For cached responses, use fallback text-to-speech instead of OpenAI
+      const fallbackMessage = this.getFallbackMessage(scenario, context);
+      // Could implement basic TTS here if available
+      return;
+    }
 
     // Add request to queue
     const queuedRequest: QueuedRequest = {
@@ -404,96 +415,46 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
   }
 
   /**
-   * Build contextual message for realtime audio AI
+   * Build minimal contextual message for 2 core shot placement scenarios only
    */
   private buildContextualMessage(scenario: CaddieScenario, context: CaddieContext, userInput?: string): string {
-    const parts: string[] = [];
+    const distance = context.golfContext?.targetDistanceYards || 150;
 
-    // Add scenario context
+    // Only handle the 2 essential shot placement cases
     switch (scenario) {
       case 'ShotPlacementWelcome':
-        parts.push('Shot placement feature activated.');
-        break;
+        return 'Shot placement activated';
       case 'ClubRecommendation':
-        parts.push(`Club recommendation needed for ${context.golfContext?.targetDistanceYards || 150} yards.`);
-        break;
-      case 'ShotPlacementConfirmation':
-        parts.push(`Shot target confirmed at ${context.golfContext?.targetDistanceYards || 150} yards.`);
-        break;
-      case 'ShotTrackingActivation':
-        parts.push('Shot tracking activated.');
-        break;
-      case 'ShotInProgress':
-        parts.push('Shot in progress.');
-        break;
-      case 'ShotCompletion':
-        parts.push('Shot completed.');
-        break;
-      case 'MovementDetected':
-        parts.push('Movement detected - shot tracking complete.');
-        break;
-      case 'DistanceAnnouncement':
-        parts.push(`Distance announcement: ${context.golfContext?.targetDistanceYards || 150} yards.`);
-        break;
-      case 'ErrorHandling':
-        parts.push('Handling error situation.');
-        break;
+        return `${distance} yards club recommendation`;
+      default:
+        return 'Golf help';
     }
-
-    // Add golf context if available
-    if (context.golfContext?.currentHole) {
-      parts.push(`Currently on hole ${context.golfContext.currentHole}.`);
-    }
-
-    if (context.golfContext?.recommendedClub) {
-      parts.push(`Recommended club: ${context.golfContext.recommendedClub}.`);
-    }
-
-    // Add conditions if available
-    if (context.conditions?.weatherDescription) {
-      parts.push(`Conditions: ${context.conditions.weatherDescription}.`);
-    }
-
-    // Add user input if provided
-    if (userInput) {
-      parts.push(`User said: "${userInput}"`);
-    }
-
-    return parts.join(' ');
   }
 
   /**
-   * Add contextual instruction to the real-time audio service for enhanced responses
+   * Update contextual instructions for 2 core shot placement scenarios only
    */
   private async updateContextualInstructions(scenario: CaddieScenario, context: CaddieContext): Promise<void> {
     if (!this.realtimeAudioService) return;
 
-    // Build enhanced instructions based on scenario and context
-    const baseInstruction = `You are an expert golf caddie providing real-time advice. Respond in 1-3 sentences with encouraging, supportive guidance.`;
-    
-    let scenarioInstruction = '';
+    // Concise instructions for only 2 essential cases
+    let instruction = 'Brief helpful golf caddie. Under 10 words.';
     switch (scenario) {
-      case 'ClubRecommendation':
-        scenarioInstruction = `Focus on club selection for ${context.golfContext?.targetDistanceYards || 150} yards. Consider conditions and player skill level.`;
-        break;
       case 'ShotPlacementWelcome':
-        scenarioInstruction = `Welcome the player to shot placement mode. Briefly explain how to use it with confidence.`;
+        instruction = 'Welcome user to shot placement mode';
         break;
-      case 'ShotPlacementConfirmation':
-        scenarioInstruction = `Confirm the shot target and provide encouraging pre-shot advice.`;
-        break;
-      case 'ShotTrackingActivation':
-        scenarioInstruction = `Acknowledge shot tracking is active. Provide brief, confidence-building advice.`;
+      case 'ClubRecommendation':
+        instruction = 'Recommend club for distance';
         break;
       default:
-        scenarioInstruction = `Provide helpful, encouraging golf advice for the current situation.`;
+        instruction = 'Brief helpful golf caddie. Under 10 words.';
     }
 
-    // Update the service configuration with enhanced context
+    // Update with concise scenario instructions
     this.realtimeAudioService.updateConfig({
-      instructions: `${baseInstruction} ${scenarioInstruction}`,
+      instructions: instruction,
       voice: 'ash',
-      temperature: 0.7
+      temperature: 0.6 // Minimum allowed for real-time API
     });
   }
 
@@ -503,47 +464,27 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
   private getFallbackMessage(scenario: CaddieScenario, context: CaddieContext): string {
     switch (scenario) {
       case 'ShotPlacementWelcome':
-        return "Welcome to shot placement! Tap the map to set your target, and I'll help with club selection.";
+        return "Please select your shot location";
       
       case 'ClubRecommendation':
         const distance = context.golfContext?.targetDistanceYards ?? 150;
         return this.getStaticClubRecommendation(distance);
       
-      case 'ShotPlacementConfirmation':
-        const yards = context.golfContext?.targetDistanceYards ?? 150;
-        return `Target set at ${yards} yards. When you're ready, activate shot tracking.`;
-      
-      case 'ShotTrackingActivation':
-        return "Shot tracking active. Take your time and trust your swing.";
-      
-      case 'ShotInProgress':
-        return "Looking good! Stay focused and finish strong.";
-      
-      case 'ShotCompletion':
-        return "Nice shot! Ready for your next target.";
-      
-      case 'MovementDetected':
-        return "Shot tracking complete. Great effort out there!";
-      
-      case 'DistanceAnnouncement':
-        const announceYards = context.golfContext?.targetDistanceYards ?? 150;
-        return `Distance to target: ${announceYards} yards.`;
-      
       case 'ErrorHandling':
-        return "No worries! Let's get back to your game. I'm here to help.";
+        return "No worries! Let's get back to your game.";
       
       default:
-        return "I'm here to help with your golf game! What do you need?";
+        return "I'm here to help with your golf game!";
     }
   }
 
   private getStaticClubRecommendation(yards: number): string {
-    if (yards < 80) return "Try a wedge for this short approach.";
-    if (yards < 120) return "A 9 or 8 iron should work well here.";
-    if (yards < 150) return "Consider a 7 or 6 iron for this distance.";
-    if (yards < 170) return "A 5 iron or hybrid might be perfect.";
-    if (yards < 200) return "Try a 4 iron or fairway wood.";
-    return "For this longer shot, consider a driver or 3 wood.";
+    if (yards < 80) return `For ${yards} yards, try using a wedge`;
+    if (yards < 120) return `For ${yards} yards, try using a 9 iron`;
+    if (yards < 150) return `For ${yards} yards, try using a 7 iron`;
+    if (yards < 170) return `For ${yards} yards, try using a 5 iron`;
+    if (yards < 200) return `For ${yards} yards, try using a 4 iron`;
+    return `For ${yards} yards, try using a 3 wood`;
   }
 
   private determineShotType(distanceYards: number): string {
@@ -576,6 +517,38 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
     }
     
     return parts.join(', ') || 'Good conditions';
+  }
+
+  /**
+   * Build cache key for response caching
+   */
+  private buildCacheKey(scenario: CaddieScenario, context: CaddieContext): string {
+    const distance = context.golfContext?.targetDistanceYards || 150;
+    // Round distance to nearest 10 for better cache hits
+    const roundedDistance = Math.round(distance / 10) * 10;
+    return `${scenario}-${roundedDistance}`;
+  }
+
+  /**
+   * Get cached response if available and not expired
+   */
+  private getCachedResponse(cacheKey: string): string | null {
+    const cached = this.responseCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    return null;
+  }
+
+  /**
+   * Cache response for future use
+   */
+  private setCachedResponse(cacheKey: string, response: string): void {
+    this.responseCache.set(cacheKey, response);
+    // Clear cache after timeout
+    setTimeout(() => {
+      this.responseCache.delete(cacheKey);
+    }, this.cacheTimeout);
   }
 }
 

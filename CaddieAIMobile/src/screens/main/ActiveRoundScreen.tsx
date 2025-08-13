@@ -434,62 +434,24 @@ export const ActiveRoundScreen: React.FC = () => {
     try {
       switch (state) {
         case ServiceShotPlacementState.SHOT_PLACEMENT:
+          // Only send club recommendation when shot location is selected
           if (distances.fromCurrent > 0) {
-            // First, send shot placement confirmation with high priority
             await dynamicCaddieService.generateResponse(
-              'ShotPlacementConfirmation',
+              'ClubRecommendation',
               buildCaddieContext(),
               Number(user.id),
               activeRound.id,
               undefined,
-              9 // Very high priority for confirmation
+              8 // High priority for club recommendation
             );
-            
-            // Then, request club recommendation with lower priority (it will be queued)
-            if (distances.fromCurrent > 0) {
-              await dynamicCaddieService.generateResponse(
-                'ClubRecommendation',
-                buildCaddieContext(),
-                Number(user.id),
-                activeRound.id,
-                undefined,
-                8 // High priority but lower than confirmation
-              );
-            }
           }
           break;
           
+        // Remove AI responses for intermediate states - no audio feedback needed
         case ServiceShotPlacementState.SHOT_IN_PROGRESS:
-          await dynamicCaddieService.generateResponse(
-            'ShotInProgress',
-            buildCaddieContext(),
-            Number(user.id),
-            activeRound.id,
-            undefined,
-            6
-          );
-          break;
-          
         case ServiceShotPlacementState.MOVEMENT_DETECTED:
-          await dynamicCaddieService.generateResponse(
-            'MovementDetected',
-            buildCaddieContext(),
-            Number(user.id),
-            activeRound.id,
-            undefined,
-            6
-          );
-          break;
-          
         case ServiceShotPlacementState.SHOT_COMPLETED:
-          await dynamicCaddieService.generateResponse(
-            'ShotCompletion',
-            buildCaddieContext(),
-            Number(user.id),
-            activeRound.id,
-            undefined,
-            5
-          );
+          // These states are handled by the UI/visual feedback only
           break;
       }
     } catch (error) {

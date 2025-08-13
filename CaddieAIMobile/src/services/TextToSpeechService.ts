@@ -503,18 +503,8 @@ export interface CaddieContext {
 export type CaddieScenario = 
   | 'ShotPlacementWelcome'
   | 'ClubRecommendation'
-  | 'ShotPlacementConfirmation'
-  | 'ShotTrackingActivation'
-  | 'ShotInProgress'
-  | 'ShotCompletion'
-  | 'MovementDetected'
-  | 'DistanceAnnouncement'
-  | 'HoleCompletion'
   | 'ErrorHandling'
-  | 'GeneralAssistance'
-  | 'CourseStrategy'
-  | 'PerformanceEncouragement'
-  | 'WeatherConditions';
+  | 'GeneralAssistance';
 
 export interface DynamicCaddieHelper {
   generateResponse: (
