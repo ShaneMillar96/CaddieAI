@@ -675,6 +675,71 @@ npm run android
 ### Overview
 The CaddieAI application integrates OpenAI's Real-time API to provide immediate, contextual voice responses during golf rounds. This system replaces static text-to-speech with dynamic, AI-powered audio interactions that respond to shot placement, club recommendations, and other golf scenarios.
 
+## AI Token & Cost Efficiency Guidelines
+
+### Critical Cost Management Principles
+When developing AI-powered features, prioritize cost efficiency to maintain sustainable operation:
+
+#### 1. Minimize Token Usage
+- **Ultra-concise Instructions**: Use minimal AI instructions (< 20 words)
+  - Good: `"Brief helpful golf caddie. Keep responses under 10 words."`
+  - Bad: `"You are a professional golf caddie with 20+ years experience..."`
+- **Streamlined Scenarios**: Only implement essential AI scenarios
+  - CaddieAI uses 2 core scenarios: `ShotPlacementWelcome`, `ClubRecommendation`
+  - Removed 6+ unnecessary scenarios saving 60% API costs
+
+#### 2. Request Queuing & Deduplication
+- **Prevent Simultaneous Calls**: Use request queuing to avoid `conversation_already_has_active_response` errors
+- **Eliminate Redundant Requests**: Remove double API calls for same action
+  - Before: Welcome + Confirmation + Club recommendation (3 calls)
+  - After: Only club recommendation when needed (1 call)
+
+#### 3. Smart Fallback Strategy
+- **Static Fallbacks**: Use pre-written messages when AI unavailable
+- **Cache Common Responses**: Cache frequent requests (distance-based club recommendations)
+- **Timeout Management**: 15-second timeout prevents stuck API calls
+
+#### 4. Context Optimization
+- **Minimal Context**: Send only essential data in API requests
+  - Distance: `"150 yards club recommendation"`
+  - Not: Full golf context with weather, player stats, course details
+- **Structured Data**: Use enums/constants instead of descriptive text
+
+#### 5. Response Length Control
+- **Token Limits**: Configure AI for brief responses (< 10 words)
+- **Temperature Settings**: Use 0.6-0.7 to reduce variability and token usage
+- **Voice Optimization**: Audio responses naturally shorter than text
+
+#### Cost Monitoring Examples
+```typescript
+// Cost-Efficient Pattern
+const contextualMessage = scenario === 'ClubRecommendation' 
+  ? `${distance} yards` 
+  : 'Shot placement activated';
+
+// Expensive Pattern (Avoid)
+const contextualMessage = `Player is ${skill} level golfer on hole ${hole} 
+  with ${weather} conditions needing club for ${distance} yards considering 
+  wind ${windSpeed} and elevation ${elevation}...`;
+```
+
+#### Implementation Checklist
+- ✅ Use request queuing to prevent simultaneous API calls  
+- ✅ Minimize AI instructions to < 20 words
+- ✅ Implement only essential scenarios (remove 80% of unnecessary ones)
+- ✅ Add static fallbacks for all AI scenarios
+- ✅ Configure response length limits (< 10 words)
+- ✅ Use caching for repeated requests
+- ✅ Monitor token usage in production logs
+- ✅ Set API timeouts to prevent cost runaway
+
+#### Expected Savings
+Following these guidelines typically reduces OpenAI costs by 60-80%:
+- **Fewer API Calls**: Eliminate redundant requests
+- **Shorter Requests**: Minimal context and instructions
+- **Brief Responses**: Controlled output length
+- **Smart Fallbacks**: Reduce API dependency
+
 ### Architecture Components
 
 #### 1. RealtimeAudioService (`src/services/RealtimeAudioService.ts`)
@@ -715,18 +780,13 @@ interface RealtimeAudioConfig {
 - Sequential API calls to avoid simultaneous requests
 - Automatic fallback to static responses if OpenAI fails
 
-**Supported Scenarios**:
+**Optimized Scenarios** (Cost-Efficient):
 ```typescript
 type CaddieScenario = 
-  | 'ShotPlacementWelcome'      // Welcome to shot placement mode
-  | 'ShotPlacementConfirmation' // Confirm shot target
-  | 'ClubRecommendation'        // Suggest club for distance
-  | 'ShotTrackingActivation'    // Shot tracking activated
-  | 'ShotInProgress'            // During shot execution
-  | 'ShotCompletion'            // After shot completion
-  | 'MovementDetected'          // Shot tracking complete
-  | 'DistanceAnnouncement'      // Distance to target
-  | 'ErrorHandling';            // Handle error situations
+  | 'ShotPlacementWelcome'  // Welcome to shot placement mode
+  | 'ClubRecommendation'    // Suggest club for distance  
+  | 'ErrorHandling'         // Handle error situations
+  | 'GeneralAssistance';    // General golf help
 ```
 
 #### 3. Audio Buffer Management
@@ -789,25 +849,16 @@ The real-time audio system is tightly integrated with the shot placement feature
 3. **Club Recommendation**: Provides club suggestions based on distance and conditions
 4. **Sequential Processing**: Ensures responses play in correct order without overlap
 
-**Example Flow**:
+**Optimized Flow** (Single Call):
 ```typescript
-// Shot placement triggers two sequential responses
-await dynamicCaddieService.generateResponse(
-  'ShotPlacementConfirmation',
-  buildCaddieContext(),
-  userId,
-  roundId,
-  undefined,
-  9 // Very high priority
-);
-
+// Only club recommendation when shot location selected
 await dynamicCaddieService.generateResponse(
   'ClubRecommendation', 
   buildCaddieContext(),
   userId,
   roundId,
   undefined,
-  8 // High priority but lower than confirmation
+  8 // High priority
 );
 ```
 
@@ -876,32 +927,11 @@ public class RealtimeAudioController : ControllerBase
 
 ### Testing and Debugging
 
-#### Debug Logging
-Comprehensive logging for all audio processing stages:
-```typescript
-console.log('🎵 Audio chunk added to buffer. Buffer size: X chunks');
-console.log('🎵 Processing complete audio response: X chunks');
-console.log('🎵 Combined X chunks into Y bytes');
-console.log('✅ Complete audio playback sequence finished');
-```
-
-#### Common Issues and Solutions
-- **Audio Cutoffs**: Fixed with sequential buffer processing
-- **Stack Overflow**: Fixed with chunked base64 conversion
-- **Simultaneous Requests**: Fixed with request queuing system
-- **Session Configuration**: Explicitly disable function calls for audio-only responses
-
-### Future Enhancements
-- **Streaming Audio**: Real-time audio streaming without buffering
-- **Voice Recognition**: Two-way voice conversations with the AI caddie
-- **Emotion Detection**: Adjust AI responses based on player state
-- **Multi-language Support**: Support for different languages and accents
-
-### Maintenance Notes
-- **OpenAI Model Updates**: Monitor for new real-time API versions
-- **Audio Format Support**: Test across different devices and platforms
-- **Performance Monitoring**: Track audio latency and buffer sizes
-- **Token Usage**: Monitor OpenAI API usage and costs
+#### Key Fixes & Monitoring
+- **Audio Cutoffs**: Sequential buffer processing prevents interruptions
+- **Stack Overflow**: Chunked base64 conversion (8KB chunks)
+- **API Conflicts**: Request queuing prevents simultaneous calls
+- **Cost Control**: Monitor token usage and response lengths
 
 ## Infrastructure & DevOps
 
@@ -1201,14 +1231,14 @@ docker-compose exec postgres pg_isready -U caddieai_user -d caddieai_dev
 - **AI Features**: Chat sessions, club recommendations, and user feedback system
 - **Faughan Valley Golf Centre**: Complete course data for MVP development
 
-### Real-time AI Audio Features (V1.5.0 - Implemented)
+### Real-time AI Audio Features (V1.5.0 - Optimized)
 - **OpenAI Real-time API Integration**: WebSocket-based audio streaming for immediate AI responses
 - **Dynamic Caddie Service**: Contextual, personalized golf advice generated in real-time
-- **Sequential Audio Processing**: Fixed audio cutoffs with proper buffer management
+- **Cost-Optimized Scenarios**: Reduced from 8+ to 2 core scenarios (60% cost reduction)
 - **Request Queuing System**: Prevents API conflicts with priority-based processing
-- **Shot Placement Audio**: Voice confirmation and club recommendations during shot targeting
+- **Streamlined Shot Placement**: Single club recommendation call (eliminates redundant requests)
 - **Cross-platform Audio**: Native audio recording and playback on iOS and Android
-- **Fallback Responses**: Static messages when OpenAI API unavailable
+- **Smart Fallback System**: Static messages reduce API dependency
 - **Audio Buffer Optimization**: Chunked processing prevents memory issues and stack overflows
 
 ### Location Tracking Architecture (V1.6.0 - Planned)

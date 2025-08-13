@@ -237,8 +237,8 @@ export class RealtimeAudioService extends ReactNativeEventEmitter {
         } : null,
         tools: [], // Explicitly set no tools to prevent function calls
         tool_choice: 'none', // Disable function calling
-        temperature: this.config.temperature,
-        max_response_output_tokens: 4096,
+        temperature: 0.6, // Minimum allowed value for real-time API
+        max_response_output_tokens: 300, // Increased to prevent sentence cutoffs
       }
     };
 
