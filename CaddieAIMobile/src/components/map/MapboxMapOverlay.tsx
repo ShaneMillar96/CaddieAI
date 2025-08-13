@@ -33,6 +33,12 @@ export interface MapboxMapOverlayProps {
   onActivateShot?: () => void;
   onCancelShotPlacement?: () => void;
   shotPlacementState?: 'inactive' | 'placement' | 'in_progress' | 'completed';
+  // Pin location props
+  pinLocation?: { latitude: number; longitude: number } | null;
+  isPinPlacementMode?: boolean;
+  pinDistances?: { userToPin: any; shotToPin: any };
+  onTogglePinPlacement?: () => void;
+  onClearPinLocation?: () => void;
 }
 
 /**
@@ -68,6 +74,12 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
   onActivateShot,
   onCancelShotPlacement,
   shotPlacementState = 'inactive',
+  // Pin location props
+  pinLocation,
+  isPinPlacementMode = false,
+  pinDistances,
+  onTogglePinPlacement,
+  onClearPinLocation,
 }) => {
   
   // Get enhanced GPS status for Mapbox
@@ -242,10 +254,16 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
         </View>
       )}
 
-      {/* Minimal Distance Information - Hole19 Style */}
-      {currentLocation && !shotPlacementMode && (
+      {/* Minimal Distance Information - Hole19 Style with Pin Support */}
+      {currentLocation && !shotPlacementMode && !isPinPlacementMode && (
         <View style={styles.minimalistDistanceInfo}>
-          <Text style={styles.distanceInfoText}>📍 {calculateDistanceToPin()}</Text>
+          {pinLocation && pinDistances?.userToPin ? (
+            <Text style={styles.distanceInfoText}>
+              🚩 {Math.round(pinDistances.userToPin.distanceYards)}y to pin
+            </Text>
+          ) : (
+            <Text style={styles.distanceInfoText}>📍 {calculateDistanceToPin()}</Text>
+          )}
         </View>
       )}
 
@@ -281,6 +299,23 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
           </TouchableOpacity>
         )}
 
+        {/* Pin Location Mode Toggle */}
+        {onTogglePinPlacement && (
+          <TouchableOpacity
+            style={[
+              styles.controlButton,
+              isPinPlacementMode && styles.controlButtonActive
+            ]}
+            onPress={onTogglePinPlacement}
+            activeOpacity={0.8}
+          >
+            <Icon name="flag" size={24} color={isPinPlacementMode ? "#ffffff" : "#4a7c59"} />
+            <Text style={[
+              styles.controlButtonLabel,
+              isPinPlacementMode && styles.controlButtonLabelActive
+            ]}>Pin</Text>
+          </TouchableOpacity>
+        )}
 
       </View>
 
@@ -312,11 +347,21 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* Minimal Instructions - Only show in shot placement mode */}
+      {/* Minimal Instructions - Only show in active placement modes */}
       {currentLocation && shotPlacementMode && (
         <View style={styles.instructionsContainer}>
           <Text style={styles.instructionsText}>
             Tap to place shot target
+          </Text>
+        </View>
+      )}
+
+      {/* Pin Placement Mode Instructions */}
+      {isPinPlacementMode && (
+        <View style={styles.instructionsContainer}>
+          <Icon name="flag" size={16} color="#ffffff" />
+          <Text style={styles.instructionsText}>
+            Tap to place pin location
           </Text>
         </View>
       )}

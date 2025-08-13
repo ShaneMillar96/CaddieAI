@@ -62,6 +62,12 @@ export interface MapOverlayProps {
   onRefreshGPS?: () => void;
   roundStatus?: string;
   gpsAccuracy?: number;
+  // Pin location props
+  pinLocation?: { latitude: number; longitude: number } | null;
+  isPinPlacementMode?: boolean;
+  pinDistances?: { userToPin: any; shotToPin: any };
+  onTogglePinPlacement?: () => void;
+  onClearPinLocation?: () => void;
 }
 
 // Enhanced GPS Status Component
@@ -388,6 +394,12 @@ const MapOverlay: React.FC<MapOverlayProps> = ({
   onRefreshGPS,
   roundStatus,
   gpsAccuracy,
+  // Pin location props
+  pinLocation,
+  isPinPlacementMode = false,
+  pinDistances,
+  onTogglePinPlacement,
+  onClearPinLocation,
 }) => {
   const [showShotHistory, setShowShotHistory] = useState(false);
   const [showLocationInfo, setShowLocationInfo] = useState(false);
@@ -467,6 +479,42 @@ const MapOverlay: React.FC<MapOverlayProps> = ({
         </View>
       )}
 
+      {/* Pin Distance Badge */}
+      {pinLocation && pinDistances?.userToPin && !targetDistance && (
+        <View style={styles.pinDistanceBadgeContainer}>
+          <View style={styles.pinDistanceBadge}>
+            <View style={styles.distanceMainContainer}>
+              <Icon name="flag" size={18} color="#fff" />
+              <Text style={styles.pinDistanceNumber}>
+                {Math.round(pinDistances.userToPin.distanceYards)}
+              </Text>
+              <Text style={styles.distanceUnit}>yds</Text>
+            </View>
+            <Text style={styles.pinDistanceText}>to pin</Text>
+          </View>
+          {onClearPinLocation && (
+            <TouchableOpacity
+              style={styles.clearPinButton}
+              onPress={onClearPinLocation}
+              activeOpacity={0.8}
+            >
+              <Icon name="close" size={14} color="#fff" />
+              <Text style={styles.clearPinText}>Clear Pin</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* Pin Placement Mode Indicator */}
+      {isPinPlacementMode && (
+        <View style={styles.shotModeContainer}>
+          <View style={styles.shotModeIndicator}>
+            <Icon name="flag" size={20} color="#fff" />
+            <Text style={styles.shotModeText}>Tap map to place pin location</Text>
+          </View>
+        </View>
+      )}
+
       {/* Shot Placement Mode Indicator with GPS Controls */}
       {isPlacingShotMode && (
         <View style={styles.shotModeContainer}>
@@ -530,6 +578,22 @@ const MapOverlay: React.FC<MapOverlayProps> = ({
             name="place" 
             size={24} 
             color={isPlacingShotMode ? "#fff" : "#4a7c59"} 
+          />
+        </TouchableOpacity>
+
+        {/* Pin Location Toggle */}
+        <TouchableOpacity
+          style={[
+            styles.mapControlButton,
+            isPinPlacementMode && styles.mapControlButtonActive
+          ]}
+          onPress={onTogglePinPlacement}
+          activeOpacity={0.8}
+        >
+          <Icon 
+            name="flag" 
+            size={24} 
+            color={isPinPlacementMode ? "#fff" : "#4a7c59"} 
           />
         </TouchableOpacity>
 
@@ -852,6 +916,64 @@ const styles = StyleSheet.create({
   clearTargetText: {
     color: '#fff',
     fontSize: 13,
+    fontWeight: '600',
+  },
+
+  // Pin Distance Badge Styles
+  pinDistanceBadgeContainer: {
+    position: 'absolute',
+    top: height * 0.25, // Below main distance badge
+    right: 20,
+    alignItems: 'center',
+    pointerEvents: 'none',
+  },
+  pinDistanceBadge: {
+    backgroundColor: 'rgba(76, 175, 80, 0.95)', // Green for pin
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+  },
+  pinDistanceNumber: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#ffffff',
+    marginHorizontal: 6,
+  },
+  pinDistanceText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#ffffff',
+    opacity: 0.9,
+    marginTop: 2,
+  },
+  clearPinButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(220, 53, 69, 0.9)',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginTop: 8,
+    gap: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  clearPinText: {
+    color: '#fff',
+    fontSize: 11,
     fontWeight: '600',
   },
 

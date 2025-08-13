@@ -63,6 +63,7 @@ import {
 import { CaddieContext } from '../../services/TextToSpeechService';
 import { dynamicCaddieService } from '../../services/DynamicCaddieService';
 import voiceAIApiService from '../../services/voiceAIApi';
+import { pinDistanceCalculator, PinDistances, Coordinate } from '../../utils/PinDistanceCalculator';
 // RealtimeAudioServiceV2 is now managed by VoiceChatModalV2 component
 
 // Navigation types
@@ -131,6 +132,11 @@ export const ActiveRoundScreen: React.FC = () => {
   
   // Voice chat modal state
   const [isVoiceChatModalVisible, setIsVoiceChatModalVisible] = useState(false);
+  
+  // Pin location state
+  const [pinLocation, setPinLocation] = useState<Coordinate | null>(null);
+  const [isPinPlacementMode, setIsPinPlacementMode] = useState(false);
+  const [pinDistances, setPinDistances] = useState<PinDistances>({ userToPin: null, shotToPin: null });
   
   
   // Convert Redux currentLocation to SimpleLocationData format with stable reference
@@ -471,6 +477,31 @@ export const ActiveRoundScreen: React.FC = () => {
     return 'Driver';
   }, []);
 
+  // Calculate pin distances when location, shot location, or pin location changes
+  useEffect(() => {
+    if (pinLocation) {
+      const currentCoord = simpleLocationData ? {
+        latitude: simpleLocationData.latitude,
+        longitude: simpleLocationData.longitude
+      } : null;
+      
+      const shotCoord = targetLocation ? {
+        latitude: targetLocation.latitude,
+        longitude: targetLocation.longitude
+      } : null;
+      
+      const newDistances = pinDistanceCalculator.calculatePinDistances(
+        currentCoord,
+        shotCoord,
+        pinLocation
+      );
+      
+      setPinDistances(newDistances);
+    } else {
+      setPinDistances({ userToPin: null, shotToPin: null });
+    }
+  }, [pinLocation, simpleLocationData, targetLocation]);
+
   // Helper function to determine shot type based on distance
   const determineShotType = useCallback((distanceYards: number): string => {
     if (distanceYards < 50) return 'short-game';
@@ -613,7 +644,70 @@ export const ActiveRoundScreen: React.FC = () => {
     setIsVoiceChatModalVisible(prev => !prev);
   }, []);
 
-  // Handle map press for shot placement only
+  // Handle pin placement mode toggle
+  const handleTogglePinPlacementMode = useCallback(() => {
+    setIsPinPlacementMode(prev => {
+      const newMode = !prev;
+      console.log(`🚩 ActiveRoundScreen: Pin placement mode ${newMode ? 'enabled' : 'disabled'}`);
+      
+      // If disabling, clear any existing pin placement mode
+      if (!newMode) {
+        // Keep the pin location but exit placement mode
+        console.log('🚩 ActiveRoundScreen: Exiting pin placement mode');
+      }
+      
+      return newMode;
+    });
+  }, []);
+
+  // Handle pin location placement
+  const handlePinLocationPress = useCallback((coordinate: { latitude: number; longitude: number }) => {
+    if (!isPinPlacementMode) return;
+    
+    const newPinLocation: Coordinate = {
+      latitude: coordinate.latitude,
+      longitude: coordinate.longitude
+    };
+    
+    // Validate pin location if user location is available
+    if (simpleLocationData) {
+      const isValid = pinDistanceCalculator.isValidPinLocation(
+        newPinLocation,
+        simpleLocationData,
+        600 // Max 600 yards from user
+      );
+      
+      if (!isValid) {
+        Alert.alert(
+          'Invalid Pin Location',
+          'Pin location should be between 10-600 yards from your current position.'
+        );
+        return;
+      }
+    }
+    
+    setPinLocation(newPinLocation);
+    setIsPinPlacementMode(false);
+    
+    console.log('🚩 ActiveRoundScreen: Pin location set:', newPinLocation);
+    
+    // Provide feedback to user
+    Alert.alert(
+      'Pin Location Set',
+      `Pin placed ${pinDistances.userToPin ? 
+        `${pinDistances.userToPin.distanceYards} yards away` : 
+        'on the map'}`
+    );
+  }, [isPinPlacementMode, simpleLocationData, pinDistances.userToPin]);
+
+  // Clear pin location
+  const handleClearPinLocation = useCallback(() => {
+    setPinLocation(null);
+    setIsPinPlacementMode(false);
+    console.log('🚩 ActiveRoundScreen: Pin location cleared');
+  }, []);
+
+  // Handle map press for shot placement and pin placement
   const handleMapPress = useCallback((coordinate: { latitude: number; longitude: number }) => {
     if (!currentLocation) {
       Alert.alert(
@@ -624,12 +718,20 @@ export const ActiveRoundScreen: React.FC = () => {
       return;
     }
 
-    // Only handle map press in shot placement mode
+    // Handle pin location placement first (higher priority)
+    if (isPinPlacementMode) {
+      handlePinLocationPress(coordinate);
+      return;
+    }
+
+    // Handle shot placement mode
     if (shotPlacementModeEnabled && isPlacingShot) {
       handleShotPlacementPress(coordinate);
+      return;
     }
-    // Do nothing if shot placement mode is not active
-  }, [currentLocation, shotPlacementModeEnabled, isPlacingShot]);
+    
+    // Default: do nothing if no mode is active
+  }, [currentLocation, isPinPlacementMode, shotPlacementModeEnabled, isPlacingShot, handlePinLocationPress]);
 
   // Handle shot placement press
   const handleShotPlacementPress = useCallback(async (coordinate: { latitude: number; longitude: number }) => {
@@ -836,6 +938,8 @@ export const ActiveRoundScreen: React.FC = () => {
           showDistanceOverlay={Boolean(targetLocation)}
           distanceToPin={distances.toPin}
           distanceFromCurrent={distances.fromCurrent}
+          // Pin location props
+          pinLocation={pinLocation}
         />
       </MapErrorBoundary>
       )}
@@ -865,6 +969,12 @@ export const ActiveRoundScreen: React.FC = () => {
         shotPlacementState={serviceState === ServiceShotPlacementState.INACTIVE ? 'inactive' : 
                           serviceState === ServiceShotPlacementState.SHOT_PLACEMENT ? 'placement' :
                           serviceState === ServiceShotPlacementState.SHOT_IN_PROGRESS ? 'in_progress' : 'completed'}
+        // Pin location props
+        pinLocation={pinLocation}
+        isPinPlacementMode={isPinPlacementMode}
+        pinDistances={pinDistances}
+        onTogglePinPlacement={handleTogglePinPlacementMode}
+        onClearPinLocation={handleClearPinLocation}
       />
 
       {/* Premium Round Controls Modal */}
