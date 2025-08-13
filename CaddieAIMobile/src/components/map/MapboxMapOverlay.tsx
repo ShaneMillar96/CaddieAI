@@ -234,13 +234,11 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* Minimal Shot Placement Indicator - Hole19 Style */}
-      {shotPlacementMode && shotPlacementDistance > 0 && (
+      {/* Minimal Shot Placement Indicator - Show only club recommendation */}
+      {shotPlacementMode && clubRecommendation && (
         <View style={styles.minimalistShotInfo}>
-          <Text style={styles.shotDistanceText}>{shotPlacementDistance}y</Text>
-          {clubRecommendation && (
-            <Text style={styles.shotClubText}>{clubRecommendation}</Text>
-          )}
+          <Icon name="golf-course" size={14} color="#ffffff" />
+          <Text style={styles.shotClubText}>{clubRecommendation}</Text>
         </View>
       )}
 

@@ -11,6 +11,7 @@ import Mapbox, {
   Camera, 
   PointAnnotation, 
   CircleLayer,
+  LineLayer,
   ShapeSource,
 } from '@rnmapbox/maps';
 
@@ -295,27 +296,6 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
           </PointAnnotation>
         )}
 
-        {/* Shot placement target marker */}
-        {shotPlacementLocation && (
-          <PointAnnotation
-            id="shotPlacementTarget"
-            coordinate={[shotPlacementLocation.longitude, shotPlacementLocation.latitude]}
-          >
-            <View style={styles.shotPlacementMarker}>
-              <View style={styles.shotPlacementTarget}>
-                <View style={styles.shotPlacementCenter} />
-              </View>
-              {showDistanceOverlay && (
-                <View style={styles.distanceLabel}>
-                  <Text style={styles.distanceLabelText}>
-                    {distanceFromCurrent}y
-                  </Text>
-                </View>
-              )}
-            </View>
-          </PointAnnotation>
-        )}
-
         {/* Distance line between current location and shot placement */}
         {shotPlacementLocation && currentLocation && shotPlacementMode && (
           <ShapeSource
@@ -332,15 +312,70 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
               },
             }}
           >
-            <CircleLayer
-              id="shotPlacementLineCircle"
+            <LineLayer
+              id="shotPlacementLineLayer"
               style={{
-                circleRadius: 2,
-                circleColor: '#FF6B35',
-                circleOpacity: 0.8,
+                lineColor: '#ffffff',
+                lineWidth: 2,
+                lineOpacity: 0.9,
               }}
             />
           </ShapeSource>
+        )}
+
+        {/* Shot placement target marker - cleaner circle design */}
+        {shotPlacementLocation && (
+          <>
+            {/* Target circle */}
+            <ShapeSource
+              id="shotPlacementTargetCircle"
+              shape={{
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                  type: 'Point',
+                  coordinates: [shotPlacementLocation.longitude, shotPlacementLocation.latitude],
+                },
+              }}
+            >
+              <CircleLayer
+                id="targetCircleOuter"
+                style={{
+                  circleRadius: 12,
+                  circleColor: '#ffffff',
+                  circleOpacity: 0.9,
+                  circleStrokeColor: '#000000',
+                  circleStrokeWidth: 1,
+                  circleStrokeOpacity: 0.3,
+                }}
+              />
+              <CircleLayer
+                id="targetCircleInner"
+                style={{
+                  circleRadius: 4,
+                  circleColor: '#FF6B35',
+                  circleOpacity: 1,
+                }}
+              />
+            </ShapeSource>
+
+            {/* Distance label along the line */}
+            {showDistanceOverlay && distanceFromCurrent > 0 && (
+              <PointAnnotation
+                id="shotPlacementDistance"
+                coordinate={[
+                  (shotPlacementLocation.longitude + currentLocation.longitude) / 2,
+                  (shotPlacementLocation.latitude + currentLocation.latitude) / 2,
+                ]}
+              >
+                <View style={styles.distanceLabelAlongLine}>
+                  <Text style={styles.distanceLabelText}>
+                    {distanceFromCurrent}y
+                  </Text>
+                </View>
+              </PointAnnotation>
+            )}
+          </>
         )}
       </MapView>
 
@@ -535,9 +570,20 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 3,
   },
+  distanceLabelAlongLine: {
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
   distanceLabelText: {
     color: '#ffffff',
-    fontSize: 10,
+    fontSize: 14,
     fontWeight: '700',
   },
 });
