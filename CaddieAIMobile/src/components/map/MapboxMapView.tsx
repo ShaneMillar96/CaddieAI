@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import Mapbox, { 
   MapView, 
   Camera, 
@@ -17,6 +18,7 @@ import Mapbox, {
 
 import { SimpleLocationData } from '../../services/SimpleLocationService';
 import { validateMapboxToken } from '../../utils/mapboxConfig';
+import { pinDistanceCalculator } from '../../utils/PinDistanceCalculator';
 
 
 
@@ -287,11 +289,13 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
             id="pinLocation"
             coordinate={[pinLocation.longitude, pinLocation.latitude]}
           >
-            <View style={styles.pinMarker}>
-              <View style={styles.pinFlag}>
-                <Text style={styles.pinText}>PIN</Text>
-              </View>
-              <View style={styles.pinPole} />
+            <View style={styles.pinIconContainer}>
+              <FontAwesome 
+                name="flag" 
+                size={32} 
+                color="#FF1744" 
+                style={styles.pinFlagIcon}
+              />
             </View>
           </PointAnnotation>
         )}
@@ -321,6 +325,57 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
               }}
             />
           </ShapeSource>
+        )}
+
+        {/* Line from shot placement to pin location */}
+        {shotPlacementLocation && pinLocation && (
+          <ShapeSource
+            id="shotToPinLine"
+            shape={{
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'LineString',
+                coordinates: [
+                  [shotPlacementLocation.longitude, shotPlacementLocation.latitude],
+                  [pinLocation.longitude, pinLocation.latitude],
+                ],
+              },
+            }}
+          >
+            <LineLayer
+              id="shotToPinLineLayer"
+              style={{
+                lineColor: '#4CAF50', // Green line to pin
+                lineWidth: 3,
+                lineDasharray: [2, 2], // Dashed line to distinguish from user-shot line
+                lineOpacity: 0.8,
+              }}
+            />
+          </ShapeSource>
+        )}
+
+        {/* Shot-to-pin distance label */}
+        {shotPlacementLocation && pinLocation && (
+          <PointAnnotation
+            id="shotToPinDistance"
+            coordinate={[
+              (shotPlacementLocation.longitude + pinLocation.longitude) / 2,
+              (shotPlacementLocation.latitude + pinLocation.latitude) / 2
+            ]}
+          >
+            <View style={styles.distanceLabelAlongLine}>
+              <Text style={styles.distanceLabelText}>
+                {(() => {
+                  const shotToPinDistance = pinDistanceCalculator.calculateDistance(
+                    { latitude: shotPlacementLocation.latitude, longitude: shotPlacementLocation.longitude },
+                    { latitude: pinLocation.latitude, longitude: pinLocation.longitude }
+                  );
+                  return `${shotToPinDistance.distanceYards}y`;
+                })()}
+              </Text>
+            </View>
+          </PointAnnotation>
         )}
 
         {/* Shot placement target marker - cleaner circle design */}
@@ -526,30 +581,26 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Pin marker styles (green flag)
-  pinMarker: {
+  // Pin icon container using FontAwesome flag
+  pinIconContainer: {
     alignItems: 'center',
-  },
-  pinFlag: {
-    backgroundColor: '#28a745',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    justifyContent: 'center',
+    width: 40,
+    height: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)', // White background for contrast
+    borderRadius: 20, // Circular background
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
-    shadowRadius: 2,
-    elevation: 3,
+    shadowRadius: 4,
+    elevation: 6,
+    borderWidth: 2,
+    borderColor: '#FF1744', // Red border to match flag
   },
-  pinText: {
-    color: '#ffffff',
-    fontSize: 8,
-    fontWeight: '700',
-  },
-  pinPole: {
-    width: 2,
-    height: 12,
-    backgroundColor: '#28a745',
+  pinFlagIcon: {
+    textShadowColor: '#000',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
 
   // Shot placement marker styles (crosshair target)
