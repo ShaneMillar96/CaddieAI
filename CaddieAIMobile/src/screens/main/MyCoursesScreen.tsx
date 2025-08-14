@@ -9,7 +9,7 @@ import {
   StatusBar,
   TouchableOpacity,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useDispatch, useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -17,6 +17,7 @@ import { AppDispatch, RootState } from '../../store';
 import { 
   fetchUserCourses,
   checkProximityToUserCourses,
+  detectCurrentCourse,
   clearError 
 } from '../../store/slices/userCoursesSlice';
 import { 
@@ -25,6 +26,7 @@ import {
   completeRound 
 } from '../../store/slices/roundSlice';
 import { CourseCard } from '../../components/common/CourseCard';
+import { DetectCourseModal } from '../../components/common/DetectCourseModal';
 import { LoadingSpinner } from '../../components/auth/LoadingSpinner';
 import { ErrorMessage } from '../../components/auth/ErrorMessage';
 import { UserCourse } from '../../types/golf';
@@ -39,6 +41,8 @@ export const MyCoursesScreen: React.FC = () => {
   const {
     userCourses,
     isLoading,
+    isDetecting,
+    showDetectModal,
     error,
   } = useSelector((state: RootState) => state.userCourses);
 
@@ -46,12 +50,14 @@ export const MyCoursesScreen: React.FC = () => {
   const [userLocation, setUserLocation] = useState<LocationData | null>(null);
   const [proximityStatus, setProximityStatus] = useState<{ [courseId: number]: boolean }>({});
 
-  // Load user courses on mount
-  useEffect(() => {
-    if (userCourses.length === 0 && !isLoading) {
+  // Load user courses when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🏠 MyCoursesScreen: Screen focused - userCourses.length:', userCourses.length, 'isLoading:', isLoading);
+      console.log('📡 MyCoursesScreen: Dispatching fetchUserCourses action on focus');
       dispatch(fetchUserCourses());
-    }
-  }, [dispatch, userCourses.length, isLoading]);
+    }, [dispatch])
+  );
 
   // Get user's location on mount
   useEffect(() => {
@@ -113,6 +119,7 @@ export const MyCoursesScreen: React.FC = () => {
     }
     
     // Refresh user courses
+    console.log('🔄 MyCoursesScreen: Pull-to-refresh dispatching fetchUserCourses');
     dispatch(fetchUserCourses())
       .finally(() => setRefreshing(false));
   }, [dispatch]);
@@ -250,6 +257,50 @@ export const MyCoursesScreen: React.FC = () => {
     );
   }, []);
 
+  // Handle detect course
+  const handleDetectCourse = useCallback(async () => {
+    if (!userLocation) {
+      // Try to get current location
+      try {
+        const hasPermission = await golfLocationService.requestLocationPermissions();
+        if (hasPermission) {
+          const location = await golfLocationService.getCurrentPosition();
+          if (location) {
+            setUserLocation(location);
+            dispatch(detectCurrentCourse({
+              latitude: location.latitude,
+              longitude: location.longitude,
+            }));
+          } else {
+            Alert.alert(
+              'Location Required',
+              'Unable to get your current location. Please ensure location services are enabled and try again.',
+              [{ text: 'OK' }]
+            );
+          }
+        } else {
+          Alert.alert(
+            'Location Permission Required',
+            'Location permission is required to detect nearby golf courses.',
+            [{ text: 'OK' }]
+          );
+        }
+      } catch (error) {
+        Alert.alert(
+          'Location Error',
+          'Failed to get your current location. Please try again.',
+          [{ text: 'OK' }]
+        );
+      }
+    } else {
+      // Use existing location
+      dispatch(detectCurrentCourse({
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+      }));
+    }
+  }, [dispatch, userLocation]);
+
   // Handle error retry
   const handleRetry = useCallback(() => {
     dispatch(clearError());
@@ -359,15 +410,28 @@ export const MyCoursesScreen: React.FC = () => {
         <Icon name="golf-course" size={80} color="#c3e6c3" />
         <Text style={styles.emptyTitle}>No courses yet</Text>
         <Text style={styles.emptyDescription}>
-          Visit a golf course to add it to your collection. When you arrive at a course, 
-          you'll see a prompt to add it here.
+          When you arrive at a golf course, use the "Detect Course" button to automatically 
+          add it to your collection.
         </Text>
         <TouchableOpacity
-          style={styles.exploreButton}
-          onPress={() => navigation.navigate('CoursesList' as never)}
+          style={[styles.exploreButton, isDetecting && styles.exploreButtonDisabled]}
+          onPress={handleDetectCourse}
+          disabled={isDetecting}
           activeOpacity={0.8}
         >
-          <Text style={styles.exploreButtonText}>Explore Courses</Text>
+          {isDetecting ? (
+            <View style={styles.buttonContent}>
+              <LoadingSpinner size="small" color="#fff" />
+              <Text style={[styles.exploreButtonText, { marginLeft: 8 }]}>
+                Detecting...
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.buttonContent}>
+              <Icon name="search" size={20} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.exploreButtonText}>Detect Course</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
     );
@@ -391,10 +455,29 @@ export const MyCoursesScreen: React.FC = () => {
       
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Courses</Text>
-        <Text style={styles.headerSubtitle}>
-          {userCourses.length} course{userCourses.length !== 1 ? 's' : ''}
-        </Text>
+        <View style={styles.headerContent}>
+          <View style={styles.headerText}>
+            <Text style={styles.headerTitle}>My Courses</Text>
+            <Text style={styles.headerSubtitle}>
+              {userCourses.length} course{userCourses.length !== 1 ? 's' : ''}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.detectButton, isDetecting && styles.detectButtonDisabled]}
+            onPress={handleDetectCourse}
+            disabled={isDetecting}
+            activeOpacity={0.8}
+          >
+            {isDetecting ? (
+              <LoadingSpinner size="small" color="#fff" />
+            ) : (
+              <>
+                <Icon name="search" size={20} color="#fff" />
+                <Text style={styles.detectButtonText}>Detect</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Course List */}
@@ -418,6 +501,9 @@ export const MyCoursesScreen: React.FC = () => {
           contentContainerStyle={userCourses.length === 0 ? styles.emptyContainer : styles.listContainer}
         />
       )}
+      
+      {/* Detect Course Modal */}
+      <DetectCourseModal visible={showDetectModal} />
     </View>
   );
 };
@@ -434,6 +520,14 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#e1e1e1',
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerText: {
+    flex: 1,
   },
   headerTitle: {
     fontSize: 28,
@@ -573,16 +667,40 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: 32,
   },
+  detectButton: {
+    backgroundColor: '#2c5530',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    gap: 4,
+  },
+  detectButtonDisabled: {
+    backgroundColor: '#a0a0a0',
+  },
+  detectButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   exploreButton: {
     backgroundColor: '#2c5530',
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
   },
+  exploreButtonDisabled: {
+    backgroundColor: '#a0a0a0',
+  },
   exploreButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });
 

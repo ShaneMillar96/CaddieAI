@@ -57,7 +57,7 @@ public class GolfContextService : IGolfContextService
                     var round = await _roundRepository.GetByIdAsync(roundId.Value);
                     if (round?.CourseId != null)
                     {
-                        context.Course = await GetCourseContextAsync(round.CourseId);
+                        context.Course = await GetCourseContextAsync(round.CourseId.Value);
                     }
                 }
             }

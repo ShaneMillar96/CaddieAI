@@ -23,12 +23,20 @@ class UserCoursesApiService {
     this.api.interceptors.request.use(
       async (config) => {
         const token = await TokenStorage.getAccessToken();
+        console.log('🔐 UserCoursesApi: Request interceptor - token available:', !!token);
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
+          console.log('🎫 UserCoursesApi: Added Bearer token to request headers');
+        } else {
+          console.warn('⚠️ UserCoursesApi: No auth token available for request');
         }
+        console.log('📤 UserCoursesApi: Making request to:', config.url, 'with method:', config.method);
         return config;
       },
-      (error) => Promise.reject(error)
+      (error) => {
+        console.error('💥 UserCoursesApi: Request interceptor error:', error);
+        return Promise.reject(error);
+      }
     );
 
     // Response interceptor for error handling
@@ -46,15 +54,40 @@ class UserCoursesApiService {
 
   // Get user's saved courses
   async getUserCourses(): Promise<UserCourse[]> {
-    const response: AxiosResponse<ApiResponse<UserCourse[]>> = await this.api.get(
-      '/user/courses'
-    );
+    console.log('🔵 UserCoursesApi: Starting getUserCourses request to:', `${API_BASE_URL}/user/courses`);
     
-    if (response.data.success && response.data.data) {
-      return response.data.data;
+    try {
+      const response: AxiosResponse<ApiResponse<UserCourse[]>> = await this.api.get(
+        '/user/courses'
+      );
+      
+      console.log('✅ UserCoursesApi: getUserCourses response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        success: response.data.success,
+        dataLength: response.data.data?.length || 0,
+        message: response.data.message
+      });
+      
+      if (response.data.success && response.data.data) {
+        console.log('🎯 UserCoursesApi: Returning', response.data.data.length, 'user courses');
+        return response.data.data;
+      }
+      
+      console.warn('❌ UserCoursesApi: API returned unsuccessful response:', response.data);
+      throw new Error(response.data.message || 'Failed to fetch user courses');
+    } catch (error: any) {
+      console.error('💥 UserCoursesApi: Error in getUserCourses:', {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url,
+        method: error.config?.method,
+        headers: error.config?.headers
+      });
+      throw error;
     }
-    
-    throw new Error(response.data.message || 'Failed to fetch user courses');
   }
 
   // Add a new course to user's collection

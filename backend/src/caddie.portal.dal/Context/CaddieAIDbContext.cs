@@ -41,6 +41,8 @@ public partial class CaddieAIDbContext : DbContext
 
     public virtual DbSet<UserStatus> UserStatuses { get; set; }
 
+    public virtual DbSet<UserCourse> UserCourses { get; set; }
+
 
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)

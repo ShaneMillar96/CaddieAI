@@ -17,6 +17,7 @@ const initialState: UserCoursesState = {
   error: null,
   currentDetectedCourse: null,
   showCoursePrompt: false,
+  showDetectModal: false,
   lastDetectionLocation: null,
 };
 
@@ -24,10 +25,14 @@ const initialState: UserCoursesState = {
 export const fetchUserCourses = createAsyncThunk(
   'userCourses/fetchUserCourses',
   async (_, { rejectWithValue }) => {
+    console.log('🚀 Redux: fetchUserCourses action dispatched');
     try {
+      console.log('🔄 Redux: Calling userCoursesApi.getUserCourses()');
       const userCourses = await userCoursesApi.getUserCourses();
+      console.log('✅ Redux: fetchUserCourses successful, received', userCourses.length, 'courses');
       return userCourses;
     } catch (error: any) {
+      console.error('❌ Redux: fetchUserCourses failed:', error.message);
       return rejectWithValue(error.message || 'Failed to fetch user courses');
     }
   }
@@ -53,6 +58,22 @@ export const removeUserCourse = createAsyncThunk(
       return courseId;
     } catch (error: any) {
       return rejectWithValue(error.message || 'Failed to remove course');
+    }
+  }
+);
+
+export const detectCurrentCourse = createAsyncThunk(
+  'userCourses/detectCurrentCourse',
+  async ({ latitude, longitude }: { latitude: number; longitude: number }, { rejectWithValue }) => {
+    try {
+      const detectionService = new CourseDetectionService();
+      const detectedCourse = await detectionService.detectCurrentCourse(latitude, longitude);
+      return {
+        course: detectedCourse,
+        location: { latitude, longitude },
+      };
+    } catch (error: any) {
+      return rejectWithValue(error.message || 'Failed to detect current course');
     }
   }
 );
@@ -140,10 +161,19 @@ const userCoursesSlice = createSlice({
       state.showCoursePrompt = false;
       state.currentDetectedCourse = null;
     },
+    showDetectCourseModal: (state, action: PayloadAction<CourseDetectionResult>) => {
+      state.currentDetectedCourse = action.payload;
+      state.showDetectModal = true;
+    },
+    hideDetectCourseModal: (state) => {
+      state.showDetectModal = false;
+      state.currentDetectedCourse = null;
+    },
     clearDetectedCourses: (state) => {
       state.nearbyDetectedCourses = [];
       state.currentDetectedCourse = null;
       state.showCoursePrompt = false;
+      state.showDetectModal = false;
       state.lastDetectionLocation = null;
     },
     updateCoursePlayCount: (state, action: PayloadAction<{ courseId: number; score?: number }>) => {
@@ -190,6 +220,7 @@ const userCoursesSlice = createSlice({
       state.isAdding = false;
       state.userCourses.push(action.payload);
       state.showCoursePrompt = false;
+      state.showDetectModal = false;
       state.currentDetectedCourse = null;
     });
     builder.addCase(addUserCourse.rejected, (state, action) => {
@@ -202,6 +233,27 @@ const userCoursesSlice = createSlice({
       state.userCourses = state.userCourses.filter(course => course.id !== action.payload);
     });
     builder.addCase(removeUserCourse.rejected, (state, action) => {
+      state.error = action.payload as string;
+    });
+
+    // Detect current course
+    builder.addCase(detectCurrentCourse.pending, (state) => {
+      state.isDetecting = true;
+      state.error = null;
+    });
+    builder.addCase(detectCurrentCourse.fulfilled, (state, action) => {
+      state.isDetecting = false;
+      state.lastDetectionLocation = action.payload.location;
+      
+      if (action.payload.course) {
+        state.currentDetectedCourse = action.payload.course;
+        state.showDetectModal = true;
+      } else {
+        state.error = 'No golf course detected at your current location';
+      }
+    });
+    builder.addCase(detectCurrentCourse.rejected, (state, action) => {
+      state.isDetecting = false;
       state.error = action.payload as string;
     });
 
@@ -244,6 +296,8 @@ export const {
   clearError,
   setCurrentDetectedCourse,
   dismissCoursePrompt,
+  showDetectCourseModal,
+  hideDetectCourseModal,
   clearDetectedCourses,
   updateCoursePlayCount,
   resetUserCoursesState,

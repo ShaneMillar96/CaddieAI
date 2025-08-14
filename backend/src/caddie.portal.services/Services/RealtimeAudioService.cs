@@ -66,7 +66,7 @@ public class RealtimeAudioService : IRealtimeAudioService
                 Metadata = new Dictionary<string, object>
                 {
                     { "roundId", roundId },
-                    { "courseId", round.CourseId },
+                    { "courseId", round.CourseId ?? (object)"null" },
                     { "startedAt", DateTime.UtcNow.ToString("O") }
                 }
             };

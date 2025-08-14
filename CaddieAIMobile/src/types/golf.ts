@@ -451,11 +451,11 @@ export interface CourseDetectionResult {
  * Add course request interface
  */
 export interface AddUserCourseRequest {
-  name: string;
+  courseName: string;
   address?: string;
   city?: string;
   state?: string;
-  country: string;
+  country?: string;
   latitude: number;
   longitude: number;
   totalHoles?: number;
@@ -474,6 +474,7 @@ export interface UserCoursesState {
   error: string | null;
   currentDetectedCourse: CourseDetectionResult | null;
   showCoursePrompt: boolean;
+  showDetectModal: boolean;
   lastDetectionLocation: {
     latitude: number;
     longitude: number;

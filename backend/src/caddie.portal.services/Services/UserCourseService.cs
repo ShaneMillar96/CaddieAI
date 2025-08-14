@@ -38,30 +38,36 @@ public class UserCourseService : IUserCourseService
             }
 
             // Check if course name already exists for user
-            if (await _userCourseRepository.ExistsForUserAsync(userId, model.Name))
+            if (await _userCourseRepository.ExistsForUserAsync(userId, model.CourseName))
             {
-                throw new InvalidOperationException($"A course with the name '{model.Name}' already exists for this user");
+                throw new InvalidOperationException($"A course with the name '{model.CourseName}' already exists for this user");
             }
 
             // Create course location point
-            var location = _geometryFactory.CreatePoint(new Coordinate(model.Longitude, model.Latitude));
+            var location = _geometryFactory.CreatePoint(new Coordinate((double)model.Longitude, (double)model.Latitude));
 
-            var course = new Course
+            var userCourse = new UserCourse
             {
                 UserId = userId,
-                Name = model.Name.Trim(),
-                Location = location
+                CourseName = model.CourseName.Trim(),
+                Address = model.Address?.Trim(),
+                City = model.City?.Trim(),
+                State = model.State?.Trim(),
+                Country = model.Country?.Trim(),
+                Location = location,
+                Latitude = model.Latitude,
+                Longitude = model.Longitude
             };
 
-            var createdCourse = await _userCourseRepository.CreateAsync(course);
+            var createdUserCourse = await _userCourseRepository.CreateAsync(userCourse);
             _logger.LogInformation("User course created successfully: {CourseName} (ID: {CourseId}) for User {UserId}", 
-                model.Name, createdCourse.Id, userId);
+                model.CourseName, createdUserCourse.Id, userId);
 
-            return MapToUserCourseModel(createdCourse);
+            return MapToUserCourseModel(createdUserCourse);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating user course {CourseName} for User {UserId}", model.Name, userId);
+            _logger.LogError(ex, "Error creating user course {CourseName} for User {UserId}", model.CourseName, userId);
             throw;
         }
     }
@@ -70,8 +76,8 @@ public class UserCourseService : IUserCourseService
     {
         try
         {
-            var courses = await _userCourseRepository.GetByUserIdAsync(userId);
-            return courses.Select(MapToUserCourseModel);
+            var userCourses = await _userCourseRepository.GetByUserIdAsync(userId);
+            return userCourses.Select(MapToUserCourseModel);
         }
         catch (Exception ex)
         {
@@ -84,8 +90,8 @@ public class UserCourseService : IUserCourseService
     {
         try
         {
-            var course = await _userCourseRepository.GetByUserAndIdAsync(userId, courseId);
-            return course == null ? null : MapToUserCourseModel(course);
+            var userCourse = await _userCourseRepository.GetByUserAndIdAsync(userId, courseId);
+            return userCourse == null ? null : MapToUserCourseModel(userCourse);
         }
         catch (Exception ex)
         {
@@ -152,25 +158,25 @@ public class UserCourseService : IUserCourseService
             var location = _geometryFactory.CreatePoint(new Coordinate(longitude, latitude));
             var radiusMeters = radiusKm * 1000; // Convert km to meters
 
-            var courses = await _userCourseRepository.GetNearbyUserCoursesAsync(userId, location, radiusMeters);
+            var userCourses = await _userCourseRepository.GetNearbyUserCoursesAsync(userId, location, radiusMeters);
             
-            var userCourses = new List<UserCourseModel>();
-            foreach (var course in courses)
+            var userCourseModels = new List<UserCourseModel>();
+            foreach (var userCourse in userCourses)
             {
-                var userCourse = MapToUserCourseModel(course);
+                var userCourseModel = MapToUserCourseModel(userCourse);
                 
                 // Calculate distance and set canPlay based on proximity
-                if (course.Location != null)
+                if (userCourse.Location != null)
                 {
-                    var distance = await _userCourseRepository.GetDistanceToCourseAsync(course.Id, location);
-                    userCourse.DistanceKm = distance / 1000.0; // Convert meters to km
-                    userCourse.CanPlay = distance <= 100; // Can play if within 100 meters
+                    var distance = await _userCourseRepository.GetDistanceToCourseAsync(userCourse.Id, location);
+                    userCourseModel.DistanceKm = distance / 1000.0; // Convert meters to km
+                    userCourseModel.CanPlay = distance <= 100; // Can play if within 100 meters
                 }
                 
-                userCourses.Add(userCourse);
+                userCourseModels.Add(userCourseModel);
             }
 
-            return userCourses.OrderBy(c => c.DistanceKm);
+            return userCourseModels.OrderBy(c => c.DistanceKm);
         }
         catch (Exception ex)
         {
@@ -180,23 +186,21 @@ public class UserCourseService : IUserCourseService
         }
     }
 
-    private UserCourseModel MapToUserCourseModel(Course course)
+    private UserCourseModel MapToUserCourseModel(UserCourse userCourse)
     {
         return new UserCourseModel
         {
-            Id = course.Id,
-            Name = course.Name,
-            Latitude = course.Location?.Y,
-            Longitude = course.Location?.X,
+            Id = userCourse.Id,
+            CourseName = userCourse.CourseName,
+            Address = userCourse.Address,
+            City = userCourse.City,
+            State = userCourse.State,
+            Country = userCourse.Country,
+            Latitude = userCourse.Latitude,
+            Longitude = userCourse.Longitude,
             CanPlay = false, // Will be set by proximity check
-            CreatedAt = course.CreatedAt,
-            UpdatedAt = course.UpdatedAt,
-            Holes = course.Holes?.Select(h => new UserHoleModel
-            {
-                Id = h.Id,
-                HoleNumber = h.HoleNumber,
-                Par = h.Par
-            }).OrderBy(h => h.HoleNumber).ToList() ?? new List<UserHoleModel>()
+            CreatedAt = userCourse.CreatedAt,
+            UpdatedAt = userCourse.UpdatedAt
         };
     }
 }
