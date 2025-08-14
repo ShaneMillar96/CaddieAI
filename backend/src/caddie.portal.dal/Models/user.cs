@@ -130,4 +130,7 @@ public partial class User
     public virtual UserStatus Status { get; set; } = null!;
 
     public virtual ICollection<UserSession> UserSessions { get; set; } = new List<UserSession>();
+
+    [InverseProperty("User")]
+    public virtual ICollection<UserCourse> UserCourses { get; set; } = new List<UserCourse>();
 }

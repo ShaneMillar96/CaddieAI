@@ -5,14 +5,17 @@ namespace caddie.portal.services.Models;
 public class UserCourseModel
 {
     public int Id { get; set; }
-    public string Name { get; set; } = null!;
-    public double? Latitude { get; set; }
-    public double? Longitude { get; set; }
+    public string CourseName { get; set; } = null!;
+    public string? Address { get; set; }
+    public string? City { get; set; }
+    public string? State { get; set; }
+    public string? Country { get; set; }
+    public decimal? Latitude { get; set; }
+    public decimal? Longitude { get; set; }
     public bool CanPlay { get; set; }
     public double? DistanceKm { get; set; }
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
-    public List<UserHoleModel> Holes { get; set; } = new List<UserHoleModel>();
 }
 
 public class UserHoleModel
@@ -25,16 +28,28 @@ public class UserHoleModel
 public class AddUserCourseModel
 {
     [Required]
-    [StringLength(200)]
-    public string Name { get; set; } = null!;
+    [StringLength(255)]
+    public string CourseName { get; set; } = null!;
+    
+    [StringLength(500)]
+    public string? Address { get; set; }
+    
+    [StringLength(100)]
+    public string? City { get; set; }
+    
+    [StringLength(100)]
+    public string? State { get; set; }
+    
+    [StringLength(100)]
+    public string? Country { get; set; }
     
     [Required]
     [Range(-90, 90)]
-    public double Latitude { get; set; }
+    public decimal Latitude { get; set; }
     
     [Required]
     [Range(-180, 180)]
-    public double Longitude { get; set; }
+    public decimal Longitude { get; set; }
 }
 
 public class UserCourseProximityModel

@@ -29,7 +29,7 @@ public class RoundRepository : IRoundRepository
             .Include(r => r.User)
                 .ThenInclude(u => u.Status)
             .Include(r => r.Course)
-                .ThenInclude(c => c.Holes)
+                .ThenInclude(c => c!.Holes)
             .Include(r => r.Locations)
             .FirstOrDefaultAsync(r => r.Id == id);
     }
@@ -94,7 +94,7 @@ public class RoundRepository : IRoundRepository
     {
         return await _context.Rounds
             .Include(r => r.Course)
-                .ThenInclude(c => c.Holes)
+                .ThenInclude(c => c!.Holes)
             .Include(r => r.Locations)
             .Include(r => r.Status)
             .Where(r => r.UserId == userId && (r.StatusId == (int)RoundStatusEnum.InProgress || r.StatusId == (int)RoundStatusEnum.Paused))

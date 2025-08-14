@@ -24,6 +24,9 @@ public partial class Location
     [Column("course_id")]
     public int? CourseId { get; set; }
 
+    [Column("user_course_id")]
+    public int? UserCourseId { get; set; }
+
     /// <summary>
     /// GPS latitude coordinate
     /// </summary>
@@ -53,6 +56,9 @@ public partial class Location
     // Navigation properties - simplified to essential relationships only
     [ForeignKey("CourseId")]
     public virtual Course? Course { get; set; }
+
+    [ForeignKey("UserCourseId")]
+    public virtual UserCourse? UserCourse { get; set; }
 
     [ForeignKey("RoundId")]
     public virtual Round? Round { get; set; }

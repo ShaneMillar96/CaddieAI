@@ -6,7 +6,7 @@ public class RoundResponseDto
 {
     public int Id { get; set; }
     public int UserId { get; set; }
-    public int CourseId { get; set; }
+    public int? CourseId { get; set; }
     public DateOnly RoundDate { get; set; }
     public DateTime? StartTime { get; set; }
     public DateTime? EndTime { get; set; }
@@ -31,7 +31,7 @@ public class RoundResponseDto
 public class RoundListResponseDto
 {
     public int Id { get; set; }
-    public int CourseId { get; set; }
+    public int? CourseId { get; set; }
     public DateOnly RoundDate { get; set; }
     public DateTime? StartTime { get; set; }
     public DateTime? EndTime { get; set; }

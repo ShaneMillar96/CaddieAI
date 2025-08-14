@@ -52,13 +52,13 @@ public class AIScoreService : IAIScoreService
 
             // Get hole information
             var round = await _roundRepository.GetByIdAsync(roundId);
-            if (round == null)
+            if (round == null || round.CourseId == null)
             {
-                result.DetectionReasons.Add("Round not found");
+                result.DetectionReasons.Add("Round not found or course not specified");
                 return result;
             }
 
-            var hole = await _holeRepository.GetHoleByNumberAsync(round.CourseId, holeNumber);
+            var hole = await _holeRepository.GetHoleByNumberAsync(round.CourseId.Value, holeNumber);
             if (hole == null)
             {
                 result.DetectionReasons.Add("Hole information not found");
@@ -66,7 +66,7 @@ public class AIScoreService : IAIScoreService
             }
 
             // Analyze location data for hole completion
-            var locationAnalysis = await AnalyzeHoleCompletionAsync(round.CourseId, holeNumber, 
+            var locationAnalysis = await AnalyzeHoleCompletionAsync(round.CourseId.Value, holeNumber, 
                 ParseLocationContext(finalLocation));
 
             result.HoleCompleted = locationAnalysis.IsNearHole;

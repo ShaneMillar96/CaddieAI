@@ -5,7 +5,7 @@ namespace caddie.portal.api.DTOs.Round;
 public class CreateRoundRequestDto
 {
     [Required]
-    public int CourseId { get; set; }
+    public int? CourseId { get; set; }
 
     [Required]
     public DateOnly RoundDate { get; set; }
@@ -58,7 +58,7 @@ public class UpdateRoundRequestDto
 public class StartRoundRequestDto
 {
     [Required]
-    public int CourseId { get; set; }
+    public int? CourseId { get; set; }
 
     public DateOnly? RoundDate { get; set; }
 

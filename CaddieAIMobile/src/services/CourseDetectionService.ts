@@ -31,6 +31,47 @@ export class CourseDetectionService {
   }
 
   /**
+   * Detect the single most likely golf course at the current location
+   */
+  async detectCurrentCourse(
+    latitude: number,
+    longitude: number,
+    radius = 500 // smaller radius for current location detection
+  ): Promise<CourseDetectionResult | null> {
+    try {
+      const nearbyGolfCourses = await this.detectNearbyGolfCourses(latitude, longitude, radius);
+      
+      if (nearbyGolfCourses.length === 0) {
+        return null;
+      }
+
+      // Return the closest, highest confidence course
+      const bestCourse = nearbyGolfCourses
+        .filter(course => course.confidence >= 0.7) // High confidence threshold
+        .sort((a, b) => {
+          // Sort by confidence first, then by distance
+          if (Math.abs(a.confidence - b.confidence) < 0.1) {
+            return a.distance - b.distance;
+          }
+          return b.confidence - a.confidence;
+        })[0];
+
+      return bestCourse || nearbyGolfCourses[0]; // Fallback to closest if no high-confidence match
+    } catch (error) {
+      console.error('Error detecting current course:', error);
+      
+      // Fallback to mock detection for development
+      if (__DEV__) {
+        console.warn('Using mock current course detection');
+        const mockResults = this.getMockDetectionResults(latitude, longitude);
+        return mockResults[0] || null;
+      }
+      
+      throw error;
+    }
+  }
+
+  /**
    * Detect nearby golf courses using Mapbox Places API
    */
   async detectNearbyGolfCourses(

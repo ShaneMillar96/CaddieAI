@@ -19,9 +19,11 @@ public partial class Round
     [Column("user_id")]
     public int UserId { get; set; }
 
-    [Required]
     [Column("course_id")]
-    public int CourseId { get; set; }
+    public int? CourseId { get; set; }
+
+    [Column("user_course_id")]
+    public int? UserCourseId { get; set; }
 
     [Required]
     [Column("round_date")]
@@ -57,7 +59,10 @@ public partial class Round
 
     // Navigation properties - simplified to essential relationships only
     [ForeignKey("CourseId")]
-    public virtual Course Course { get; set; } = null!;
+    public virtual Course? Course { get; set; }
+
+    [ForeignKey("UserCourseId")]
+    public virtual UserCourse? UserCourse { get; set; }
 
     public virtual ICollection<HoleScore> HoleScores { get; set; } = new List<HoleScore>();
 

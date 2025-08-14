@@ -8,6 +8,8 @@ export { WeatherWidget } from './WeatherWidget';
 export { default as WeatherWidgetDefault } from './WeatherWidget';
 export { HoleCompletionModal } from './HoleCompletionModal';
 export { default as HoleCompletionModalDefault } from './HoleCompletionModal';
+export { DetectCourseModal } from './DetectCourseModal';
+export { default as DetectCourseModalDefault } from './DetectCourseModal';
 export { default as RoundProgressCard } from './RoundProgressCard';
 export { default as ScorecardComponent } from './ScorecardComponent';
 export { default as RoundStatsWidget } from './RoundStatsWidget';

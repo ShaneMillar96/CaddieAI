@@ -42,7 +42,7 @@ public class UserCoursesController : ControllerBase
             var userCourse = await _userCourseService.AddUserCourseAsync(userId, model);
             var response = _mapper.Map<UserCourseResponseDto>(userCourse);
 
-            _logger.LogInformation("User {UserId} successfully added course: {CourseName}", userId, request.Name);
+            _logger.LogInformation("User {UserId} successfully added course: {CourseName}", userId, request.CourseName);
 
             return Ok(ApiResponse<UserCourseResponseDto>.SuccessResponse(response, "Course added successfully"));
         }
@@ -138,15 +138,15 @@ public class UserCoursesController : ControllerBase
             if (userCourse.Latitude.HasValue && userCourse.Longitude.HasValue)
             {
                 // Simple distance calculation (more accurate calculation would use Haversine formula)
-                var latDiff = Math.Abs(latitude - userCourse.Latitude.Value);
-                var lonDiff = Math.Abs(longitude - userCourse.Longitude.Value);
+                var latDiff = Math.Abs(latitude - (double)userCourse.Latitude.Value);
+                var lonDiff = Math.Abs(longitude - (double)userCourse.Longitude.Value);
                 distanceMeters = Math.Sqrt(latDiff * latDiff + lonDiff * lonDiff) * 111139; // Approximate conversion to meters
             }
 
             var response = new UserCourseProximityResponseDto
             {
                 CourseId = id,
-                CourseName = userCourse.Name,
+                CourseName = userCourse.CourseName,
                 IsWithinProximity = isNearCourse,
                 DistanceMeters = distanceMeters,
                 DistanceKm = distanceMeters / 1000.0

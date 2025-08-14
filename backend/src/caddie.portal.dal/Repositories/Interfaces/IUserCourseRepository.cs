@@ -5,12 +5,12 @@ namespace caddie.portal.dal.Repositories.Interfaces;
 
 public interface IUserCourseRepository
 {
-    Task<Course?> GetByIdAsync(int id);
-    Task<Course?> GetByUserAndIdAsync(int userId, int courseId);
-    Task<IEnumerable<Course>> GetByUserIdAsync(int userId);
-    Task<IEnumerable<Course>> GetNearbyUserCoursesAsync(int userId, Point location, double radiusMeters);
-    Task<Course> CreateAsync(Course course);
-    Task<Course> UpdateAsync(Course course);
+    Task<UserCourse?> GetByIdAsync(int id);
+    Task<UserCourse?> GetByUserAndIdAsync(int userId, int courseId);
+    Task<IEnumerable<UserCourse>> GetByUserIdAsync(int userId);
+    Task<IEnumerable<UserCourse>> GetNearbyUserCoursesAsync(int userId, Point location, double radiusMeters);
+    Task<UserCourse> CreateAsync(UserCourse userCourse);
+    Task<UserCourse> UpdateAsync(UserCourse userCourse);
     Task<bool> DeleteAsync(int userId, int courseId);
     Task<bool> ExistsForUserAsync(int userId, string name);
     Task<bool> UserHasCourseAccessAsync(int userId, int courseId);

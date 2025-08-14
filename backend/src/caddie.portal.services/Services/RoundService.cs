@@ -177,11 +177,14 @@ public class RoundService : IRoundService
                 throw new InvalidOperationException($"User with ID {userId} not found");
             }
 
-            // Validate course exists
-            var course = await _courseRepository.GetByIdAsync(model.CourseId);
-            if (course == null)
+            // Validate course exists (if courseId is provided)
+            if (model.CourseId.HasValue)
             {
-                throw new InvalidOperationException($"Course with ID {model.CourseId} not found");
+                var course = await _courseRepository.GetByIdAsync(model.CourseId.Value);
+                if (course == null)
+                {
+                    throw new InvalidOperationException($"Course with ID {model.CourseId} not found");
+                }
             }
 
             // Check if user already has an active round
@@ -221,9 +224,9 @@ public class RoundService : IRoundService
             }
 
             // Validate current hole number if provided
-            if (model.CurrentHole.HasValue)
+            if (model.CurrentHole.HasValue && existingRound.CourseId.HasValue)
             {
-                var course = await _courseRepository.GetByIdAsync(existingRound.CourseId);
+                var course = await _courseRepository.GetByIdAsync(existingRound.CourseId.Value);
                 var totalHoles = course?.Holes?.Count ?? 18; // Default to 18 if not specified
                 if (model.CurrentHole.Value > totalHoles)
                 {
@@ -480,9 +483,9 @@ public class RoundService : IRoundService
         try
         {
             var round = await _roundRepository.GetByIdAsync(roundId);
-            if (round == null) return false;
+            if (round == null || round.CourseId == null) return false;
 
-            var course = await _courseRepository.GetByIdAsync(round.CourseId);
+            var course = await _courseRepository.GetByIdAsync(round.CourseId.Value);
             var totalHoles = course?.Holes?.Count ?? 18; // Default to 18 if not specified
             if (holeNumber > totalHoles)
             {
@@ -530,9 +533,9 @@ public class RoundService : IRoundService
             }
 
             var round = await _roundRepository.GetByIdAsync(roundId);
-            if (round == null) return false;
+            if (round == null || round.CourseId == null) return false;
 
-            var course = await _courseRepository.GetByIdAsync(round.CourseId);
+            var course = await _courseRepository.GetByIdAsync(round.CourseId.Value);
             if (course == null) return false;
 
             // Allow reasonable maximum (e.g., 10 strokes per hole maximum)
@@ -952,9 +955,14 @@ public class RoundService : IRoundService
                 throw new InvalidOperationException($"Round with ID {roundId} not found");
             }
 
+            if (!round.CourseId.HasValue)
+            {
+                throw new InvalidOperationException($"Round {roundId} does not have a course assigned");
+            }
+
             // Get or create hole information
             var hole = await _context.Holes
-                .FirstOrDefaultAsync(h => h.CourseId == round.CourseId && 
+                .FirstOrDefaultAsync(h => h.CourseId == round.CourseId.Value && 
                                         h.HoleNumber == model.HoleNumber &&
                                         h.UserId == round.UserId);
 
@@ -968,7 +976,7 @@ public class RoundService : IRoundService
 
                 hole = new Hole
                 {
-                    CourseId = round.CourseId,
+                    CourseId = round.CourseId.Value,
                     UserId = round.UserId,
                     HoleNumber = model.HoleNumber,
                     Par = model.Par.Value,
@@ -1110,6 +1118,11 @@ public class RoundService : IRoundService
                 throw new InvalidOperationException($"Round with ID {roundId} not found");
             }
 
+            if (!round.CourseId.HasValue)
+            {
+                throw new InvalidOperationException($"Round {roundId} does not have a course assigned");
+            }
+
             // Check round status
             var currentStatus = (RoundStatusEnum)round.StatusId;
             if (currentStatus == RoundStatusEnum.Completed || currentStatus == RoundStatusEnum.Abandoned)
@@ -1119,7 +1132,7 @@ public class RoundService : IRoundService
 
             // Get or create hole information
             var hole = await _context.Holes
-                .FirstOrDefaultAsync(h => h.CourseId == round.CourseId && 
+                .FirstOrDefaultAsync(h => h.CourseId == round.CourseId.Value && 
                                         h.HoleNumber == holeNumber &&
                                         h.UserId == round.UserId);
 
@@ -1133,7 +1146,7 @@ public class RoundService : IRoundService
 
                 hole = new Hole
                 {
-                    CourseId = round.CourseId,
+                    CourseId = round.CourseId.Value,
                     UserId = round.UserId,
                     HoleNumber = holeNumber,
                     Par = par.Value,
