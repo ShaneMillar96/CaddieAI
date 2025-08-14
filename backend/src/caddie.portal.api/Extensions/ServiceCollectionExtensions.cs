@@ -8,6 +8,7 @@ using caddie.portal.services.Interfaces;
 using caddie.portal.services.Services;
 using caddie.portal.services.Configuration;
 using caddie.portal.api.Mapping;
+using caddie.portal.api.MappingProfiles;
 using caddie.portal.api.Validators.Auth;
 
 namespace caddie.portal.api.Extensions;
@@ -55,17 +56,14 @@ public static class ServiceCollectionExtensions
         
         // Core domain repositories
         services.AddScoped<ICourseRepository, CourseRepository>();
+        services.AddScoped<IUserCourseRepository, UserCourseRepository>();
         services.AddScoped<IRoundRepository, RoundRepository>();
         services.AddScoped<ILocationRepository, LocationRepository>();
         services.AddScoped<IHoleRepository, HoleRepository>();
         
-        // AI and chat repositories
-        services.AddScoped<IChatSessionRepository, ChatSessionRepository>();
-        services.AddScoped<IChatMessageRepository, ChatMessageRepository>();
-        services.AddScoped<IClubRecommendationRepository, ClubRecommendationRepository>();
+        // AI and chat repositories - removed unused implementations
         
-        // Shot tracking repositories
-        services.AddScoped<IShotPlacementRepository, ShotPlacementRepository>();
+        // Shot tracking repositories - removed unused implementations
 
         return services;
     }
@@ -83,19 +81,18 @@ public static class ServiceCollectionExtensions
         
         // Core domain services
         services.AddScoped<ICourseService, CourseService>();
+        services.AddScoped<IUserCourseService, UserCourseService>();
         services.AddScoped<IRoundService, RoundService>();
-        services.AddScoped<IShotService, ShotService>();
-        services.AddScoped<IHoleService, HoleService>();
+        // Removed IHoleService and IShotService - unused implementations
         
         // AI services
         services.AddScoped<IOpenAIService, OpenAIService>();
         services.AddScoped<IGolfContextService, GolfContextService>();
-        services.AddScoped<IClubRecommendationService, ClubRecommendationService>();
         services.AddScoped<IAIScoreService, AIScoreService>();
         services.AddScoped<IRealtimeAudioService, RealtimeAudioService>();
+        // Removed IClubRecommendationService - unused implementation
         
-        // Analytics services
-        services.AddScoped<IGolfStatisticsService, GolfStatisticsService>();
+        // Analytics services - removed unused implementations
 
         return services;
     }
@@ -214,11 +211,10 @@ public static class ServiceCollectionExtensions
         services.AddAutoMapper(
             typeof(AuthMappingProfile),
             typeof(CourseMappingProfile), 
+            typeof(UserCourseMappingProfile),
             typeof(RoundMappingProfile),
-            typeof(ChatMappingProfile),
-            typeof(ClubRecommendationMappingProfile),
-            typeof(StatisticsMappingProfile),
-            typeof(ShotMappingProfile)
+            typeof(HoleScoreMappingProfile)
+            // Removed unused mapping profiles
         );
 
         return services;

@@ -21,6 +21,7 @@ import {
   completeRound,
   abandonRound,
   fetchHoleScores,
+  completeHole,
 } from '../../store/slices/roundSlice';
 import {
   toggleVoiceInterface,
@@ -47,6 +48,7 @@ import { LoadingSpinner } from '../../components/auth/LoadingSpinner';
 import { ErrorMessage } from '../../components/auth/ErrorMessage';
 import VoiceAIInterface from '../../components/voice/VoiceAIInterface';
 import { VoiceChatModal } from '../../components/voice/VoiceChatModal';
+import { HoleCompletionModal } from '../../components/common/HoleCompletionModal';
 import MapboxMapView from '../../components/map/MapboxMapView';
 import MapboxMapOverlay from '../../components/map/MapboxMapOverlay';
 import MapErrorBoundary from '../../components/map/MapErrorBoundary';
@@ -60,6 +62,7 @@ import {
   shotPlacementService, 
   ShotPlacementState as ServiceShotPlacementState 
 } from '../../services/ShotPlacementService';
+import { HoleCompletionRequest } from '../../types/golf';
 import { CaddieContext } from '../../services/TextToSpeechService';
 import { dynamicCaddieService } from '../../services/DynamicCaddieService';
 import voiceAIApiService from '../../services/voiceAIApi';
@@ -137,6 +140,9 @@ export const ActiveRoundScreen: React.FC = () => {
   const [pinLocation, setPinLocation] = useState<Coordinate | null>(null);
   const [isPinPlacementMode, setIsPinPlacementMode] = useState(false);
   const [pinDistances, setPinDistances] = useState<PinDistances>({ userToPin: null, shotToPin: null });
+  
+  // Hole completion modal state
+  const [isHoleCompletionModalVisible, setIsHoleCompletionModalVisible] = useState(false);
   
   
   // Convert Redux currentLocation to SimpleLocationData format with stable reference
@@ -644,6 +650,60 @@ export const ActiveRoundScreen: React.FC = () => {
     setIsVoiceChatModalVisible(prev => !prev);
   }, []);
 
+  // Handle hole completion modal
+  const handleHoleCompletionToggle = useCallback(() => {
+    setIsHoleCompletionModalVisible(prev => !prev);
+  }, []);
+
+  // Handle hole completion submission
+  const handleHoleCompletion = useCallback(async (completion: HoleCompletionRequest) => {
+    try {
+      await dispatch(completeHole(completion)).unwrap();
+      setIsHoleCompletionModalVisible(false);
+      
+      // Check if this was the last hole
+      const totalHoles = activeRound?.course?.totalHoles || 18;
+      const completedHolesAfter = (activeRound?.holeScores?.length || 0) + 1;
+      
+      if (completedHolesAfter >= totalHoles) {
+        // All holes completed - show completion dialog
+        Alert.alert(
+          'Round Complete!', 
+          `Congratulations! You've completed all ${totalHoles} holes. Your final score is ${(activeRound?.totalScore || 0) + completion.score}.`,
+          [
+            {
+              text: 'Finish Round',
+              onPress: async () => {
+                try {
+                  await dispatch(completeRound(activeRound?.id || 0)).unwrap();
+                  navigation.navigate('Home');
+                } catch (error) {
+                  console.error('Error completing round:', error);
+                }
+              }
+            },
+            {
+              text: 'Continue',
+              style: 'cancel'
+            }
+          ]
+        );
+      } else {
+        // Regular hole completion
+        Alert.alert(
+          'Hole Completed!', 
+          `Great job on hole ${completion.holeNumber}! On to hole ${completion.holeNumber + 1}.`
+        );
+      }
+    } catch (error) {
+      console.error('Error completing hole:', error);
+      Alert.alert(
+        'Error',
+        'Failed to complete hole. Please try again.'
+      );
+    }
+  }, [dispatch, activeRound, navigation]);
+
   // Handle pin placement mode toggle
   const handleTogglePinPlacementMode = useCallback(() => {
     setIsPinPlacementMode(prev => {
@@ -811,9 +871,18 @@ export const ActiveRoundScreen: React.FC = () => {
     },
     complete: async () => {
       if (!activeRound) return;
+      
+      const completedHolesCount = activeRound.holeScores?.length || 0;
+      const totalHoles = activeRound.course?.totalHoles || 18;
+      
+      let message = 'Are you sure you want to complete this round?';
+      if (completedHolesCount < totalHoles) {
+        message = `You have completed ${completedHolesCount} out of ${totalHoles} holes. Completing the round now will save your current progress. Are you sure?`;
+      }
+      
       Alert.alert(
         'Complete Round',
-        'Are you sure you want to complete this round?',
+        message,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -821,7 +890,10 @@ export const ActiveRoundScreen: React.FC = () => {
             onPress: async () => {
               try {
                 await dispatch(completeRound(activeRound.id)).unwrap();
-                Alert.alert('Round Complete', 'Congratulations!');
+                Alert.alert(
+                  'Round Complete', 
+                  `Congratulations! You completed ${completedHolesCount} holes with a score of ${activeRound.totalScore || 0}.`
+                );
                 navigation.navigate('Home');
               } catch (error) {
                 Alert.alert('Error', 'Failed to complete round.');
@@ -975,6 +1047,10 @@ export const ActiveRoundScreen: React.FC = () => {
         pinDistances={pinDistances}
         onTogglePinPlacement={handleTogglePinPlacementMode}
         onClearPinLocation={handleClearPinLocation}
+        // Hole completion props
+        onCompleteHole={handleHoleCompletionToggle}
+        completedHoles={activeRound?.holeScores?.map(hs => hs.holeNumber) || []}
+        totalHoles={activeRound?.course?.totalHoles || 18}
       />
 
       {/* Premium Round Controls Modal */}
@@ -997,6 +1073,30 @@ export const ActiveRoundScreen: React.FC = () => {
               >
                 <Icon name="close" size={28} color="#2c5530" />
               </TouchableOpacity>
+            </View>
+
+            {/* Round Progress Section */}
+            <View style={styles.roundProgressSection}>
+              <View style={styles.progressHeader}>
+                <Text style={styles.progressTitle}>Round Progress</Text>
+                <Text style={styles.progressStats}>
+                  {activeRound?.holeScores?.length || 0}/{activeRound?.course?.totalHoles || 18} holes completed
+                </Text>
+              </View>
+              <View style={styles.progressBar}>
+                <View 
+                  style={[
+                    styles.progressBarFill, 
+                    { width: `${Math.round(((activeRound?.holeScores?.length || 0) / (activeRound?.course?.totalHoles || 18)) * 100)}%` }
+                  ]} 
+                />
+              </View>
+              {activeRound?.totalScore && (
+                <View style={styles.scoreInfo}>
+                  <Icon name="sports-golf" size={16} color="#4a7c59" />
+                  <Text style={styles.currentScore}>Current Score: {activeRound.totalScore}</Text>
+                </View>
+              )}
             </View>
             
             <View style={styles.controlsContainer}>
@@ -1104,6 +1204,20 @@ export const ActiveRoundScreen: React.FC = () => {
           roundId={activeRound.id}
         />
       )}
+
+      {/* Hole Completion Modal */}
+      {activeRound && (
+        <HoleCompletionModal
+          visible={isHoleCompletionModalVisible}
+          onClose={handleHoleCompletionToggle}
+          onSubmit={handleHoleCompletion}
+          roundId={activeRound.id}
+          holeNumber={currentHole}
+          isFirstTimePlayingHole={!activeRound.course?.holes?.find(h => h.holeNumber === currentHole)?.par}
+          existingPar={activeRound.course?.holes?.find(h => h.holeNumber === currentHole)?.par}
+          isLoading={isUpdating}
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -1203,6 +1317,52 @@ const styles = StyleSheet.create({
     backgroundColor: '#f3f4f6',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  roundProgressSection: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    backgroundColor: '#f8f9fa',
+    marginHorizontal: 4,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  progressTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2c5530',
+  },
+  progressStats: {
+    fontSize: 14,
+    color: '#4a7c59',
+    fontWeight: '500',
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: '#e1e1e1',
+    borderRadius: 3,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#4a7c59',
+    borderRadius: 3,
+  },
+  scoreInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  currentScore: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2c5530',
   },
   controlsContainer: {
     paddingHorizontal: 20,

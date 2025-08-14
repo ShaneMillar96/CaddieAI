@@ -5,6 +5,7 @@ import {
   UpdateRoundRequest,
   HoleScore,
   RoundStatus,
+  HoleCompletionRequest,
 } from '../../types';
 import roundApi from '../../services/roundApi';
 
@@ -237,6 +238,34 @@ export const createAndStartRound = createAsyncThunk(
         code: error.response?.status || 500
       };
       return rejectWithValue(errorPayload);
+    }
+  }
+);
+
+export const completeHole = createAsyncThunk(
+  'rounds/completeHole',
+  async (holeCompletion: HoleCompletionRequest, { rejectWithValue }) => {
+    try {
+      const holeScore = await roundApi.completeHole(holeCompletion);
+      return { 
+        holeScore,
+        roundId: holeCompletion.roundId,
+        holeNumber: holeCompletion.holeNumber,
+      };
+    } catch (error: any) {
+      return rejectWithValue(error.message || 'Failed to complete hole');
+    }
+  }
+);
+
+export const updateHolePar = createAsyncThunk(
+  'rounds/updateHolePar',
+  async ({ courseId, holeNumber, par }: { courseId: number; holeNumber: number; par: number }, { rejectWithValue }) => {
+    try {
+      await roundApi.updateHolePar(courseId, holeNumber, par);
+      return { courseId, holeNumber, par };
+    } catch (error: any) {
+      return rejectWithValue(error.message || 'Failed to update hole par');
     }
   }
 );
@@ -651,6 +680,62 @@ const roundSlice = createSlice({
       } else {
         state.error = payload?.message || 'Failed to create and start round';
       }
+    });
+
+    // Complete hole
+    builder.addCase(completeHole.pending, (state) => {
+      state.isUpdating = true;
+      state.error = null;
+    });
+    builder.addCase(completeHole.fulfilled, (state, action) => {
+      state.isUpdating = false;
+      const { holeScore, roundId } = action.payload;
+      
+      // Update active round if it matches
+      if (state.activeRound && state.activeRound.id === roundId) {
+        if (!state.activeRound.holeScores) {
+          state.activeRound.holeScores = [];
+        }
+        
+        // Remove existing hole score for this hole if it exists
+        state.activeRound.holeScores = state.activeRound.holeScores.filter(
+          hs => hs.holeNumber !== holeScore.holeNumber
+        );
+        
+        // Add the new hole score
+        state.activeRound.holeScores.push(holeScore);
+        
+        // Update current hole to next hole
+        const maxHoles = state.activeRound.course?.totalHoles || 18;
+        if (holeScore.holeNumber < maxHoles) {
+          state.dashboardState.currentHole = holeScore.holeNumber + 1;
+        }
+        
+        // Recalculate total score
+        state.activeRound.totalScore = state.activeRound.holeScores.reduce(
+          (total, hs) => total + hs.score, 0
+        );
+      }
+    });
+    builder.addCase(completeHole.rejected, (state, action) => {
+      state.isUpdating = false;
+      state.error = action.payload as string;
+    });
+
+    // Update hole par
+    builder.addCase(updateHolePar.fulfilled, (state, action) => {
+      const { courseId, holeNumber, par } = action.payload;
+      
+      // Update hole par in active round if it matches the course
+      if (state.activeRound && state.activeRound.courseId === courseId) {
+        const hole = state.activeRound.course?.holes?.find(h => h.holeNumber === holeNumber);
+        if (hole) {
+          hole.par = par;
+        }
+      }
+    });
+    builder.addCase(updateHolePar.rejected, (state, action) => {
+      state.error = action.payload as string;
     });
   },
 });

@@ -6,7 +6,8 @@ import {
   UpdateRoundRequest,
   HoleScore,
   PaginatedResponse,
-  RoundStatus
+  RoundStatus,
+  HoleCompletionRequest
 } from '../types';
 import TokenStorage from './tokenStorage';
 import { API_BASE_URL, API_TIMEOUT } from '../config/api';
@@ -327,6 +328,39 @@ class RoundApiService {
     }
     
     throw new Error(response.data.message || 'Failed to fetch round statistics');
+  }
+
+  // Complete a hole with par and score
+  async completeHole(holeCompletion: HoleCompletionRequest): Promise<HoleScore> {
+    const response: AxiosResponse<ApiResponse<HoleScore>> = await this.api.post(
+      `/round/${holeCompletion.roundId}/holes/${holeCompletion.holeNumber}/complete`,
+      {
+        par: holeCompletion.par,
+        score: holeCompletion.score,
+        putts: holeCompletion.putts,
+        fairwayHit: holeCompletion.fairwayHit,
+        greenInRegulation: holeCompletion.greenInRegulation,
+        notes: holeCompletion.notes,
+      }
+    );
+    
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    
+    throw new Error(response.data.message || 'Failed to complete hole');
+  }
+
+  // Update hole par value (user-defined)
+  async updateHolePar(courseId: number, holeNumber: number, par: number): Promise<void> {
+    const response: AxiosResponse<ApiResponse<void>> = await this.api.patch(
+      `/course/${courseId}/holes/${holeNumber}/par`,
+      { par }
+    );
+    
+    if (!response.data.success) {
+      throw new Error(response.data.message || 'Failed to update hole par');
+    }
   }
 }
 

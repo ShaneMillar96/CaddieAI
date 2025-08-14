@@ -5,6 +5,9 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace caddie.portal.dal.Models;
 
+/// <summary>
+/// Round status lookup table for managing golf round states
+/// </summary>
 [Table("round_statuses")]
 public partial class RoundStatus
 {
@@ -22,5 +25,6 @@ public partial class RoundStatus
     [StringLength(255)]
     public string? Description { get; set; }
 
+    [InverseProperty("Status")]
     public virtual ICollection<Round> Rounds { get; set; } = new List<Round>();
 }

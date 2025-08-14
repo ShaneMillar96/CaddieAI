@@ -6,7 +6,6 @@ using caddie.portal.dal.Repositories.Interfaces;
 using caddie.portal.dal.Models;
 using caddie.portal.dal.Context;
 using ServiceRoundStatus = caddie.portal.services.Models.RoundStatus;
-using DalRoundStatus = caddie.portal.dal.Models.RoundStatus;
 using RoundStatusEnum = caddie.portal.dal.Enums.RoundStatus;
 
 namespace caddie.portal.services.Services;
@@ -195,11 +194,7 @@ public class RoundService : IRoundService
             {
                 UserId = userId,
                 CourseId = model.CourseId,
-                RoundDate = model.RoundDate,
-                TemperatureCelsius = model.TemperatureCelsius,
-                WindSpeedKmh = model.WindSpeedKmh,
-                Notes = model.Notes?.Trim(),
-                RoundMetadata = model.RoundMetadata?.Trim()
+                RoundDate = model.RoundDate
             };
 
             var createdRound = await _roundRepository.CreateAsync(round);
@@ -229,29 +224,22 @@ public class RoundService : IRoundService
             if (model.CurrentHole.HasValue)
             {
                 var course = await _courseRepository.GetByIdAsync(existingRound.CourseId);
-                if (course != null && model.CurrentHole.Value > course.TotalHoles)
+                var totalHoles = course?.Holes?.Count ?? 18; // Default to 18 if not specified
+                if (model.CurrentHole.Value > totalHoles)
                 {
-                    throw new ArgumentException($"Current hole {model.CurrentHole.Value} exceeds course total holes {course.TotalHoles}");
+                    throw new ArgumentException($"Current hole {model.CurrentHole.Value} exceeds course total holes {totalHoles}");
                 }
             }
 
-            // Update properties
+            // Update properties (simplified to match DAL model)
             if (model.CurrentHole.HasValue) existingRound.CurrentHole = model.CurrentHole.Value;
             if (model.TotalScore.HasValue) existingRound.TotalScore = model.TotalScore.Value;
-            if (model.TotalPutts.HasValue) existingRound.TotalPutts = model.TotalPutts.Value;
-            if (model.FairwaysHit.HasValue) existingRound.FairwaysHit = model.FairwaysHit.Value;
-            if (model.GreensInRegulation.HasValue) existingRound.GreensInRegulation = model.GreensInRegulation.Value;
-            if (model.TemperatureCelsius.HasValue) existingRound.TemperatureCelsius = model.TemperatureCelsius.Value;
-            if (model.WindSpeedKmh.HasValue) existingRound.WindSpeedKmh = model.WindSpeedKmh.Value;
-            if (model.Notes != null) existingRound.Notes = model.Notes.Trim();
-            if (model.RoundMetadata != null) existingRound.RoundMetadata = model.RoundMetadata.Trim();
 
             // Handle status changes
             if (model.Status.HasValue)
             {
                 await ValidateStatusTransitionAsync(existingRound, model.Status.Value);
-                var statusId = GetStatusIdByEnum(MapServiceStatusToEnum(model.Status.Value));
-                existingRound.StatusId = statusId;
+                existingRound.StatusId = GetStatusIdByEnum(MapServiceStatusToEnum(model.Status.Value));
             }
 
             var updatedRound = await _roundRepository.UpdateAsync(existingRound);
@@ -298,11 +286,7 @@ public class RoundService : IRoundService
             {
                 UserId = userId,
                 CourseId = model.CourseId,
-                RoundDate = model.RoundDate ?? DateOnly.FromDateTime(DateTime.Now),
-                TemperatureCelsius = model.TemperatureCelsius,
-                WindSpeedKmh = model.WindSpeedKmh,
-                Notes = model.Notes,
-                RoundMetadata = model.RoundMetadata
+                RoundDate = model.RoundDate ?? DateOnly.FromDateTime(DateTime.Now)
             };
 
             var round = await CreateRoundAsync(userId, createModel);
@@ -417,10 +401,6 @@ public class RoundService : IRoundService
                 var completedStatusId = GetStatusIdByEnum(RoundStatusEnum.Completed);
                 round.StatusId = completedStatusId;
                 round.TotalScore = model.TotalScore;
-                round.TotalPutts = model.TotalPutts;
-                round.FairwaysHit = model.FairwaysHit;
-                round.GreensInRegulation = model.GreensInRegulation;
-                round.Notes = model.Notes?.Trim();
                 round.EndTime = DateTime.UtcNow;
 
                 var updatedRound = await _roundRepository.UpdateAsync(round);
@@ -458,7 +438,6 @@ public class RoundService : IRoundService
 
             var abandonedStatusId = GetStatusIdByEnum(RoundStatusEnum.Abandoned);
             round.StatusId = abandonedStatusId;
-            round.Notes = string.IsNullOrEmpty(reason) ? round.Notes : $"{round.Notes ?? ""} Abandoned: {reason}".Trim();
             round.EndTime = DateTime.UtcNow;
 
             var updatedRound = await _roundRepository.UpdateAsync(round);
@@ -504,9 +483,10 @@ public class RoundService : IRoundService
             if (round == null) return false;
 
             var course = await _courseRepository.GetByIdAsync(round.CourseId);
-            if (course != null && holeNumber > course.TotalHoles)
+            var totalHoles = course?.Holes?.Count ?? 18; // Default to 18 if not specified
+            if (holeNumber > totalHoles)
             {
-                throw new ArgumentException($"Hole number {holeNumber} exceeds course total holes {course.TotalHoles}");
+                throw new ArgumentException($"Hole number {holeNumber} exceeds course total holes {totalHoles}");
             }
 
             if (holeNumber < 1)
@@ -556,7 +536,8 @@ public class RoundService : IRoundService
             if (course == null) return false;
 
             // Allow reasonable maximum (e.g., 10 strokes per hole maximum)
-            var maxReasonableScore = course.TotalHoles * 10;
+            var totalHoles = course.Holes?.Count ?? 18; // Default to 18 if not specified
+            var maxReasonableScore = totalHoles * 10;
             
             return score <= maxReasonableScore;
         }
@@ -625,9 +606,6 @@ public class RoundService : IRoundService
                 AverageScore = statsDict.ContainsKey("AverageScore") ? Convert.ToDouble(statsDict["AverageScore"]) : null,
                 BestScore = statsDict.ContainsKey("BestScore") ? Convert.ToInt32(statsDict["BestScore"]) : null,
                 WorstScore = statsDict.ContainsKey("WorstScore") ? Convert.ToInt32(statsDict["WorstScore"]) : null,
-                AveragePutts = statsDict.ContainsKey("AveragePutts") ? Convert.ToDouble(statsDict["AveragePutts"]) : null,
-                AverageFairwaysHit = statsDict.ContainsKey("AverageFairwaysHit") ? Convert.ToDouble(statsDict["AverageFairwaysHit"]) : null,
-                AverageGreensInRegulation = statsDict.ContainsKey("AverageGreensInRegulation") ? Convert.ToDouble(statsDict["AverageGreensInRegulation"]) : null,
                 StartDate = startDate,
                 EndDate = endDate
             };
@@ -681,21 +659,9 @@ public class RoundService : IRoundService
             CurrentHole = round.CurrentHole,
             Status = MapEnumToServiceStatus((RoundStatusEnum)round.StatusId),
             TotalScore = round.TotalScore,
-            TotalPutts = round.TotalPutts,
-            FairwaysHit = round.FairwaysHit,
-            GreensInRegulation = round.GreensInRegulation,
-            TemperatureCelsius = round.TemperatureCelsius,
-            WindSpeedKmh = round.WindSpeedKmh,
-            Notes = round.Notes,
-            RoundMetadata = round.RoundMetadata,
             CreatedAt = round.CreatedAt,
             UpdatedAt = round.UpdatedAt
         };
-    }
-
-    private string GetRoundStatusFromDatabase(Round round)
-    {
-        return round.Status?.Name ?? "not_started";
     }
 
     private ServiceRoundStatus MapEnumToServiceStatus(RoundStatusEnum status)
@@ -724,38 +690,7 @@ public class RoundService : IRoundService
         };
     }
 
-    private ServiceRoundStatus MapStringToRoundStatus(string status)
-    {
-        return status.ToLower() switch
-        {
-            "not_started" => ServiceRoundStatus.NotStarted,
-            "in_progress" => ServiceRoundStatus.InProgress,
-            "paused" => ServiceRoundStatus.Paused,
-            "completed" => ServiceRoundStatus.Completed,
-            "abandoned" => ServiceRoundStatus.Abandoned,
-            _ => ServiceRoundStatus.NotStarted
-        };
-    }
-
-    private string MapRoundStatusToString(ServiceRoundStatus status)
-    {
-        return status switch
-        {
-            ServiceRoundStatus.NotStarted => "not_started",
-            ServiceRoundStatus.InProgress => "in_progress",
-            ServiceRoundStatus.Paused => "paused",
-            ServiceRoundStatus.Completed => "completed",
-            ServiceRoundStatus.Abandoned => "abandoned",
-            _ => "not_started"
-        };
-    }
-
-    private async Task<int> GetStatusIdByNameAsync(string statusName)
-    {
-        var status = await _context.RoundStatuses
-            .FirstOrDefaultAsync(s => s.Name == statusName);
-        return status?.Id ?? 1; // Default to "not_started" if not found
-    }
+    // Removed duplicate methods - using enum-based mapping now
 
     private int GetStatusIdByEnum(RoundStatusEnum status)
     {
@@ -863,18 +798,7 @@ public class RoundService : IRoundService
                 HoleId = hole.Id,
                 HoleNumber = model.HoleNumber,
                 Score = model.Score,
-                Putts = model.Putts,
-                FairwayHit = model.FairwayHit,
-                GreenInRegulation = model.GreenInRegulation,
-                UpAndDown = model.UpAndDown,
-                SandSave = model.SandSave,
-                PenaltyStrokes = model.PenaltyStrokes,
-                DistanceToPinYards = model.DistanceToPinYards,
-                ClubUsed = model.ClubUsed,
-                LiePosition = model.LiePosition,
-                ShotNotes = model.ShotNotes,
-                PerformanceNotes = model.PerformanceNotes,
-                HoleMetadata = model.HoleMetadata != null ? System.Text.Json.JsonSerializer.Serialize(model.HoleMetadata) : null,
+                UserId = round.UserId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -907,20 +831,8 @@ public class RoundService : IRoundService
                 throw new InvalidOperationException($"Hole score with ID {id} not found");
             }
 
-            // Update fields
+            // Update fields (simplified to match DAL model)
             if (model.Score.HasValue) holeScore.Score = model.Score;
-            if (model.Putts.HasValue) holeScore.Putts = model.Putts;
-            if (model.FairwayHit.HasValue) holeScore.FairwayHit = model.FairwayHit;
-            if (model.GreenInRegulation.HasValue) holeScore.GreenInRegulation = model.GreenInRegulation;
-            if (model.UpAndDown.HasValue) holeScore.UpAndDown = model.UpAndDown;
-            if (model.SandSave.HasValue) holeScore.SandSave = model.SandSave;
-            if (model.PenaltyStrokes.HasValue) holeScore.PenaltyStrokes = model.PenaltyStrokes;
-            if (model.DistanceToPinYards.HasValue) holeScore.DistanceToPinYards = model.DistanceToPinYards;
-            if (model.ClubUsed != null) holeScore.ClubUsed = model.ClubUsed;
-            if (model.LiePosition != null) holeScore.LiePosition = model.LiePosition;
-            if (model.ShotNotes != null) holeScore.ShotNotes = model.ShotNotes;
-            if (model.PerformanceNotes != null) holeScore.PerformanceNotes = model.PerformanceNotes;
-            if (model.HoleMetadata != null) holeScore.HoleMetadata = System.Text.Json.JsonSerializer.Serialize(model.HoleMetadata);
             
             holeScore.UpdatedAt = DateTime.UtcNow;
 
@@ -1027,21 +939,102 @@ public class RoundService : IRoundService
         }
     }
 
+    public async Task<HoleScoreModel> CompleteHoleAsync(int roundId, CompleteHoleModel model)
+    {
+        try
+        {
+            // Validate the round exists and user has access
+            var round = await _context.Rounds
+                .Include(r => r.Course)
+                .FirstOrDefaultAsync(r => r.Id == roundId);
+            if (round == null)
+            {
+                throw new InvalidOperationException($"Round with ID {roundId} not found");
+            }
+
+            // Get or create hole information
+            var hole = await _context.Holes
+                .FirstOrDefaultAsync(h => h.CourseId == round.CourseId && 
+                                        h.HoleNumber == model.HoleNumber &&
+                                        h.UserId == round.UserId);
+
+            if (hole == null)
+            {
+                // Auto-create hole record if it doesn't exist and par is provided
+                if (!model.Par.HasValue)
+                {
+                    throw new InvalidOperationException($"Par value is required for first-time completion of hole {model.HoleNumber}");
+                }
+
+                hole = new Hole
+                {
+                    CourseId = round.CourseId,
+                    UserId = round.UserId,
+                    HoleNumber = model.HoleNumber,
+                    Par = model.Par.Value,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                _context.Holes.Add(hole);
+                await _context.SaveChangesAsync();
+                
+                _logger.LogInformation("Auto-created hole {HoleNumber} for course {CourseId} by user {UserId}", 
+                    model.HoleNumber, round.CourseId, round.UserId);
+            }
+            else if (model.Par.HasValue && hole.Par != model.Par.Value)
+            {
+                // Update par if different value provided
+                hole.Par = model.Par.Value;
+                hole.UpdatedAt = DateTime.UtcNow;
+                _context.Holes.Update(hole);
+            }
+
+            // Check if hole score already exists
+            var existingScore = await _context.HoleScores
+                .FirstOrDefaultAsync(hs => hs.RoundId == roundId && hs.HoleNumber == model.HoleNumber);
+            if (existingScore != null)
+            {
+                // Update existing score
+                existingScore.Score = model.Score;
+                existingScore.UpdatedAt = DateTime.UtcNow;
+                _context.HoleScores.Update(existingScore);
+                await _context.SaveChangesAsync();
+                
+                _logger.LogInformation("Updated hole score for round {RoundId} hole {HoleNumber}: {Score}", 
+                    roundId, model.HoleNumber, model.Score);
+                
+                return MapToHoleScoreModel(existingScore);
+            }
+
+            // Create new hole score
+            var holeScore = new caddie.portal.dal.Models.HoleScore
+            {
+                RoundId = roundId,
+                HoleId = hole.Id,
+                HoleNumber = model.HoleNumber,
+                Score = model.Score,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _context.HoleScores.Add(holeScore);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Completed hole {HoleNumber} for round {RoundId} with score {Score}", 
+                model.HoleNumber, roundId, model.Score);
+
+            return MapToHoleScoreModel(holeScore);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error completing hole {HoleNumber} for round {RoundId}", model.HoleNumber, roundId);
+            throw;
+        }
+    }
+
     private HoleScoreModel MapToHoleScoreModel(caddie.portal.dal.Models.HoleScore holeScore)
     {
-        Dictionary<string, object>? metadata = null;
-        if (!string.IsNullOrEmpty(holeScore.HoleMetadata))
-        {
-            try
-            {
-                metadata = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(holeScore.HoleMetadata);
-            }
-            catch
-            {
-                // If deserialization fails, leave metadata as null
-            }
-        }
-
         var model = new HoleScoreModel
         {
             Id = holeScore.Id,
@@ -1049,20 +1042,17 @@ public class RoundService : IRoundService
             HoleId = holeScore.HoleId,
             HoleNumber = holeScore.HoleNumber,
             Score = holeScore.Score,
-            Putts = holeScore.Putts,
-            FairwayHit = holeScore.FairwayHit,
-            GreenInRegulation = holeScore.GreenInRegulation,
-            UpAndDown = holeScore.UpAndDown,
-            SandSave = holeScore.SandSave,
-            PenaltyStrokes = holeScore.PenaltyStrokes,
-            DistanceToPinYards = holeScore.DistanceToPinYards,
-            ClubUsed = holeScore.ClubUsed,
-            LiePosition = holeScore.LiePosition,
-            ShotNotes = holeScore.ShotNotes,
-            PerformanceNotes = holeScore.PerformanceNotes,
-            HoleMetadata = metadata,
-            CreatedAt = holeScore.CreatedAt,
-            UpdatedAt = holeScore.UpdatedAt
+            // Set default values for properties not in simplified DAL model
+            Putts = null,
+            FairwayHit = null,
+            GreenInRegulation = null,
+            UpAndDown = null,
+            SandSave = null,
+            PenaltyStrokes = null,
+            DistanceToPinYards = null,
+            HoleMetadata = null,
+            CreatedAt = holeScore.CreatedAt ?? DateTime.UtcNow,
+            UpdatedAt = holeScore.UpdatedAt ?? DateTime.UtcNow
         };
 
         // Add hole information if available
@@ -1073,13 +1063,274 @@ public class RoundService : IRoundService
                 Id = holeScore.Hole.Id,
                 CourseId = holeScore.Hole.CourseId,
                 HoleNumber = holeScore.Hole.HoleNumber,
+                UserId = holeScore.Hole.UserId,
                 Par = holeScore.Hole.Par,
-                YardageWhite = holeScore.Hole.YardageWhite,
-                StrokeIndex = holeScore.Hole.StrokeIndex,
-                Description = holeScore.Hole.HoleDescription
+                // Set default values for properties not in simplified DAL model
+                Name = null,
+                YardageBlack = null,
+                YardageBlue = null,
+                YardageWhite = null,
+                YardageRed = null,
+                StrokeIndex = null,
+                LadiesYardage = null,
+                LadiesPar = null,
+                LadiesStrokeIndex = null,
+                TeeLocation = null,
+                PinLocation = null,
+                HoleDescription = null,
+                HoleTips = null,
+                PlayingTips = null,
+                SimpleHazards = null,
+                HoleMetadata = null,
+                CreatedAt = holeScore.Hole.CreatedAt,
+                UpdatedAt = holeScore.Hole.UpdatedAt,
+                // Legacy properties for backward compatibility
+                YardageMen = null,
+                YardageWomen = null,
+                Handicap = null,
+                Description = null
             };
         }
 
         return model;
     }
+
+    #region Enhanced Round Management Methods
+
+    public async Task<CompleteHoleResult> CompleteHoleWithProgressionAsync(int roundId, int holeNumber, int score, int? par = null)
+    {
+        try
+        {
+            // Validate the round exists and user has access
+            var round = await _context.Rounds
+                .Include(r => r.Course)
+                .FirstOrDefaultAsync(r => r.Id == roundId);
+            if (round == null)
+            {
+                throw new InvalidOperationException($"Round with ID {roundId} not found");
+            }
+
+            // Check round status
+            var currentStatus = (RoundStatusEnum)round.StatusId;
+            if (currentStatus == RoundStatusEnum.Completed || currentStatus == RoundStatusEnum.Abandoned)
+            {
+                throw new InvalidOperationException("Cannot complete holes for a finished round");
+            }
+
+            // Get or create hole information
+            var hole = await _context.Holes
+                .FirstOrDefaultAsync(h => h.CourseId == round.CourseId && 
+                                        h.HoleNumber == holeNumber &&
+                                        h.UserId == round.UserId);
+
+            if (hole == null)
+            {
+                // Auto-create hole record if it doesn't exist and par is provided
+                if (!par.HasValue)
+                {
+                    throw new InvalidOperationException($"Par value is required for first-time completion of hole {holeNumber}");
+                }
+
+                hole = new Hole
+                {
+                    CourseId = round.CourseId,
+                    UserId = round.UserId,
+                    HoleNumber = holeNumber,
+                    Par = par.Value,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                _context.Holes.Add(hole);
+                await _context.SaveChangesAsync();
+                
+                _logger.LogInformation("Auto-created hole {HoleNumber} for course {CourseId} by user {UserId}", 
+                    holeNumber, round.CourseId, round.UserId);
+            }
+            else if (par.HasValue && hole.Par != par.Value)
+            {
+                // Update par if different value provided
+                hole.Par = par.Value;
+                hole.UpdatedAt = DateTime.UtcNow;
+                _context.Holes.Update(hole);
+            }
+
+            // Check if hole score already exists
+            var existingScore = await _context.HoleScores
+                .FirstOrDefaultAsync(hs => hs.RoundId == roundId && hs.HoleNumber == holeNumber);
+            
+            if (existingScore != null)
+            {
+                // Update existing score
+                existingScore.Score = score;
+                existingScore.UpdatedAt = DateTime.UtcNow;
+                _context.HoleScores.Update(existingScore);
+            }
+            else
+            {
+                // Create new hole score
+                existingScore = new caddie.portal.dal.Models.HoleScore
+                {
+                    RoundId = roundId,
+                    HoleId = hole.Id,
+                    HoleNumber = holeNumber,
+                    Score = score,
+                    UserId = round.UserId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                _context.HoleScores.Add(existingScore);
+            }
+
+            // Update round progression
+            var nextHole = holeNumber + 1;
+            var isComplete = false;
+
+            // Check if this completes the round (hole 18)
+            if (holeNumber >= 18)
+            {
+                isComplete = true;
+                round.StatusId = GetStatusIdByEnum(RoundStatusEnum.Completed);
+                round.EndTime = DateTime.UtcNow;
+                round.CurrentHole = 18;
+            }
+            else
+            {
+                round.CurrentHole = nextHole;
+            }
+
+            // Calculate total score
+            var totalScore = await CalculateRoundTotalInternalAsync(roundId);
+            round.TotalScore = totalScore;
+            round.UpdatedAt = DateTime.UtcNow;
+
+            _context.Rounds.Update(round);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("User {UserId} completed hole {HoleNumber} for round {RoundId} with score {Score}. Round complete: {IsComplete}", 
+                round.UserId, holeNumber, roundId, score, isComplete);
+
+            // Prepare response
+            var completedHoleModel = MapToHoleScoreModel(existingScore);
+            var result = new CompleteHoleResult
+            {
+                CompletedHole = completedHoleModel,
+                CurrentHole = round.CurrentHole ?? 1,
+                TotalScore = totalScore,
+                IsRoundComplete = isComplete
+            };
+
+            // Get next hole info if not complete
+            if (!isComplete)
+            {
+                var nextHoleInfo = await _context.Holes
+                    .FirstOrDefaultAsync(h => h.CourseId == round.CourseId && 
+                                            h.HoleNumber == nextHole &&
+                                            h.UserId == round.UserId);
+
+                if (nextHoleInfo != null)
+                {
+                    result.NextHole = new HoleInfo
+                    {
+                        HoleNumber = nextHoleInfo.HoleNumber,
+                        Par = nextHoleInfo.Par,
+                        // HoleName = nextHoleInfo.Name, // Field removed in simplified model
+                        // HoleDescription = nextHoleInfo.HoleDescription // Field removed in simplified model
+                    };
+                }
+            }
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error completing hole {HoleNumber} for round {RoundId} with progression", holeNumber, roundId);
+            throw;
+        }
+    }
+
+    public async Task<RoundProgress> GetRoundProgressAsync(int roundId)
+    {
+        try
+        {
+            var round = await _context.Rounds
+                .FirstOrDefaultAsync(r => r.Id == roundId);
+            if (round == null)
+            {
+                throw new InvalidOperationException($"Round with ID {roundId} not found");
+            }
+
+            var holeScores = await _context.HoleScores
+                .Include(hs => hs.Hole)
+                .Where(hs => hs.RoundId == roundId && hs.Score.HasValue)
+                .OrderBy(hs => hs.HoleNumber)
+                .ToListAsync();
+
+            var holeScoreModels = holeScores.Select(MapToHoleScoreModel).ToList();
+            var totalScore = holeScores.Sum(hs => hs.Score ?? 0);
+            var totalPar = holeScores.Where(hs => hs.Hole?.Par.HasValue == true).Sum(hs => hs.Hole!.Par!.Value);
+
+            return new RoundProgress
+            {
+                HolesCompleted = holeScores.Count,
+                CurrentHole = round.CurrentHole ?? 1,
+                TotalScore = totalScore,
+                CompletedHoles = holeScoreModels,
+                IsRoundComplete = (RoundStatusEnum)round.StatusId == RoundStatusEnum.Completed,
+                TotalPar = totalPar > 0 ? totalPar : null,
+                ScoreToPar = totalPar > 0 ? totalScore - totalPar : null
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting round progress for round {RoundId}", roundId);
+            throw;
+        }
+    }
+
+    public async Task<bool> IsRoundCompleteAsync(int roundId)
+    {
+        try
+        {
+            var round = await _context.Rounds
+                .FirstOrDefaultAsync(r => r.Id == roundId);
+            
+            if (round == null)
+            {
+                return false;
+            }
+
+            return (RoundStatusEnum)round.StatusId == RoundStatusEnum.Completed;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking if round is complete for round {RoundId}", roundId);
+            throw;
+        }
+    }
+
+    public async Task<int> CalculateRoundTotalAsync(int roundId)
+    {
+        try
+        {
+            return await CalculateRoundTotalInternalAsync(roundId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calculating round total for round {RoundId}", roundId);
+            throw;
+        }
+    }
+
+    private async Task<int> CalculateRoundTotalInternalAsync(int roundId)
+    {
+        var holeScores = await _context.HoleScores
+            .Where(hs => hs.RoundId == roundId && hs.Score.HasValue)
+            .ToListAsync();
+
+        return holeScores.Sum(hs => hs.Score ?? 0);
+    }
+
+    #endregion
 }

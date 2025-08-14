@@ -110,11 +110,10 @@ public partial class User
     [Column("status_id")]
     public int StatusId { get; set; }
 
-    public virtual ICollection<ChatMessage> ChatMessages { get; set; } = new List<ChatMessage>();
 
-    public virtual ICollection<ChatSession> ChatSessions { get; set; } = new List<ChatSession>();
+    public virtual ICollection<Course> Courses { get; set; } = new List<Course>();
 
-    public virtual ICollection<ClubRecommendation> ClubRecommendations { get; set; } = new List<ClubRecommendation>();
+    public virtual ICollection<Hole> Holes { get; set; } = new List<Hole>();
 
     public virtual ICollection<Location> Locations { get; set; } = new List<Location>();
 

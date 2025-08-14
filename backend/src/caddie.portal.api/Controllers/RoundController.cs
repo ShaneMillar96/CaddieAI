@@ -736,6 +736,149 @@ public class RoundController : ControllerBase
     }
 
     /// <summary>
+    /// Complete a hole with progressive round management
+    /// </summary>
+    [HttpPost("{roundId:int}/holes/{holeNumber:int}/complete")]
+    [ProducesResponseType(typeof(ApiResponse<CompleteHoleResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> CompleteHoleWithProgression(int roundId, int holeNumber, [FromBody] CompleteHoleRequestDto request)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+                
+                return BadRequest(ApiResponse.ErrorResponse("Validation failed", "VALIDATION_ERROR", errors));
+            }
+
+            var userId = GetCurrentUserId();
+            if (userId == null)
+                return Unauthorized(ApiResponse.ErrorResponse("User not authenticated", "UNAUTHORIZED"));
+
+            // Verify round exists and user has access
+            var round = await _roundService.GetRoundByIdAsync(roundId);
+            if (round == null)
+                return NotFound(ApiResponse.ErrorResponse("Round not found", "ROUND_NOT_FOUND"));
+
+            if (round.UserId != userId.Value)
+                return Forbid();
+
+            // Validate hole number matches URL parameter
+            if (request.HoleNumber != holeNumber)
+            {
+                return BadRequest(ApiResponse.ErrorResponse("Hole number in request body must match URL parameter", "HOLE_NUMBER_MISMATCH"));
+            }
+
+            var result = await _roundService.CompleteHoleWithProgressionAsync(roundId, holeNumber, request.Score, request.Par);
+            var response = _mapper.Map<CompleteHoleResponseDto>(result);
+
+            _logger.LogInformation("User {UserId} completed hole {HoleNumber} for round {RoundId} with score {Score}", 
+                userId.Value, holeNumber, roundId, request.Score);
+
+            return Ok(ApiResponse<CompleteHoleResponseDto>.SuccessResponse(response, "Hole completed successfully"));
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning("Invalid operation while completing hole {HoleNumber} for round {RoundId}: {Error}", holeNumber, roundId, ex.Message);
+            return BadRequest(ApiResponse.ErrorResponse(ex.Message, "INVALID_OPERATION"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error completing hole {HoleNumber} for round {RoundId}", holeNumber, roundId);
+            return StatusCode(500, ApiResponse.ErrorResponse("Failed to complete hole", "INTERNAL_ERROR"));
+        }
+    }
+
+    /// <summary>
+    /// Get round progress with completed holes information
+    /// </summary>
+    [HttpGet("{roundId:int}/progress")]
+    [ProducesResponseType(typeof(ApiResponse<RoundProgressResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetRoundProgress(int roundId)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+                return Unauthorized(ApiResponse.ErrorResponse("User not authenticated", "UNAUTHORIZED"));
+
+            // Verify round exists and user has access
+            var round = await _roundService.GetRoundByIdAsync(roundId);
+            if (round == null)
+                return NotFound(ApiResponse.ErrorResponse("Round not found", "ROUND_NOT_FOUND"));
+
+            if (round.UserId != userId.Value)
+                return Forbid();
+
+            var progress = await _roundService.GetRoundProgressAsync(roundId);
+            var response = _mapper.Map<RoundProgressResponseDto>(progress);
+
+            return Ok(ApiResponse<RoundProgressResponseDto>.SuccessResponse(response, "Round progress retrieved successfully"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting round progress for round {RoundId}", roundId);
+            return StatusCode(500, ApiResponse.ErrorResponse("Failed to get round progress", "INTERNAL_ERROR"));
+        }
+    }
+
+    /// <summary>
+    /// Complete a hole with score and optionally create hole if first time
+    /// </summary>
+    [HttpPost("{id:int}/complete-hole")]
+    [ProducesResponseType(typeof(ApiResponse<HoleScoreResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> CompleteHole(int id, [FromBody] CompleteHoleRequestDto request)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+                return Unauthorized(ApiResponse.ErrorResponse("User not authenticated", "UNAUTHORIZED"));
+
+            // Verify round exists and user has access
+            var round = await _roundService.GetRoundByIdAsync(id);
+            if (round == null)
+                return NotFound(ApiResponse.ErrorResponse("Round not found", "ROUND_NOT_FOUND"));
+
+            if (round.UserId != userId.Value)
+                return Forbid();
+
+            var model = _mapper.Map<CompleteHoleModel>(request);
+            var holeScore = await _roundService.CompleteHoleAsync(id, model);
+            var response = _mapper.Map<HoleScoreResponseDto>(holeScore);
+
+            _logger.LogInformation("User {UserId} completed hole {HoleNumber} for round {RoundId} with score {Score}", 
+                userId.Value, request.HoleNumber, id, request.Score);
+
+            return Ok(ApiResponse<HoleScoreResponseDto>.SuccessResponse(response, "Hole completed successfully"));
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning("Invalid operation while completing hole for round {RoundId}: {Error}", id, ex.Message);
+            return BadRequest(ApiResponse.ErrorResponse(ex.Message, "INVALID_OPERATION"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error completing hole for round {RoundId}", id);
+            return StatusCode(500, ApiResponse.ErrorResponse("Failed to complete hole", "INTERNAL_ERROR"));
+        }
+    }
+
+    /// <summary>
     /// Get current user ID from JWT claims
     /// </summary>
     /// <returns>User ID or null if not authenticated</returns>

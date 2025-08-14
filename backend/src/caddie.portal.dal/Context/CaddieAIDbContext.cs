@@ -16,11 +16,6 @@ public partial class CaddieAIDbContext : DbContext
     {
     }
 
-    public virtual DbSet<ChatMessage> ChatMessages { get; set; }
-
-    public virtual DbSet<ChatSession> ChatSessions { get; set; }
-
-    public virtual DbSet<ClubRecommendation> ClubRecommendations { get; set; }
 
     public virtual DbSet<Course> Courses { get; set; }
 
@@ -46,15 +41,7 @@ public partial class CaddieAIDbContext : DbContext
 
     public virtual DbSet<UserStatus> UserStatuses { get; set; }
 
-    public virtual DbSet<AIConversation> AIConversations { get; set; }
 
-    public virtual DbSet<HoleCompletionCommentary> HoleCompletionCommentaries { get; set; }
-
-    public virtual DbSet<LocationHistory> LocationHistories { get; set; }
-
-    public virtual DbSet<ShotEvent> ShotEvents { get; set; }
-
-    public virtual DbSet<ShotPlacement> ShotPlacements { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -65,15 +52,11 @@ public partial class CaddieAIDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // Configure PostgreSQL-specific enums
+        // Configure PostgreSQL-specific enums (simplified)
         modelBuilder
-            .HasPostgresEnum("chat_session_status", new[] { "active", "paused", "completed", "archived" })
             .HasPostgresEnum("course_difficulty", new[] { "easy", "moderate", "difficult", "championship" })
             .HasPostgresEnum("hole_type", new[] { "par3", "par4", "par5" })
-            .HasPostgresEnum("message_type", new[] { "user_message", "ai_response", "system_message", "error_message" })
-            .HasPostgresEnum("round_status", new[] { "not_started", "in_progress", "paused", "completed", "abandoned" })
-            .HasPostgresEnum("token_type", new[] { "refresh", "email_verification", "password_reset" })
-            .HasPostgresEnum("weather_condition", new[] { "sunny", "cloudy", "overcast", "light_rain", "heavy_rain", "windy", "stormy" });
+            .HasPostgresEnum("token_type", new[] { "refresh", "email_verification", "password_reset" });
 
         // Configure PostgreSQL extensions
         modelBuilder

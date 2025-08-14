@@ -84,14 +84,15 @@ public class AIScoreService : IAIScoreService
             result.ShotEvents = shotSummaries;
 
             // Calculate detected score based on shot count
-            var detectedScore = CalculateScoreFromShots(shotSummaries, hole.Par);
+            var par = hole.Par ?? 4; // Default to par 4 if not set
+            var detectedScore = CalculateScoreFromShots(shotSummaries, par);
             result.DetectedScore = detectedScore;
 
             // Calculate confidence based on various factors
             result.Confidence = CalculateDetectionConfidence(shotSummaries, locationAnalysis, hole);
 
             // Determine if confirmation is required
-            result.RequiresConfirmation = ShouldRequireConfirmation(result.Confidence, detectedScore, hole.Par);
+            result.RequiresConfirmation = ShouldRequireConfirmation(result.Confidence, detectedScore, par);
 
             // Add detection reasoning
             AddDetectionReasons(result, shotSummaries, locationAnalysis, hole);
@@ -100,7 +101,7 @@ public class AIScoreService : IAIScoreService
             if (result.HoleCompleted && result.Confidence >= MEDIUM_CONFIDENCE_THRESHOLD)
             {
                 result.Commentary = await GenerateScoreCommentaryAsync(userId, roundId, holeNumber, 
-                    result.DetectedScore, hole.Par);
+                    result.DetectedScore, hole.Par ?? 4);
             }
 
             _logger.LogInformation($"Hole completion processed: Score {result.DetectedScore}, Confidence {result.Confidence:F2}");
@@ -235,9 +236,10 @@ public class AIScoreService : IAIScoreService
                 };
             }
 
-            // Calculate distance to pin
+            // Calculate distance to hole center (PinLocation not available in simplified model)
             var playerLocation = new Point((double)currentLocation.Longitude, (double)currentLocation.Latitude);
-            var distanceToPin = (decimal)playerLocation.Distance(hole.PinLocation);
+            // For now, assume reasonable distance since PinLocation is not available
+            var distanceToPin = 50.0m; // Default distance - will be updated with actual location logic later
 
             var analysis = new HoleCompletionAnalysis
             {

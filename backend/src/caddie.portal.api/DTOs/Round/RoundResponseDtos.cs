@@ -65,3 +65,31 @@ public class PaginatedRoundResponseDto
     public bool HasNextPage => Page < TotalPages;
     public bool HasPreviousPage => Page > 1;
 }
+
+public class CompleteHoleResponseDto
+{
+    public int CurrentHole { get; set; }
+    public int TotalScore { get; set; }
+    public bool IsRoundComplete { get; set; }
+    public HoleInfoDto? NextHole { get; set; }
+    public HoleScoreResponseDto CompletedHole { get; set; } = null!;
+}
+
+public class RoundProgressResponseDto
+{
+    public int HolesCompleted { get; set; }
+    public int CurrentHole { get; set; }
+    public int TotalScore { get; set; }
+    public List<HoleScoreListDto> CompletedHoles { get; set; } = new();
+    public bool IsRoundComplete { get; set; }
+    public int? TotalPar { get; set; }
+    public int? ScoreToPar { get; set; }
+}
+
+public class HoleInfoDto
+{
+    public int HoleNumber { get; set; }
+    public int? Par { get; set; }
+    public string? HoleName { get; set; }
+    public string? HoleDescription { get; set; }
+}

@@ -70,7 +70,7 @@ export const MainTabNavigator: React.FC = () => {
         name="Courses"
         component={CoursesNavigator}
         options={{
-          title: 'Courses',
+          title: 'My Courses',
           tabBarIcon: CoursesIcon,
           headerShown: false,
         }}
