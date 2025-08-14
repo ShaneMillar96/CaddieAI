@@ -144,12 +144,13 @@ public class CourseService : ICourseService
             {
                 Name = model.Name.Trim(),
                 Location = _geometryFactory.CreatePoint(new Coordinate(model.Longitude, model.Latitude)),
-                UserId = 1, // TODO: Get from authenticated user context
+                // TODO: Set Address, City, State, Country, Latitude, Longitude from model
+                Latitude = (decimal)model.Latitude,
+                Longitude = (decimal)model.Longitude,
                 Holes = model.Holes.Select(h => new Hole
                 {
                     HoleNumber = h.HoleNumber,
-                    Par = h.Par,
-                    UserId = 1 // TODO: Get from authenticated user context
+                    Par = h.Par
                 }).ToList()
             };
 
@@ -182,9 +183,11 @@ public class CourseService : ICourseService
                 throw new InvalidOperationException($"A course with the name '{model.Name}' already exists");
             }
 
-            // Update course properties (simplified to match DAL model)
+            // Update course properties
             existingCourse.Name = model.Name.Trim();
             existingCourse.Location = _geometryFactory.CreatePoint(new Coordinate(model.Longitude, model.Latitude));
+            existingCourse.Latitude = (decimal)model.Latitude;
+            existingCourse.Longitude = (decimal)model.Longitude;
 
             var updatedCourse = await _courseRepository.UpdateAsync(existingCourse);
             _logger.LogInformation("Course updated successfully: {CourseName} (ID: {CourseId})", model.Name, id);
@@ -292,12 +295,12 @@ public class CourseService : ICourseService
         {
             Id = course.Id,
             Name = course.Name,
-            // Set default values for properties not in simplified DAL model
+            // Set values from normalized Course model
             Description = null,
-            Address = null,
-            City = null,
-            State = null,
-            Country = "Unknown", // Required property
+            Address = course.Address,
+            City = course.City,
+            State = course.State,
+            Country = course.Country ?? "Unknown", // Required property
             Phone = null,
             Website = null,
             Email = null,
@@ -309,15 +312,14 @@ public class CourseService : ICourseService
             GreenFeeRange = null,
             Timezone = null,
             IsActive = true, // Default to active
-            Latitude = course.Location?.Y,
-            Longitude = course.Location?.X,
+            Latitude = (double?)course.Latitude,
+            Longitude = (double?)course.Longitude,
             Amenities = null,
             Holes = course.Holes?.Select(h => new HoleModel
             {
                 Id = h.Id,
                 CourseId = h.CourseId,
                 HoleNumber = h.HoleNumber,
-                UserId = h.UserId,
                 Par = h.Par,
                 // Set default values for properties not in simplified DAL model
                 Name = null,

@@ -963,8 +963,7 @@ public class RoundService : IRoundService
             // Get or create hole information
             var hole = await _context.Holes
                 .FirstOrDefaultAsync(h => h.CourseId == round.CourseId.Value && 
-                                        h.HoleNumber == model.HoleNumber &&
-                                        h.UserId == round.UserId);
+                                        h.HoleNumber == model.HoleNumber);
 
             if (hole == null)
             {
@@ -977,7 +976,6 @@ public class RoundService : IRoundService
                 hole = new Hole
                 {
                     CourseId = round.CourseId.Value,
-                    UserId = round.UserId,
                     HoleNumber = model.HoleNumber,
                     Par = model.Par.Value,
                     CreatedAt = DateTime.UtcNow,
@@ -1071,7 +1069,6 @@ public class RoundService : IRoundService
                 Id = holeScore.Hole.Id,
                 CourseId = holeScore.Hole.CourseId,
                 HoleNumber = holeScore.Hole.HoleNumber,
-                UserId = holeScore.Hole.UserId,
                 Par = holeScore.Hole.Par,
                 // Set default values for properties not in simplified DAL model
                 Name = null,
@@ -1133,8 +1130,7 @@ public class RoundService : IRoundService
             // Get or create hole information
             var hole = await _context.Holes
                 .FirstOrDefaultAsync(h => h.CourseId == round.CourseId.Value && 
-                                        h.HoleNumber == holeNumber &&
-                                        h.UserId == round.UserId);
+                                        h.HoleNumber == holeNumber);
 
             if (hole == null)
             {
@@ -1147,7 +1143,6 @@ public class RoundService : IRoundService
                 hole = new Hole
                 {
                     CourseId = round.CourseId.Value,
-                    UserId = round.UserId,
                     HoleNumber = holeNumber,
                     Par = par.Value,
                     CreatedAt = DateTime.UtcNow,
@@ -1239,8 +1234,7 @@ public class RoundService : IRoundService
             {
                 var nextHoleInfo = await _context.Holes
                     .FirstOrDefaultAsync(h => h.CourseId == round.CourseId && 
-                                            h.HoleNumber == nextHole &&
-                                            h.UserId == round.UserId);
+                                            h.HoleNumber == nextHole);
 
                 if (nextHoleInfo != null)
                 {

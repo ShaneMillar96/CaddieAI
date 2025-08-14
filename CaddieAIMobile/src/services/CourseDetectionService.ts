@@ -1,4 +1,5 @@
 import { CourseDetectionResult } from '../types/golf';
+import { getMapboxConfig } from '../utils/mapboxConfig';
 
 interface MapboxFeature {
   id: string;
@@ -22,21 +23,89 @@ interface MapboxResponse {
   features: MapboxFeature[];
 }
 
-export class CourseDetectionService {
-  private mapboxToken: string;
+// Search Box API v1 response interfaces
+interface MapboxSearchBoxFeature {
+  type: 'Feature';
+  id: string;
+  geometry: {
+    type: 'Point';
+    coordinates: [number, number]; // [longitude, latitude]
+  };
+  properties: {
+    name: string;
+    place_formatted?: string; // This is the actual field name in API response
+    full_address?: string;
+    poi_category?: string[];
+    poi_category_ids?: string[];
+    brand?: string[];
+    coordinates?: {
+      longitude: number;
+      latitude: number;
+    };
+    context?: {
+      country?: {
+        id: string;
+        name: string;
+        country_code: string;
+        country_code_alpha_3: string;
+      };
+      region?: {
+        id: string;
+        name: string;
+        region_code: string;
+      };
+      postcode?: {
+        id: string;
+        name: string;
+      };
+      place?: {
+        id: string;
+        name: string;
+      };
+      locality?: {
+        id: string;
+        name: string;
+      };
+      neighborhood?: {
+        id: string;
+        name: string;
+      };
+      address?: {
+        id: string;
+        name: string;
+        address_number: string;
+        street_name: string;
+      };
+    };
+  };
+}
 
-  constructor() {
-    // Get Mapbox token from config
-    this.mapboxToken = require('../utils/mapboxConfig').MAPBOX_ACCESS_TOKEN;
+interface MapboxSearchBoxResponse {
+  type: 'FeatureCollection';
+  features: MapboxSearchBoxFeature[];
+  attribution: string;
+}
+
+export class CourseDetectionService {
+  private getMapboxToken(): string {
+    const config = getMapboxConfig();
+    console.log('🗺️ CourseDetectionService: Getting Mapbox token...');
+    if (!config.accessToken) {
+      console.error('❌ CourseDetectionService: Mapbox access token not configured');
+      throw new Error('Mapbox access token not configured');
+    }
+    console.log('✅ CourseDetectionService: Mapbox token retrieved successfully, length:', config.accessToken.length);
+    return config.accessToken;
   }
 
   /**
    * Detect the single most likely golf course at the current location
+   * Only returns courses within 1000m (on-course detection)
    */
   async detectCurrentCourse(
     latitude: number,
     longitude: number,
-    radius = 500 // smaller radius for current location detection
+    radius = 1000 // increased radius for realistic golf course detection
   ): Promise<CourseDetectionResult | null> {
     try {
       const nearbyGolfCourses = await this.detectNearbyGolfCourses(latitude, longitude, radius);
@@ -45,29 +114,34 @@ export class CourseDetectionService {
         return null;
       }
 
-      // Return the closest, highest confidence course
-      const bestCourse = nearbyGolfCourses
-        .filter(course => course.confidence >= 0.7) // High confidence threshold
+      // Return the closest, highest confidence course within detection radius
+      const onCourseCandidates = nearbyGolfCourses
+        .filter(course => course.distance <= 200) // Must be on course (within 200m)
+        .filter(course => course.confidence >= 0.6) // Reasonable confidence threshold
         .sort((a, b) => {
           // Sort by confidence first, then by distance
           if (Math.abs(a.confidence - b.confidence) < 0.1) {
             return a.distance - b.distance;
           }
           return b.confidence - a.confidence;
-        })[0];
+        });
 
-      return bestCourse || nearbyGolfCourses[0]; // Fallback to closest if no high-confidence match
-    } catch (error) {
-      console.error('Error detecting current course:', error);
-      
-      // Fallback to mock detection for development
-      if (__DEV__) {
-        console.warn('Using mock current course detection');
-        const mockResults = this.getMockDetectionResults(latitude, longitude);
-        return mockResults[0] || null;
+      const detectedCourse = onCourseCandidates[0] || null;
+      if (detectedCourse) {
+        console.log('🎯 CourseDetectionService: Current course detected:', {
+          name: detectedCourse.name,
+          distance: `${detectedCourse.distance}m`,
+          confidence: `${Math.round(detectedCourse.confidence * 100)}%`,
+          isOnCourse: detectedCourse.distance <= 200
+        });
+      } else {
+        console.log('🚫 CourseDetectionService: No course detected at current location (within 1000m with >60% confidence)');
       }
       
-      throw error;
+      return detectedCourse;
+    } catch (error) {
+      console.error('❌ CourseDetectionService: Error detecting current course:', error);
+      return null; // Fail gracefully without mock data
     }
   }
 
@@ -80,42 +154,89 @@ export class CourseDetectionService {
     radius = 1000 // meters
   ): Promise<CourseDetectionResult[]> {
     try {
-      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/golf.json?` +
-        `proximity=${longitude},${latitude}&` +
-        `types=poi&` +
-        `category=golf&` +
-        `limit=5&` +
-        `access_token=${this.mapboxToken}`;
-
-      console.log('Detecting golf courses near:', { latitude, longitude });
-
-      const response = await fetch(url);
+      const mapboxToken = this.getMapboxToken();
       
-      if (!response.ok) {
-        throw new Error(`Mapbox API error: ${response.status} ${response.statusText}`);
+      // Use multiple search strategies with Search Box API v1 for better coverage
+      const searchQueries = [
+        { q: 'Faughan Valley Golf Centre' }, // Direct name search first
+        { q: 'golf course' }, // General golf course search
+        { q: 'golf club' }, // Golf club search
+      ];
+      
+      const allResults: CourseDetectionResult[] = [];
+      
+      for (const queryParams of searchQueries) {
+        const url = `https://api.mapbox.com/search/searchbox/v1/forward?` +
+          `q=${encodeURIComponent(queryParams.q)}&` +
+          `proximity=${longitude},${latitude}&` +
+          `types=poi&` +
+          `country=GB&` +
+          `limit=10&` +
+          `access_token=${mapboxToken}`;
+
+        console.log(`🔍 CourseDetectionService: Searching for: "${queryParams.q}" near:`, { latitude, longitude });
+        console.log(`🌐 CourseDetectionService: API URL:`, url.replace(mapboxToken, 'TOKEN_HIDDEN'));
+
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+          console.error(`❌ CourseDetectionService: Mapbox API error for query "${queryParams.q}": ${response.status} ${response.statusText}`);
+          try {
+            const errorBody = await response.text();
+            console.error(`❌ CourseDetectionService: Error response body:`, errorBody);
+          } catch (err) {
+            console.error(`❌ CourseDetectionService: Could not read error response body`);
+          }
+          continue; // Skip this query and try the next one
+        }
+
+        const data: MapboxSearchBoxResponse = await response.json();
+        console.log(`✅ CourseDetectionService: API response for "${queryParams.q}":`, data.features.length, 'features received');
+        
+        const rawFeatures = data.features;
+        
+        // DEBUG: Log first few features to understand response format
+        if (rawFeatures.length > 0) {
+          console.log(`🔍 CourseDetectionService: Sample feature data for "${queryParams.q}":`, JSON.stringify(rawFeatures[0], null, 2));
+          if (rawFeatures.length > 1) {
+            console.log(`🔍 CourseDetectionService: Second feature data:`, JSON.stringify(rawFeatures[1], null, 2));
+          }
+        }
+        
+        const golfFeatures = rawFeatures.filter(feature => this.isGolfCourseSearchBox(feature));
+        console.log(`🏌️ CourseDetectionService: Filtered to ${golfFeatures.length} golf-related features`);
+        
+        const golfCourses = golfFeatures
+          .map(feature => this.mapSearchBoxFeatureToResult(feature, latitude, longitude))
+          .filter(result => result.distance <= radius);
+          
+        console.log(`📍 CourseDetectionService: Found ${golfCourses.length} courses within ${radius}m radius`);
+        if (golfCourses.length > 0) {
+          console.log('🏌️ CourseDetectionService: Course distances:', golfCourses.map(course => ({
+            name: course.name,
+            distance: `${course.distance}m`
+          })));
+        }
+        allResults.push(...golfCourses);
       }
-
-      const data: MapboxResponse = await response.json();
       
-      const golfCourses = data.features
-        .filter(feature => this.isGolfCourse(feature))
-        .map(feature => this.mapFeatureToResult(feature, latitude, longitude))
-        .filter(result => result.distance <= radius)
+      // Remove duplicates and sort by distance
+      const uniqueResults = this.removeDuplicates(allResults)
         .sort((a, b) => a.distance - b.distance);
 
-      console.log(`Found ${golfCourses.length} golf courses nearby`);
-      return golfCourses;
+      console.log(`🏁 CourseDetectionService: Detection complete - found ${uniqueResults.length} unique golf courses nearby`);
+      if (uniqueResults.length > 0) {
+        console.log('🏌️ CourseDetectionService: Detected courses:', uniqueResults.map(course => ({
+          name: course.name,
+          distance: `${course.distance}m`,
+          confidence: `${Math.round(course.confidence * 100)}%`
+        })));
+      }
+      return uniqueResults;
 
     } catch (error) {
       console.error('Error detecting golf courses:', error);
-      
-      // Fallback to mock detection for development
-      if (__DEV__) {
-        console.warn('Using mock golf course detection');
-        return this.getMockDetectionResults(latitude, longitude);
-      }
-      
-      throw error;
+      return []; // Return empty array on error
     }
   }
 
@@ -124,12 +245,24 @@ export class CourseDetectionService {
    */
   private isGolfCourse(feature: MapboxFeature): boolean {
     const golfKeywords = [
-      'golf',
-      'course',
-      'club',
+      'golf course',
+      'golf club', 
       'country club',
-      'links',
-      'resort'
+      'golf resort',
+      'golf links',
+      'municipal golf',
+      'public golf',
+      'private golf'
+    ];
+    
+    const excludeKeywords = [
+      'golf shop',
+      'golf store', 
+      'golf equipment',
+      'mini golf',
+      'driving range', // Only driving range, not full course
+      'golf lessons',
+      'golf instruction'
     ];
 
     const placeName = feature.place_name?.toLowerCase() || '';
@@ -137,12 +270,17 @@ export class CourseDetectionService {
     const category = feature.properties?.category?.toLowerCase() || '';
     const maki = feature.properties?.maki?.toLowerCase() || '';
 
+    // Exclude non-course golf related places
+    if (excludeKeywords.some(keyword => placeName.includes(keyword) || text.includes(keyword))) {
+      return false;
+    }
+
     // Check if it's categorized as golf-related
     if (category.includes('golf') || maki === 'golf') {
       return true;
     }
 
-    // Check place name and text for golf-related keywords
+    // Check place name and text for golf course keywords
     return golfKeywords.some(keyword => 
       placeName.includes(keyword) || text.includes(keyword)
     );
@@ -160,25 +298,31 @@ export class CourseDetectionService {
     const distance = this.calculateDistance(userLat, userLon, latitude, longitude);
     
     // Calculate confidence based on various factors
-    let confidence = 0.5; // Base confidence
+    let confidence = 0.4; // Base confidence
     
     const placeName = feature.place_name?.toLowerCase() || '';
     const text = feature.text?.toLowerCase() || '';
     
-    // Higher confidence for explicit golf keywords
-    if (text.includes('golf') || placeName.includes('golf')) confidence += 0.3;
+    // Higher confidence for explicit golf course keywords
+    if (text.includes('golf course') || placeName.includes('golf course')) confidence += 0.4;
+    else if (text.includes('golf club') || placeName.includes('golf club')) confidence += 0.3;
+    else if (text.includes('golf') || placeName.includes('golf')) confidence += 0.2;
+    
     if (text.includes('country club') || placeName.includes('country club')) confidence += 0.2;
     if (feature.properties?.maki === 'golf') confidence += 0.2;
     
-    // Lower confidence for very distant results
-    if (distance > 500) confidence -= 0.2;
-    if (distance > 1000) confidence -= 0.3;
+    // Distance-based confidence adjustment
+    if (distance <= 100) confidence += 0.2; // Very close - likely on course
+    else if (distance <= 200) confidence += 0.1; // Close - likely on course
+    else if (distance > 500) confidence -= 0.2; // Further away
+    else if (distance > 1000) confidence -= 0.3; // Very far
     
-    // Determine place type
+    // Determine place type with better classification
     let placeType: 'golf_course' | 'country_club' | 'resort' = 'golf_course';
     if (placeName.includes('country club') || text.includes('country club')) {
       placeType = 'country_club';
-    } else if (placeName.includes('resort') || text.includes('resort')) {
+    } else if (placeName.includes('resort') || text.includes('resort') || 
+               placeName.includes('hotel') || text.includes('hotel')) {
       placeType = 'resort';
     }
 
@@ -192,7 +336,7 @@ export class CourseDetectionService {
       latitude,
       longitude,
       confidence: Math.max(0, Math.min(1, confidence)),
-      distance,
+      distance: Math.round(distance),
       placeType,
     };
   }
@@ -213,6 +357,65 @@ export class CourseDetectionService {
   }
 
   /**
+   * Remove duplicate golf courses based on name and location similarity
+   */
+  private removeDuplicates(results: CourseDetectionResult[]): CourseDetectionResult[] {
+    const unique: CourseDetectionResult[] = [];
+    
+    for (const result of results) {
+      const isDuplicate = unique.some(existing => {
+        // Check if names are similar (basic similarity check)
+        const namesSimilar = this.areNamesSimilar(existing.name, result.name);
+        
+        // Check if locations are very close (within 50m)
+        const distance = this.calculateDistance(
+          existing.latitude, existing.longitude,
+          result.latitude, result.longitude
+        );
+        
+        return namesSimilar && distance < 50;
+      });
+      
+      if (!isDuplicate) {
+        unique.push(result);
+      } else {
+        // Keep the one with higher confidence
+        const existingIndex = unique.findIndex(existing => {
+          const namesSimilar = this.areNamesSimilar(existing.name, result.name);
+          const distance = this.calculateDistance(
+            existing.latitude, existing.longitude,
+            result.latitude, result.longitude
+          );
+          return namesSimilar && distance < 50;
+        });
+        
+        if (existingIndex >= 0 && result.confidence > unique[existingIndex].confidence) {
+          unique[existingIndex] = result;
+        }
+      }
+    }
+    
+    return unique;
+  }
+
+  /**
+   * Check if two course names are similar
+   */
+  private areNamesSimilar(name1: string, name2: string): boolean {
+    const normalize = (str: string) => str.toLowerCase().trim();
+    const n1 = normalize(name1);
+    const n2 = normalize(name2);
+    
+    // Exact match
+    if (n1 === n2) return true;
+    
+    // One contains the other
+    if (n1.includes(n2) || n2.includes(n1)) return true;
+    
+    return false;
+  }
+
+  /**
    * Calculate distance between two coordinates in meters
    */
   private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -222,36 +425,142 @@ export class CourseDetectionService {
     const a = 
       Math.sin(dLat/2) * Math.sin(dLat/2) +
       Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
+      Math.sin(dLat/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     return R * c;
   }
 
+  // ===== SEARCH BOX API v1 METHODS =====
+
   /**
-   * Mock detection results for development/testing
+   * Check if a Search Box API feature represents a golf course
    */
-  private getMockDetectionResults(latitude: number, longitude: number): CourseDetectionResult[] {
-    return [
-      {
-        id: 'mock-1',
-        name: 'Nearby Golf Club',
-        address: '123 Golf Course Rd',
-        latitude: latitude + 0.001,
-        longitude: longitude + 0.001,
-        confidence: 0.9,
-        distance: 150,
-        placeType: 'golf_course',
-      },
-      {
-        id: 'mock-2',
-        name: 'Country Club Resort',
-        address: '456 Country Club Dr',
-        latitude: latitude + 0.002,
-        longitude: longitude - 0.001,
-        confidence: 0.8,
-        distance: 300,
-        placeType: 'country_club',
-      },
+  private isGolfCourseSearchBox(feature: MapboxSearchBoxFeature): boolean {
+    const name = feature.properties.name?.toLowerCase() || '';
+    const placeFormatted = feature.properties.place_formatted?.toLowerCase() || '';
+    const fullAddress = feature.properties.full_address?.toLowerCase() || '';
+    const poiCategories = feature.properties.poi_category || [];
+    
+    const golfKeywords = [
+      'golf course',
+      'golf club', 
+      'country club',
+      'golf resort',
+      'golf links',
+      'municipal golf',
+      'public golf',
+      'private golf'
     ];
+    
+    const excludeKeywords = [
+      'golf shop',
+      'golf store', 
+      'golf equipment',
+      'mini golf',
+      'driving range', // Only driving range, not full course
+      'golf lessons',
+      'golf instruction'
+    ];
+
+    const searchableText = [name, placeFormatted, fullAddress].join(' ');
+
+    // Exclude non-course golf related places
+    if (excludeKeywords.some(keyword => searchableText.includes(keyword))) {
+      return false;
+    }
+
+    // Check POI categories for golf-related types
+    const golfPoiCategories = ['recreation', 'golf', 'sport', 'sports'];
+    if (poiCategories.some(cat => golfPoiCategories.includes(cat))) {
+      // If it has golf POI category, check for golf keywords
+      if (searchableText.includes('golf')) {
+        return true;
+      }
+    }
+
+    // Check name and address for golf-related keywords
+    if (golfKeywords.some(keyword => searchableText.includes(keyword))) {
+      return true;
+    }
+
+    // If searching specifically for golf terms, be more lenient
+    if (searchableText.includes('golf')) {
+      return true;
+    }
+
+    return false;
   }
+
+  /**
+   * Map Search Box API feature to CourseDetectionResult
+   */
+  private mapSearchBoxFeatureToResult(
+    feature: MapboxSearchBoxFeature,
+    userLat: number,
+    userLon: number
+  ): CourseDetectionResult {
+    const [longitude, latitude] = feature.geometry.coordinates;
+    const distance = this.calculateDistance(userLat, userLon, latitude, longitude);
+    
+    // Calculate confidence based on various factors
+    let confidence = 0.6; // Higher base confidence for Search Box API since it's more accurate
+    
+    const name = feature.properties.name?.toLowerCase() || '';
+    const placeFormatted = feature.properties.place_formatted?.toLowerCase() || '';
+    const fullAddress = feature.properties.full_address?.toLowerCase() || '';
+    const poiCategories = feature.properties.poi_category || [];
+    
+    const searchableText = [name, placeFormatted, fullAddress].join(' ');
+    
+    // Higher confidence for explicit golf course keywords
+    if (searchableText.includes('golf course')) confidence += 0.3;
+    else if (searchableText.includes('golf club')) confidence += 0.25;
+    else if (searchableText.includes('country club') && searchableText.includes('golf')) confidence += 0.2;
+    else if (searchableText.includes('golf')) confidence += 0.15;
+    
+    // POI category bonus
+    const golfPoiCategories = ['recreation', 'golf', 'sport', 'sports'];
+    if (poiCategories.some(cat => golfPoiCategories.includes(cat))) confidence += 0.1;
+    if (poiCategories.includes('golf')) confidence += 0.2;
+    
+    // Distance-based confidence adjustment
+    if (distance <= 100) confidence += 0.15; // Very close - likely on course
+    else if (distance <= 500) confidence += 0.1; // Close - probably at course
+    else if (distance > 2000) confidence -= 0.2; // Far - less likely to be relevant
+    
+    // Determine place type
+    let placeType: 'golf_course' | 'country_club' | 'resort' = 'golf_course';
+    if (searchableText.includes('country club')) {
+      placeType = 'country_club';
+    } else if (searchableText.includes('resort')) {
+      placeType = 'resort';
+    }
+
+    // Extract address - use place_formatted from actual API response format
+    let address = '';
+    if (feature.properties.place_formatted) {
+      address = feature.properties.place_formatted;
+    } else if (feature.properties.full_address) {
+      address = feature.properties.full_address;
+    } else if (feature.properties.context) {
+      const addressParts = [];
+      const ctx = feature.properties.context;
+      if (ctx.place?.name) addressParts.push(ctx.place.name);
+      if (ctx.region?.name) addressParts.push(ctx.region.name);
+      if (ctx.country?.name) addressParts.push(ctx.country.name);
+      address = addressParts.join(', ');
+    }
+
+    return {
+      id: feature.id,
+      name: feature.properties.name,
+      address,
+      latitude,
+      longitude,
+      confidence: Math.max(0, Math.min(1, confidence)),
+      distance,
+      placeType,
+    };
+  }
+
 }

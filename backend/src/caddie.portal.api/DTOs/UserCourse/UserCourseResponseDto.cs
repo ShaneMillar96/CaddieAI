@@ -3,6 +3,7 @@ namespace caddie.portal.api.DTOs.UserCourse;
 public class UserCourseResponseDto
 {
     public int Id { get; set; }
+    public int CourseId { get; set; }
     public string CourseName { get; set; } = null!;
     public string? Address { get; set; }
     public string? City { get; set; }
@@ -27,6 +28,7 @@ public class UserHoleResponseDto
 
 public class UserCourseProximityResponseDto
 {
+    public int UserCourseId { get; set; }
     public int CourseId { get; set; }
     public string CourseName { get; set; } = null!;
     public bool IsWithinProximity { get; set; }
