@@ -42,7 +42,7 @@ public class UserCoursesController : ControllerBase
             var userCourse = await _userCourseService.AddUserCourseAsync(userId, model);
             var response = _mapper.Map<UserCourseResponseDto>(userCourse);
 
-            _logger.LogInformation("User {UserId} successfully added course: {CourseName}", userId, request.CourseName);
+            _logger.LogInformation("User {UserId} successfully added course: {CourseName}", userId, request.CourseName ?? $"CourseId {request.CourseId}");
 
             return Ok(ApiResponse<UserCourseResponseDto>.SuccessResponse(response, "Course added successfully"));
         }
@@ -145,7 +145,8 @@ public class UserCoursesController : ControllerBase
 
             var response = new UserCourseProximityResponseDto
             {
-                CourseId = id,
+                UserCourseId = id,
+                CourseId = userCourse.CourseId,
                 CourseName = userCourse.CourseName,
                 IsWithinProximity = isNearCourse,
                 DistanceMeters = distanceMeters,
@@ -207,7 +208,14 @@ public class UserCoursesController : ControllerBase
         try
         {
             var userId = GetCurrentUserId();
-            var result = await _userCourseService.DeleteUserCourseAsync(userId, id);
+            // Get the user course first to find the actual course ID
+            var userCourse = await _userCourseService.GetUserCourseByIdAsync(userId, id);
+            if (userCourse == null)
+            {
+                return NotFound(ApiResponse<bool>.ErrorResponse("Course not found or access denied"));
+            }
+            
+            var result = await _userCourseService.DeleteUserCourseAsync(userId, userCourse.CourseId);
             
             if (!result)
             {

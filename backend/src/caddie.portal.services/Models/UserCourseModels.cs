@@ -5,6 +5,7 @@ namespace caddie.portal.services.Models;
 public class UserCourseModel
 {
     public int Id { get; set; }
+    public int CourseId { get; set; }
     public string CourseName { get; set; } = null!;
     public string? Address { get; set; }
     public string? City { get; set; }
@@ -27,9 +28,9 @@ public class UserHoleModel
 
 public class AddUserCourseModel
 {
-    [Required]
+    // Option 1: Add course by providing course data (creates course if it doesn't exist)
     [StringLength(255)]
-    public string CourseName { get; set; } = null!;
+    public string? CourseName { get; set; }
     
     [StringLength(500)]
     public string? Address { get; set; }
@@ -43,17 +44,21 @@ public class AddUserCourseModel
     [StringLength(100)]
     public string? Country { get; set; }
     
-    [Required]
     [Range(-90, 90)]
-    public decimal Latitude { get; set; }
+    public decimal? Latitude { get; set; }
     
-    [Required]
     [Range(-180, 180)]
-    public decimal Longitude { get; set; }
+    public decimal? Longitude { get; set; }
+    
+    // Option 2: Add existing course by ID
+    public int? CourseId { get; set; }
+    
+    // Validation logic should ensure either (CourseName + coordinates) or CourseId is provided
 }
 
 public class UserCourseProximityModel
 {
+    public int UserCourseId { get; set; }
     public int CourseId { get; set; }
     public string CourseName { get; set; } = null!;
     public bool IsWithinProximity { get; set; }

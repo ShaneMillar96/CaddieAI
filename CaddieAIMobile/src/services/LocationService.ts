@@ -2,6 +2,7 @@ import Geolocation from '@react-native-community/geolocation';
 import { Platform, PermissionsAndroid, Alert } from 'react-native';
 import TokenStorage from './tokenStorage';
 import { buildApiUrl, isNetworkError, API_TIMEOUT } from '../config/api';
+import { getLocationWithOverride, logLocationSource } from '../utils/locationTesting';
 
 // Types for location data
 export interface LocationData {
@@ -867,68 +868,76 @@ export class GolfLocationService {
    * Get one-time location reading with enhanced error handling and progressive accuracy
    */
   async getCurrentPosition(): Promise<LocationData | null> {
-    return new Promise((resolve) => {
-      // First try: Quick coarse location
-      Geolocation.getCurrentPosition(
-        (position) => {
-          const locationData: LocationData = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-            altitude: position.coords.altitude || undefined,
-            heading: position.coords.heading || undefined,
-            speed: position.coords.speed || undefined,
-            timestamp: position.timestamp
-          };
-          
-          // If accuracy is good enough (≤20m), return immediately
-          if (position.coords.accuracy <= 20) {
-            console.log(`GPS position acquired with good accuracy: ${position.coords.accuracy}m`);
-            resolve(locationData);
-            return;
-          }
-          
-          // If accuracy is poor, try again with high accuracy
-          console.log(`Initial GPS accuracy: ${position.coords.accuracy}m, trying for better accuracy...`);
-          
-          Geolocation.getCurrentPosition(
-            (highAccuracyPosition) => {
-              const highAccuracyData: LocationData = {
-                latitude: highAccuracyPosition.coords.latitude,
-                longitude: highAccuracyPosition.coords.longitude,
-                accuracy: highAccuracyPosition.coords.accuracy,
-                altitude: highAccuracyPosition.coords.altitude || undefined,
-                heading: highAccuracyPosition.coords.heading || undefined,
-                speed: highAccuracyPosition.coords.speed || undefined,
-                timestamp: highAccuracyPosition.timestamp
-              };
-              console.log(`High accuracy GPS position: ${highAccuracyPosition.coords.accuracy}m`);
-              resolve(highAccuracyData);
-            },
-            (_highAccuracyError) => {
-              console.log('High accuracy GPS failed, using initial position');
-              // Fall back to initial position if high accuracy fails
+    // Use location override utility which handles mock location if enabled
+    const location = await getLocationWithOverride(async () => {
+      return new Promise((resolve) => {
+        // First try: Quick coarse location
+        Geolocation.getCurrentPosition(
+          (position) => {
+            const locationData: LocationData = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: position.coords.accuracy,
+              altitude: position.coords.altitude || undefined,
+              heading: position.coords.heading || undefined,
+              speed: position.coords.speed || undefined,
+              timestamp: position.timestamp
+            };
+            
+            // If accuracy is good enough (≤20m), return immediately
+            if (position.coords.accuracy <= 20) {
+              console.log(`GPS position acquired with good accuracy: ${position.coords.accuracy}m`);
               resolve(locationData);
-            },
-            {
-              enableHighAccuracy: true,
-              timeout: 20000, // Longer timeout for high accuracy attempt
-              maximumAge: 0 // Force fresh reading
+              return;
             }
-          );
-        },
-        (error) => {
-          console.error('Error getting current position:', error);
-          // Return null for graceful degradation
-          resolve(null);
-        },
-        {
-          enableHighAccuracy: false, // Start with coarse location for speed
-          timeout: 10000, // Quick initial timeout
-          maximumAge: 30000 // Allow cached location for initial reading
-        }
-      );
+            
+            // If accuracy is poor, try again with high accuracy
+            console.log(`Initial GPS accuracy: ${position.coords.accuracy}m, trying for better accuracy...`);
+            
+            Geolocation.getCurrentPosition(
+              (highAccuracyPosition) => {
+                const highAccuracyData: LocationData = {
+                  latitude: highAccuracyPosition.coords.latitude,
+                  longitude: highAccuracyPosition.coords.longitude,
+                  accuracy: highAccuracyPosition.coords.accuracy,
+                  altitude: highAccuracyPosition.coords.altitude || undefined,
+                  heading: highAccuracyPosition.coords.heading || undefined,
+                  speed: highAccuracyPosition.coords.speed || undefined,
+                  timestamp: highAccuracyPosition.timestamp
+                };
+                console.log(`High accuracy GPS position: ${highAccuracyPosition.coords.accuracy}m`);
+                resolve(highAccuracyData);
+              },
+              (_highAccuracyError) => {
+                console.log('High accuracy GPS failed, using initial position');
+                // Fall back to initial position if high accuracy fails
+                resolve(locationData);
+              },
+              {
+                enableHighAccuracy: true,
+                timeout: 20000, // Longer timeout for high accuracy attempt
+                maximumAge: 0 // Force fresh reading
+              }
+            );
+          },
+          (error) => {
+            console.error('Error getting current position:', error);
+            // Return null for graceful degradation
+            resolve(null);
+          },
+          {
+            enableHighAccuracy: false, // Start with coarse location for speed
+            timeout: 10000, // Quick initial timeout
+            maximumAge: 30000 // Allow cached location for initial reading
+          }
+        );
+      });
     });
+
+    // Log location source for debugging
+    logLocationSource(location);
+    
+    return location;
   }
 
   // Map-specific methods

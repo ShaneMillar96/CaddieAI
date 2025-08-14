@@ -19,33 +19,37 @@ public class UserCourseRepository : IUserCourseRepository
     {
         return await _context.UserCourses
             .Include(uc => uc.User)
+            .Include(uc => uc.Course)
             .FirstOrDefaultAsync(uc => uc.Id == id);
     }
 
-    public async Task<UserCourse?> GetByUserAndIdAsync(int userId, int courseId)
+    public async Task<UserCourse?> GetByUserAndCourseAsync(int userId, int courseId)
     {
         return await _context.UserCourses
             .Include(uc => uc.User)
-            .FirstOrDefaultAsync(uc => uc.Id == courseId && uc.UserId == userId);
+            .Include(uc => uc.Course)
+            .FirstOrDefaultAsync(uc => uc.UserId == userId && uc.CourseId == courseId);
     }
 
     public async Task<IEnumerable<UserCourse>> GetByUserIdAsync(int userId)
     {
         return await _context.UserCourses
             .Include(uc => uc.User)
+            .Include(uc => uc.Course)
             .Where(uc => uc.UserId == userId)
-            .OrderBy(uc => uc.CourseName)
+            .OrderBy(uc => uc.Course.Name)
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<UserCourse>> GetNearbyUserCoursesAsync(int userId, Point location, double radiusMeters)
+    public async Task<IEnumerable<UserCourse>> GetCoursesWithinRadiusAsync(int userId, Point location, double radiusMeters)
     {
         return await _context.UserCourses
             .Include(uc => uc.User)
+            .Include(uc => uc.Course)
             .Where(uc => uc.UserId == userId && 
-                        uc.Location != null &&
-                        uc.Location.Distance(location) <= radiusMeters)
-            .OrderBy(uc => uc.Location!.Distance(location))
+                        uc.Course.Location != null &&
+                        uc.Course.Location.Distance(location) <= radiusMeters)
+            .OrderBy(uc => uc.Course.Location!.Distance(location))
             .ToListAsync();
     }
 
@@ -56,17 +60,11 @@ public class UserCourseRepository : IUserCourseRepository
         return userCourse;
     }
 
-    public async Task<UserCourse> UpdateAsync(UserCourse userCourse)
-    {
-        _context.UserCourses.Update(userCourse);
-        await _context.SaveChangesAsync();
-        return userCourse;
-    }
 
     public async Task<bool> DeleteAsync(int userId, int courseId)
     {
         var userCourse = await _context.UserCourses
-            .FirstOrDefaultAsync(uc => uc.Id == courseId && uc.UserId == userId);
+            .FirstOrDefaultAsync(uc => uc.UserId == userId && uc.CourseId == courseId);
         
         if (userCourse == null)
         {
@@ -78,40 +76,18 @@ public class UserCourseRepository : IUserCourseRepository
         return true;
     }
 
-    public async Task<bool> ExistsForUserAsync(int userId, string name)
+    public async Task<bool> ExistsByUserAndCourseAsync(int userId, int courseId)
     {
         return await _context.UserCourses
             .AnyAsync(uc => uc.UserId == userId && 
-                           uc.CourseName.ToLower() == name.ToLower());
+                           uc.CourseId == courseId);
     }
 
-    public async Task<bool> UserHasCourseAccessAsync(int userId, int courseId)
+    public async Task<bool> UserHasCourseAsync(int userId, int courseId)
     {
         return await _context.UserCourses
-            .AnyAsync(uc => uc.Id == courseId && 
-                           uc.UserId == userId);
+            .AnyAsync(uc => uc.UserId == userId && 
+                           uc.CourseId == courseId);
     }
 
-    public async Task<double> GetDistanceToCourseAsync(int courseId, Point location)
-    {
-        var userCourse = await _context.UserCourses
-            .Where(uc => uc.Id == courseId && uc.Location != null)
-            .Select(uc => new { uc.Location })
-            .FirstOrDefaultAsync();
-
-        if (userCourse?.Location == null)
-        {
-            return double.MaxValue;
-        }
-
-        return userCourse.Location.Distance(location);
-    }
-
-    public async Task<bool> IsPointWithinProximityAsync(int courseId, Point location, double proximityMeters)
-    {
-        return await _context.UserCourses
-            .AnyAsync(uc => uc.Id == courseId && 
-                           uc.Location != null && 
-                           uc.Location.Distance(location) <= proximityMeters);
-    }
 }

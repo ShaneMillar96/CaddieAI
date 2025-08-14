@@ -18,7 +18,8 @@ import {
   fetchUserCourses,
   checkProximityToUserCourses,
   detectCurrentCourse,
-  clearError 
+  clearError,
+  clearProximityStatus
 } from '../../store/slices/userCoursesSlice';
 import { 
   fetchActiveRound,
@@ -32,6 +33,7 @@ import { ErrorMessage } from '../../components/auth/ErrorMessage';
 import { UserCourse } from '../../types/golf';
 import type { CoursesStackParamList } from '../../navigation/CoursesNavigator';
 import { golfLocationService, LocationData } from '../../services/LocationService';
+import { verifyMockLocationProximity } from '../../utils/locationTesting';
 
 type MyCoursesScreenNavigationProp = StackNavigationProp<CoursesStackParamList, 'MyCourses'>;
 
@@ -44,11 +46,75 @@ export const MyCoursesScreen: React.FC = () => {
     isDetecting,
     showDetectModal,
     error,
+    proximityStatus,
+    isCheckingProximity,
   } = useSelector((state: RootState) => state.userCourses);
 
   const [refreshing, setRefreshing] = useState(false);
   const [userLocation, setUserLocation] = useState<LocationData | null>(null);
-  const [proximityStatus, setProximityStatus] = useState<{ [courseId: number]: boolean }>({});
+
+  // Validate and filter userCourses to prevent undefined values
+  const validUserCourses = React.useMemo(() => {
+    if (!Array.isArray(userCourses)) {
+      console.error('❌ userCourses is not an array:', userCourses);
+      return [];
+    }
+    
+    console.log('🔍 UserCourses validation - processing', userCourses.length, 'courses');
+    
+    const filtered = userCourses.filter((course, index) => {
+      if (!course) {
+        console.warn('⚠️ Found null/undefined course in userCourses array at index:', index);
+        return false;
+      }
+      
+      if (typeof course !== 'object') {
+        console.warn('⚠️ Found non-object course in userCourses array at index:', index, course);
+        return false;
+      }
+      
+      // Log the actual structure of the course for debugging
+      console.log(`🔍 Course ${index + 1} structure:`, {
+        id: course.id,
+        name: course.name,
+        courseName: course.courseName,
+        latitude: course.latitude,
+        longitude: course.longitude,
+        allKeys: Object.keys(course)
+      });
+      
+      // Check for required fields - handle both 'name' and 'courseName' fields
+      const hasValidId = course.id && (typeof course.id === 'number' || typeof course.id === 'string');
+      const hasValidName = course.name || course.courseName; // Accept either field
+      const hasValidLatitude = typeof course.latitude === 'number' && !isNaN(course.latitude);
+      const hasValidLongitude = typeof course.longitude === 'number' && !isNaN(course.longitude);
+      
+      if (!hasValidId || !hasValidName || !hasValidLatitude || !hasValidLongitude) {
+        console.warn('⚠️ Course failed validation:', {
+          index: index + 1,
+          hasValidId,
+          hasValidName,
+          hasValidLatitude,
+          hasValidLongitude,
+          course: {
+            id: course.id,
+            name: course.name,
+            courseName: course.courseName,
+            latitude: course.latitude,
+            longitude: course.longitude
+          }
+        });
+        return false;
+      }
+      
+      console.log(`✅ Course ${index + 1} passed validation:`, course.name || course.courseName);
+      return true;
+    });
+    
+    console.log(`🔍 Validation results: ${userCourses.length} -> ${filtered.length} courses ${filtered.length !== userCourses.length ? `(removed ${userCourses.length - filtered.length} invalid entries)` : '(all valid)'}`);
+    
+    return filtered;
+  }, [userCourses]);
 
   // Load user courses when screen comes into focus
   useFocusEffect(
@@ -56,73 +122,102 @@ export const MyCoursesScreen: React.FC = () => {
       console.log('🏠 MyCoursesScreen: Screen focused - userCourses.length:', userCourses.length, 'isLoading:', isLoading);
       console.log('📡 MyCoursesScreen: Dispatching fetchUserCourses action on focus');
       dispatch(fetchUserCourses());
+      
+      // Cleanup function when screen loses focus
+      return () => {
+        console.log('🏠 MyCoursesScreen: Screen lost focus - clearing proximity status');
+        dispatch(clearProximityStatus());
+      };
     }, [dispatch])
   );
 
-  // Get user's location on mount
+  // Get user's location and check proximity when userCourses are loaded
   useEffect(() => {
-    const fetchUserLocation = async () => {
+    const fetchUserLocationAndCheckProximity = async () => {
+      // Only proceed if we have valid user courses to check against
+      if (validUserCourses.length === 0) {
+        console.log('🔍 MyCoursesScreen: No valid user courses loaded yet, skipping location check');
+        return;
+      }
+
       try {
+        console.log('📍 MyCoursesScreen: Starting location acquisition for proximity check');
         const hasPermission = await golfLocationService.requestLocationPermissions();
         if (hasPermission) {
           const location = await golfLocationService.getCurrentPosition();
           if (location) {
             setUserLocation(location);
-            console.log('User location acquired:', location.latitude, location.longitude);
+            console.log('📍 MyCoursesScreen: Location acquired, checking proximity to', validUserCourses.length, 'valid courses');
             
-            // Check proximity to user courses
-            const result = await dispatch(checkProximityToUserCourses({
+            // Check proximity to user courses using Redux thunk
+            dispatch(checkProximityToUserCourses({
               latitude: location.latitude,
               longitude: location.longitude,
-            })).unwrap();
-            
-            if (result.isWithinBounds && result.courseId) {
-              setProximityStatus({ [result.courseId]: true });
-            }
+            }));
+          } else {
+            console.warn('📍 MyCoursesScreen: Location permission granted but no location received');
           }
+        } else {
+          console.warn('📍 MyCoursesScreen: Location permission denied');
         }
       } catch (error) {
-        console.log('Could not get user location:', error);
+        console.error('📍 MyCoursesScreen: Error during location acquisition:', error);
       }
     };
 
-    fetchUserLocation();
-  }, [dispatch]);
+    fetchUserLocationAndCheckProximity();
+  }, [dispatch, validUserCourses.length]); // Trigger when valid user courses are loaded
+
+  // Run proximity verification for debugging (moved out of render function)
+  useEffect(() => {
+    if (validUserCourses.length > 0) {
+      validUserCourses.forEach((course) => {
+        try {
+          const courseName = course.name || course.courseName;
+          verifyMockLocationProximity(course.latitude, course.longitude, courseName);
+        } catch (error) {
+          const courseName = course.name || course.courseName;
+          console.error('❌ Error in proximity verification for course:', courseName, error);
+        }
+      });
+    }
+  }, [validUserCourses]);
 
   // Handle pull to refresh
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
+    console.log('🔄 MyCoursesScreen: Pull-to-refresh initiated');
     
-    // Refresh user location
     try {
-      const hasPermission = await golfLocationService.requestLocationPermissions();
-      if (hasPermission) {
-        const location = await golfLocationService.getCurrentPosition();
-        if (location) {
-          setUserLocation(location);
-          
-          // Check proximity again
-          const result = await dispatch(checkProximityToUserCourses({
-            latitude: location.latitude,
-            longitude: location.longitude,
-          })).unwrap();
-          
-          if (result.isWithinBounds && result.courseId) {
-            setProximityStatus({ [result.courseId]: true });
+      // First refresh user courses
+      await dispatch(fetchUserCourses()).unwrap();
+      console.log('✅ MyCoursesScreen: User courses refreshed successfully');
+      
+      // Then refresh location and proximity if we have valid courses
+      if (validUserCourses.length > 0) {
+        const hasPermission = await golfLocationService.requestLocationPermissions();
+        if (hasPermission) {
+          const location = await golfLocationService.getCurrentPosition();
+          if (location) {
+            setUserLocation(location);
+            console.log('📍 MyCoursesScreen: Location refreshed, updating proximity');
+            
+            // Check proximity again using Redux
+            dispatch(checkProximityToUserCourses({
+              latitude: location.latitude,
+              longitude: location.longitude,
+            }));
           } else {
-            setProximityStatus({});
+            console.warn('📍 MyCoursesScreen: Could not get location during refresh');
           }
         }
       }
     } catch (error) {
-      console.log('Could not refresh user location:', error);
+      console.error('🔄 MyCoursesScreen: Error during refresh:', error);
+    } finally {
+      setRefreshing(false);
     }
-    
-    // Refresh user courses
-    console.log('🔄 MyCoursesScreen: Pull-to-refresh dispatching fetchUserCourses');
-    dispatch(fetchUserCourses())
-      .finally(() => setRefreshing(false));
-  }, [dispatch]);
+  }, [dispatch, validUserCourses.length]);
 
   // Handle active round cleanup
   const handleCleanupActiveRound = useCallback(async (activeRound: any, onComplete: () => void) => {
@@ -164,12 +259,13 @@ export const MyCoursesScreen: React.FC = () => {
 
   // Handle course selection for playing golf
   const handlePlayGolf = useCallback((course: UserCourse) => {
+    const courseName = course.name || course.courseName;
     const isWithinBounds = proximityStatus[course.id] || false;
     
     if (!isWithinBounds) {
       Alert.alert(
         'Not at Course',
-        `You need to be at ${course.name} to start a round. The "Play Golf" button will be enabled when you arrive at the course.`,
+        `You need to be at ${courseName} to start a round. The "Play Golf" button will be enabled when you arrive at the course.`,
         [{ text: 'OK' }]
       );
       return;
@@ -179,7 +275,7 @@ export const MyCoursesScreen: React.FC = () => {
       try {
         // Pre-flight validation
         const roundApi = (await import('../../services/roundApi')).default;
-        const validation = await roundApi.validateRoundCreation(course.id);
+        const validation = await roundApi.validateRoundCreation(course.courseId);
         
         if (!validation.canCreate) {
           if (validation.activeRound) {
@@ -194,7 +290,7 @@ export const MyCoursesScreen: React.FC = () => {
         }
 
         // Proceed with round creation
-        await roundApi.createAndStartRound(course.id);
+        await roundApi.createAndStartRound(course.courseId);
         
         // Update Redux state
         await dispatch(fetchActiveRound());
@@ -236,7 +332,7 @@ export const MyCoursesScreen: React.FC = () => {
 
     Alert.alert(
       'Start New Round',
-      `Start a new round at ${course.name}?`,
+      `Start a new round at ${courseName}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Start Round', onPress: startNewRound }
@@ -246,10 +342,11 @@ export const MyCoursesScreen: React.FC = () => {
 
   // Handle course details
   const handleCoursePress = useCallback((course: UserCourse) => {
+    const courseName = course.name || course.courseName;
     // Navigate to course detail screen if available
     // For now, just show course info
     Alert.alert(
-      course.name,
+      courseName,
       `Times Played: ${course.timesPlayed}\n` +
       `Average Score: ${course.averageScore ? course.averageScore.toFixed(1) : 'N/A'}\n` +
       `Last Played: ${course.lastPlayedDate ? new Date(course.lastPlayedDate).toLocaleDateString() : 'Never'}`,
@@ -301,6 +398,45 @@ export const MyCoursesScreen: React.FC = () => {
     }
   }, [dispatch, userLocation]);
 
+  // Handle course detection errors
+  useEffect(() => {
+    if (error && !isDetecting) {
+      // Clear error after showing user feedback
+      const timer = setTimeout(() => {
+        dispatch(clearError());
+      }, 100);
+
+      if (error.includes('No golf course detected')) {
+        Alert.alert(
+          'No Courses Found',
+          'No golf courses detected at your current location. Try moving closer to a golf course and detecting again.',
+          [{ text: 'OK' }]
+        );
+      } else if (error.includes('access token') || error.includes('401')) {
+        Alert.alert(
+          'Configuration Error', 
+          'Golf course detection is temporarily unavailable. Please try again later.',
+          [{ text: 'OK' }]
+        );
+      } else if (error.includes('Failed to detect')) {
+        Alert.alert(
+          'Detection Failed',
+          'Unable to detect golf courses. Please check your internet connection and try again.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        // Generic error
+        Alert.alert(
+          'Error',
+          error,
+          [{ text: 'OK' }]
+        );
+      }
+
+      return () => clearTimeout(timer);
+    }
+  }, [error, isDetecting, dispatch]);
+
   // Handle error retry
   const handleRetry = useCallback(() => {
     dispatch(clearError());
@@ -309,24 +445,70 @@ export const MyCoursesScreen: React.FC = () => {
 
   // Calculate distance to course if user location is available
   const calculateDistance = (courseLat: number, courseLon: number): number | undefined => {
-    if (!userLocation) return undefined;
-    
-    const R = 6371000; // Earth's radius in meters
-    const dLat = (courseLat - userLocation.latitude) * Math.PI / 180;
-    const dLon = (courseLon - userLocation.longitude) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(userLocation.latitude * Math.PI / 180) * Math.cos(courseLat * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    const distanceInMeters = R * c;
-    return distanceInMeters * 0.000621371; // Convert to miles
+    try {
+      if (!userLocation) return undefined;
+      
+      // Validate input parameters
+      if (typeof courseLat !== 'number' || typeof courseLon !== 'number') {
+        console.warn('⚠️ Invalid course coordinates for distance calculation:', courseLat, courseLon);
+        return undefined;
+      }
+      
+      if (typeof userLocation.latitude !== 'number' || typeof userLocation.longitude !== 'number') {
+        console.warn('⚠️ Invalid user location for distance calculation:', userLocation);
+        return undefined;
+      }
+      
+      const R = 6371000; // Earth's radius in meters
+      const dLat = (courseLat - userLocation.latitude) * Math.PI / 180;
+      const dLon = (courseLon - userLocation.longitude) * Math.PI / 180;
+      const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(userLocation.latitude * Math.PI / 180) * Math.cos(courseLat * Math.PI / 180) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      const distanceInMeters = R * c;
+      const distanceInMiles = distanceInMeters * 0.000621371; // Convert to miles
+      
+      // Validate result
+      if (!Number.isFinite(distanceInMiles) || distanceInMiles < 0) {
+        console.warn('⚠️ Invalid distance calculation result:', distanceInMiles);
+        return undefined;
+      }
+      
+      return distanceInMiles;
+    } catch (error) {
+      console.error('❌ Error calculating distance:', error, 'courseLat:', courseLat, 'courseLon:', courseLon);
+      return undefined;
+    }
   };
 
   // Render course item with Play Golf functionality
   const renderCourseItem = ({ item }: { item: UserCourse }) => {
-    const distance = calculateDistance(item.latitude, item.longitude);
-    const isWithinBounds = proximityStatus[item.id] || false;
+    // Defensive programming: Check for undefined/null item
+    if (!item || typeof item !== 'object') {
+      console.error('❌ renderCourseItem: Invalid item passed to renderCourseItem:', item);
+      return null;
+    }
+
+    // Defensive programming: Check for required properties (handle both name and courseName)
+    const itemName = item.name || item.courseName;
+    if (!item.id || !itemName || typeof item.latitude !== 'number' || typeof item.longitude !== 'number') {
+      console.error('❌ renderCourseItem: Item missing required properties:', {
+        id: item.id,
+        name: item.name,
+        courseName: item.courseName,
+        latitude: item.latitude,
+        longitude: item.longitude
+      });
+      return null;
+    }
+
+    try {
+      const distance = calculateDistance(item.latitude, item.longitude);
+      const isWithinBounds = proximityStatus[item.id] || false;
+      
+      console.log(`🎯 Render: Course ${itemName} (ID: ${item.id}) - Distance: ${distance ? `${Math.round(distance * 5280)}ft` : 'unknown'}, Within bounds: ${isWithinBounds}`);
     
     return (
       <View style={styles.courseItem}>
@@ -338,7 +520,7 @@ export const MyCoursesScreen: React.FC = () => {
           <View style={styles.courseHeader}>
             <View style={styles.courseInfo}>
               <Text style={styles.courseName} numberOfLines={2}>
-                {item.name}
+                {itemName}
               </Text>
               {item.city && item.state && (
                 <Text style={styles.courseLocation} numberOfLines={1}>
@@ -399,6 +581,18 @@ export const MyCoursesScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
     );
+    } catch (error) {
+      console.error('❌ renderCourseItem: Error rendering course item:', error, 'Item:', item);
+      // Return a fallback UI instead of crashing
+      return (
+        <View style={styles.courseItem}>
+          <View style={styles.courseCard}>
+            <Text style={styles.courseName}>Error loading course</Text>
+            <Text style={styles.courseLocation}>Please refresh to try again</Text>
+          </View>
+        </View>
+      );
+    }
   };
 
   // Render empty state
@@ -459,7 +653,7 @@ export const MyCoursesScreen: React.FC = () => {
           <View style={styles.headerText}>
             <Text style={styles.headerTitle}>My Courses</Text>
             <Text style={styles.headerSubtitle}>
-              {userCourses.length} course{userCourses.length !== 1 ? 's' : ''}
+              {validUserCourses.length} course{validUserCourses.length !== 1 ? 's' : ''}
             </Text>
           </View>
           <TouchableOpacity
@@ -481,12 +675,12 @@ export const MyCoursesScreen: React.FC = () => {
       </View>
 
       {/* Course List */}
-      {isLoading && userCourses.length === 0 ? (
+      {isLoading && validUserCourses.length === 0 ? (
         <LoadingSpinner message="Loading your courses..." />
       ) : (
         <FlatList
-          data={userCourses}
-          keyExtractor={(item) => item.id.toString()}
+          data={validUserCourses}
+          keyExtractor={(item) => item?.id?.toString() || Math.random().toString()}
           renderItem={renderCourseItem}
           ListEmptyComponent={renderEmptyState}
           refreshControl={
@@ -498,7 +692,7 @@ export const MyCoursesScreen: React.FC = () => {
             />
           }
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={userCourses.length === 0 ? styles.emptyContainer : styles.listContainer}
+          contentContainerStyle={validUserCourses.length === 0 ? styles.emptyContainer : styles.listContainer}
         />
       )}
       

@@ -19,18 +19,46 @@ const initialState: UserCoursesState = {
   showCoursePrompt: false,
   showDetectModal: false,
   lastDetectionLocation: null,
+  proximityStatus: {},
+  isCheckingProximity: false,
 };
 
 // Async thunks
+// Helper function to normalize API response data
+const normalizeCourseData = (course: any): UserCourse => {
+  // Transform courseName to name for consistency with TypeScript interface
+  const normalizedCourse = {
+    ...course,
+    name: course.name || course.courseName, // Use name if available, fallback to courseName
+  };
+  
+  // Remove courseName field if it exists to avoid confusion
+  if (normalizedCourse.courseName) {
+    delete normalizedCourse.courseName;
+  }
+  
+  console.log('🔄 Redux: Normalized course data:', {
+    original: { name: course.name, courseName: course.courseName },
+    normalized: { name: normalizedCourse.name }
+  });
+  
+  return normalizedCourse;
+};
+
 export const fetchUserCourses = createAsyncThunk(
   'userCourses/fetchUserCourses',
   async (_, { rejectWithValue }) => {
     console.log('🚀 Redux: fetchUserCourses action dispatched');
     try {
       console.log('🔄 Redux: Calling userCoursesApi.getUserCourses()');
-      const userCourses = await userCoursesApi.getUserCourses();
-      console.log('✅ Redux: fetchUserCourses successful, received', userCourses.length, 'courses');
-      return userCourses;
+      const rawUserCourses = await userCoursesApi.getUserCourses();
+      console.log('✅ Redux: fetchUserCourses successful, received', rawUserCourses.length, 'courses');
+      
+      // Normalize the course data to ensure consistent field names
+      const normalizedUserCourses = rawUserCourses.map(normalizeCourseData);
+      console.log('🔄 Redux: Normalized', normalizedUserCourses.length, 'courses with consistent field names');
+      
+      return normalizedUserCourses;
     } catch (error: any) {
       console.error('❌ Redux: fetchUserCourses failed:', error.message);
       return rejectWithValue(error.message || 'Failed to fetch user courses');
@@ -42,8 +70,9 @@ export const addUserCourse = createAsyncThunk(
   'userCourses/addUserCourse',
   async (courseRequest: AddUserCourseRequest, { rejectWithValue }) => {
     try {
-      const newCourse = await userCoursesApi.addUserCourse(courseRequest);
-      return newCourse;
+      const rawNewCourse = await userCoursesApi.addUserCourse(courseRequest);
+      const normalizedNewCourse = normalizeCourseData(rawNewCourse);
+      return normalizedNewCourse;
     } catch (error: any) {
       return rejectWithValue(error.message || 'Failed to add course');
     }
@@ -98,10 +127,17 @@ export const checkProximityToUserCourses = createAsyncThunk(
   'userCourses/checkProximity',
   async ({ latitude, longitude }: { latitude: number; longitude: number }, { getState, rejectWithValue }) => {
     try {
+      console.log('🔍 Proximity Check: Starting proximity check at coordinates:', { latitude, longitude });
+      
       const state = getState() as any;
       const userCourses: UserCourse[] = state.userCourses.userCourses;
       
+      console.log(`🏌️ Proximity Check: Checking against ${userCourses.length} user courses`);
+      
       const PROXIMITY_THRESHOLD = 100; // 100 meters
+      const proximityResults: { [courseId: number]: boolean } = {};
+      
+      let nearestCourse: { courseId: number; courseName: string; distance: number } | null = null;
       
       for (const course of userCourses) {
         const distance = calculateDistance(
@@ -111,23 +147,44 @@ export const checkProximityToUserCourses = createAsyncThunk(
           course.longitude
         );
         
-        if (distance <= PROXIMITY_THRESHOLD) {
-          return {
+        console.log(`📏 Distance to ${course.name}: ${distance.toFixed(1)}m (threshold: ${PROXIMITY_THRESHOLD}m)`);
+        
+        const isWithinBounds = distance <= PROXIMITY_THRESHOLD;
+        proximityResults[course.id] = isWithinBounds;
+        
+        if (isWithinBounds && (!nearestCourse || distance < nearestCourse.distance)) {
+          nearestCourse = {
             courseId: course.id,
             courseName: course.name,
-            isWithinBounds: true,
-            distance,
+            distance
           };
         }
       }
       
+      const hasAnyCoursesInRange = Object.values(proximityResults).some(inRange => inRange);
+      
+      console.log('✅ Proximity Check Results:', {
+        proximityResults,
+        nearestCourse,
+        hasAnyCoursesInRange
+      });
+      
       return {
-        courseId: null,
-        courseName: null,
-        isWithinBounds: false,
-        distance: null,
+        proximityStatus: proximityResults,
+        nearestCourse: nearestCourse ? {
+          courseId: nearestCourse.courseId,
+          courseName: nearestCourse.courseName,
+          isWithinBounds: true,
+          distance: nearestCourse.distance,
+        } : {
+          courseId: null,
+          courseName: null,
+          isWithinBounds: false,
+          distance: null,
+        }
       };
     } catch (error: any) {
+      console.error('❌ Proximity Check Error:', error);
       return rejectWithValue(error.message || 'Failed to check proximity');
     }
   }
@@ -194,6 +251,10 @@ const userCoursesSlice = createSlice({
     },
     resetUserCoursesState: (state) => {
       return { ...initialState };
+    },
+    clearProximityStatus: (state) => {
+      state.proximityStatus = {};
+      state.isCheckingProximity = false;
     },
   },
   extraReducers: (builder) => {
@@ -282,12 +343,20 @@ const userCoursesSlice = createSlice({
     });
 
     // Check proximity to user courses
-    builder.addCase(checkProximityToUserCourses.fulfilled, (state) => {
-      // Update handled in components that need proximity info
+    builder.addCase(checkProximityToUserCourses.pending, (state) => {
+      state.isCheckingProximity = true;
       state.error = null;
     });
+    builder.addCase(checkProximityToUserCourses.fulfilled, (state, action) => {
+      state.isCheckingProximity = false;
+      state.proximityStatus = action.payload.proximityStatus;
+      state.error = null;
+      console.log('🔄 Redux: Proximity status updated in store:', action.payload.proximityStatus);
+    });
     builder.addCase(checkProximityToUserCourses.rejected, (state, action) => {
+      state.isCheckingProximity = false;
       state.error = action.payload as string;
+      console.error('❌ Redux: Proximity check failed:', action.payload);
     });
   },
 });
@@ -301,6 +370,7 @@ export const {
   clearDetectedCourses,
   updateCoursePlayCount,
   resetUserCoursesState,
+  clearProximityStatus,
 } = userCoursesSlice.actions;
 
 export default userCoursesSlice.reducer;

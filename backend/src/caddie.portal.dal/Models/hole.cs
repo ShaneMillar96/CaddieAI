@@ -6,7 +6,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace caddie.portal.dal.Models;
 
 /// <summary>
-/// Simplified user-driven hole information with progressive data capture
+/// Golf hole information associated with courses, containing hole-specific playing characteristics.
 /// </summary>
 [Table("holes")]
 public partial class Hole
@@ -29,22 +29,15 @@ public partial class Hole
     [Column("par")]
     public int? Par { get; set; }
 
-    [Required]
-    [Column("user_id")]
-    public int UserId { get; set; }
-
     [Column("created_at")]
     public DateTime? CreatedAt { get; set; }
 
     [Column("updated_at")]
     public DateTime? UpdatedAt { get; set; }
 
-    // Navigation properties - essential relationships only
+    // Navigation properties
     [ForeignKey("CourseId")]
     public virtual Course Course { get; set; } = null!;
 
     public virtual ICollection<HoleScore> HoleScores { get; set; } = new List<HoleScore>();
-
-    [ForeignKey("UserId")]
-    public virtual User User { get; set; } = null!;
 }

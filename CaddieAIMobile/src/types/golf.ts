@@ -417,6 +417,7 @@ export interface RoundState {
  */
 export interface UserCourse {
   id: number;
+  courseId: number;
   name: string;
   address?: string;
   city?: string;
@@ -479,6 +480,8 @@ export interface UserCoursesState {
     latitude: number;
     longitude: number;
   } | null;
+  proximityStatus: { [courseId: number]: boolean };
+  isCheckingProximity: boolean;
 }
 
 /**

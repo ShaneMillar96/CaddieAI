@@ -111,10 +111,6 @@ public partial class User
     public int StatusId { get; set; }
 
 
-    public virtual ICollection<Course> Courses { get; set; } = new List<Course>();
-
-    public virtual ICollection<Hole> Holes { get; set; } = new List<Hole>();
-
     public virtual ICollection<Location> Locations { get; set; } = new List<Location>();
 
     public virtual ICollection<PasswordResetToken> PasswordResetTokens { get; set; } = new List<PasswordResetToken>();
