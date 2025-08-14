@@ -70,7 +70,6 @@ public class CourseRepository : ICourseRepository
         {
             return await _context.Courses
                 .Include(c => c.Holes)
-                .Where(c => c.IsActive == true)
                 .OrderBy(c => c.Name)
                 .ToListAsync();
         }
@@ -88,13 +87,7 @@ public class CourseRepository : ICourseRepository
             var lowerSearchTerm = searchTerm.ToLower();
             return await _context.Courses
                 .Include(c => c.Holes)
-                .Where(c => c.IsActive == true && (
-                    c.Name.ToLower().Contains(lowerSearchTerm) ||
-                    (c.Description != null && c.Description.ToLower().Contains(lowerSearchTerm)) ||
-                    (c.Address != null && c.Address.ToLower().Contains(lowerSearchTerm)) ||
-                    (c.City != null && c.City.ToLower().Contains(lowerSearchTerm)) ||
-                    (c.State != null && c.State.ToLower().Contains(lowerSearchTerm)) ||
-                    c.Country.ToLower().Contains(lowerSearchTerm)))
+                .Where(c => c.Name.ToLower().Contains(lowerSearchTerm))
                 .OrderBy(c => c.Name)
                 .ToListAsync();
         }
@@ -111,7 +104,7 @@ public class CourseRepository : ICourseRepository
         {
             return await _context.Courses
                 .Include(c => c.Holes)
-                .Where(c => c.IsActive == true && c.Location != null && c.Location.IsWithinDistance(location, radiusMeters))
+                .Where(c => c.Location != null && c.Location.IsWithinDistance(location, radiusMeters))
                 .OrderBy(c => c.Location!.Distance(location))
                 .ToListAsync();
         }
@@ -129,10 +122,7 @@ public class CourseRepository : ICourseRepository
             var lowerRegion = region.ToLower();
             return await _context.Courses
                 .Include(c => c.Holes)
-                .Where(c => c.IsActive == true && (
-                    (c.City != null && c.City.ToLower() == lowerRegion) ||
-                    (c.State != null && c.State.ToLower() == lowerRegion) ||
-                    c.Country.ToLower() == lowerRegion))
+                .Where(c => c.Name.ToLower().Contains(lowerRegion))
                 .OrderBy(c => c.Name)
                 .ToListAsync();
         }
@@ -224,15 +214,16 @@ public class CourseRepository : ICourseRepository
         try
         {
             var course = await _context.Courses
-                .Where(c => c.Id == courseId && c.Boundary != null)
+                .Where(c => c.Id == courseId && c.Location != null)
                 .FirstOrDefaultAsync();
 
-            if (course?.Boundary == null)
+            if (course?.Location == null)
             {
                 return false;
             }
 
-            return course.Boundary.Contains(point);
+            // In simplified model, check if point is within reasonable distance of course center
+            return course.Location.Distance(point) <= 2000; // 2km radius
         }
         catch (Exception ex)
         {
@@ -267,20 +258,13 @@ public class CourseRepository : ICourseRepository
     {
         try
         {
-            var query = _context.Courses
-                .Include(c => c.Holes)
-                .Where(c => c.IsActive == true);
+            IQueryable<Course> query = _context.Courses
+                .Include(c => c.Holes);
 
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
                 var lowerSearchTerm = searchTerm.ToLower();
-                query = query.Where(c => 
-                    c.Name.ToLower().Contains(lowerSearchTerm) ||
-                    (c.Description != null && c.Description.ToLower().Contains(lowerSearchTerm)) ||
-                    (c.Address != null && c.Address.ToLower().Contains(lowerSearchTerm)) ||
-                    (c.City != null && c.City.ToLower().Contains(lowerSearchTerm)) ||
-                    (c.State != null && c.State.ToLower().Contains(lowerSearchTerm)) ||
-                    c.Country.ToLower().Contains(lowerSearchTerm));
+                query = query.Where(c => c.Name.ToLower().Contains(lowerSearchTerm));
             }
 
             return await query
@@ -300,18 +284,12 @@ public class CourseRepository : ICourseRepository
     {
         try
         {
-            var query = _context.Courses.Where(c => c.IsActive == true);
+            IQueryable<Course> query = _context.Courses;
 
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
                 var lowerSearchTerm = searchTerm.ToLower();
-                query = query.Where(c => 
-                    c.Name.ToLower().Contains(lowerSearchTerm) ||
-                    (c.Description != null && c.Description.ToLower().Contains(lowerSearchTerm)) ||
-                    (c.Address != null && c.Address.ToLower().Contains(lowerSearchTerm)) ||
-                    (c.City != null && c.City.ToLower().Contains(lowerSearchTerm)) ||
-                    (c.State != null && c.State.ToLower().Contains(lowerSearchTerm)) ||
-                    c.Country.ToLower().Contains(lowerSearchTerm));
+                query = query.Where(c => c.Name.ToLower().Contains(lowerSearchTerm));
             }
 
             return await query.CountAsync();

@@ -6,7 +6,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace caddie.portal.dal.Models;
 
 /// <summary>
-/// Individual golf round tracking with status and performance metrics
+/// Simplified golf round tracking for basic score management
 /// </summary>
 [Table("rounds")]
 public partial class Round
@@ -40,7 +40,7 @@ public partial class Round
     public int? CurrentHole { get; set; }
 
     /// <summary>
-    /// Foreign key to RoundStatus lookup table
+    /// Round status foreign key reference to round_statuses lookup table
     /// </summary>
     [Required]
     [Column("status_id")]
@@ -49,46 +49,13 @@ public partial class Round
     [Column("total_score")]
     public int? TotalScore { get; set; }
 
-    [Column("total_putts")]
-    public int? TotalPutts { get; set; }
-
-    /// <summary>
-    /// Number of fairways hit in regulation
-    /// </summary>
-    [Column("fairways_hit")]
-    public int? FairwaysHit { get; set; }
-
-    /// <summary>
-    /// Number of greens reached in regulation strokes
-    /// </summary>
-    [Column("greens_in_regulation")]
-    public int? GreensInRegulation { get; set; }
-
-    [Column("temperature_celsius", TypeName = "decimal(4,1)")]
-    public decimal? TemperatureCelsius { get; set; }
-
-    [Column("wind_speed_kmh", TypeName = "decimal(4,1)")]
-    public decimal? WindSpeedKmh { get; set; }
-
-    [Column("notes")]
-    public string? Notes { get; set; }
-
-    /// <summary>
-    /// Additional round information and settings
-    /// </summary>
-    [Column("round_metadata", TypeName = "jsonb")]
-    public string? RoundMetadata { get; set; }
-
     [Column("created_at")]
     public DateTime? CreatedAt { get; set; }
 
     [Column("updated_at")]
     public DateTime? UpdatedAt { get; set; }
 
-    public virtual ICollection<ChatSession> ChatSessions { get; set; } = new List<ChatSession>();
-
-    public virtual ICollection<ClubRecommendation> ClubRecommendations { get; set; } = new List<ClubRecommendation>();
-
+    // Navigation properties - simplified to essential relationships only
     [ForeignKey("CourseId")]
     public virtual Course Course { get; set; } = null!;
 

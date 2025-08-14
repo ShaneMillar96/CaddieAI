@@ -13,6 +13,7 @@ public class RoundMappingProfile : Profile
         CreateMap<UpdateRoundRequestDto, UpdateRoundModel>();
         CreateMap<StartRoundRequestDto, StartRoundModel>();
         CreateMap<CompleteRoundRequestDto, CompleteRoundModel>();
+        CreateMap<CompleteHoleRequestDto, CompleteHoleModel>();
 
         // Service Models to Response DTOs
         CreateMap<RoundModel, RoundResponseDto>()
@@ -23,6 +24,12 @@ public class RoundMappingProfile : Profile
         
         CreateMap<PaginatedResult<RoundModel>, PaginatedRoundResponseDto>()
             .ForMember(dest => dest.Items, opt => opt.MapFrom(src => src.Data.Select(r => MapToRoundListResponse(r))));
+
+        // Enhanced Round Management Mappings
+        CreateMap<CompleteHoleResult, CompleteHoleResponseDto>();
+        CreateMap<RoundProgress, RoundProgressResponseDto>()
+            .ForMember(dest => dest.CompletedHoles, opt => opt.MapFrom(src => src.CompletedHoles.Select(h => MapToHoleScoreListDto(h))));
+        CreateMap<HoleInfo, HoleInfoDto>();
     }
 
     private static RoundListResponseDto MapToRoundListResponse(RoundModel round)
@@ -37,8 +44,24 @@ public class RoundMappingProfile : Profile
             CurrentHole = round.CurrentHole,
             Status = round.Status.ToString(),
             TotalScore = round.TotalScore,
-            Notes = round.Notes,
+            Notes = null, // Not available in simplified model
             CreatedAt = round.CreatedAt
+        };
+    }
+
+    private static HoleScoreListDto MapToHoleScoreListDto(HoleScoreModel holeScore)
+    {
+        return new HoleScoreListDto
+        {
+            Id = holeScore.Id,
+            HoleNumber = holeScore.HoleNumber,
+            Score = holeScore.Score,
+            Putts = holeScore.Putts,
+            FairwayHit = holeScore.FairwayHit,
+            GreenInRegulation = holeScore.GreenInRegulation,
+            ScoreToPar = holeScore.ScoreToPar,
+            Par = holeScore.Hole?.Par,
+            ClubUsed = null // Not available in simplified model
         };
     }
 }

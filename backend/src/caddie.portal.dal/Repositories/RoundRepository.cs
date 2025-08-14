@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using caddie.portal.dal.Context;
 using caddie.portal.dal.Models;
 using caddie.portal.dal.Repositories.Interfaces;
-using RoundStatus = caddie.portal.dal.Enums.RoundStatus;
+using RoundStatusEnum = caddie.portal.dal.Enums.RoundStatus;
 
 namespace caddie.portal.dal.Repositories;
 
@@ -18,7 +18,6 @@ public class RoundRepository : IRoundRepository
     public async Task<Round?> GetByIdAsync(int id)
     {
         return await _context.Rounds
-            .Include(r => r.Status)
             .FirstOrDefaultAsync(r => r.Id == id);
     }
 
@@ -31,10 +30,7 @@ public class RoundRepository : IRoundRepository
                 .ThenInclude(u => u.Status)
             .Include(r => r.Course)
                 .ThenInclude(c => c.Holes)
-            .Include(r => r.Status)
             .Include(r => r.Locations)
-            .Include(r => r.ChatSessions)
-            .Include(r => r.ClubRecommendations)
             .FirstOrDefaultAsync(r => r.Id == id);
     }
 
@@ -42,7 +38,6 @@ public class RoundRepository : IRoundRepository
     {
         return await _context.Rounds
             .Include(r => r.Course)
-            .Include(r => r.Status)
             .Where(r => r.UserId == userId)
             .OrderByDescending(r => r.RoundDate)
             .ThenByDescending(r => r.StartTime)
@@ -53,7 +48,6 @@ public class RoundRepository : IRoundRepository
     {
         return await _context.Rounds
             .Include(r => r.Course)
-            .Include(r => r.Status)
             .Where(r => r.UserId == userId && r.RoundDate >= startDate && r.RoundDate <= endDate)
             .OrderByDescending(r => r.RoundDate)
             .ThenByDescending(r => r.StartTime)
@@ -67,7 +61,6 @@ public class RoundRepository : IRoundRepository
                 .ThenInclude(u => u.SkillLevel)
             .Include(r => r.User)
                 .ThenInclude(u => u.Status)
-            .Include(r => r.Status)
             .Where(r => r.CourseId == courseId)
             .OrderByDescending(r => r.RoundDate)
             .ThenByDescending(r => r.StartTime)
@@ -78,38 +71,17 @@ public class RoundRepository : IRoundRepository
     {
         return await _context.Rounds
             .Include(r => r.User)
-                .ThenInclude(u => u.SkillLevel)
-            .Include(r => r.User)
-                .ThenInclude(u => u.Status)
             .Include(r => r.Course)
             .Include(r => r.Status)
-            .Where(r => r.StatusId == (int)RoundStatus.InProgress || r.StatusId == (int)RoundStatus.Paused)
+            .Where(r => r.StatusId == (int)RoundStatusEnum.InProgress || r.StatusId == (int)RoundStatusEnum.Paused)
             .OrderBy(r => r.StartTime)
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<Round>> GetRoundsByStatusAsync(string status)
+    public async Task<IEnumerable<Round>> GetRoundsByStatusAsync(RoundStatusEnum status)
     {
         return await _context.Rounds
             .Include(r => r.User)
-                .ThenInclude(u => u.SkillLevel)
-            .Include(r => r.User)
-                .ThenInclude(u => u.Status)
-            .Include(r => r.Course)
-            .Include(r => r.Status)
-            .Where(r => r.Status.Name == status)
-            .OrderByDescending(r => r.RoundDate)
-            .ThenByDescending(r => r.StartTime)
-            .ToListAsync();
-    }
-
-    public async Task<IEnumerable<Round>> GetRoundsByStatusAsync(RoundStatus status)
-    {
-        return await _context.Rounds
-            .Include(r => r.User)
-                .ThenInclude(u => u.SkillLevel)
-            .Include(r => r.User)
-                .ThenInclude(u => u.Status)
             .Include(r => r.Course)
             .Include(r => r.Status)
             .Where(r => r.StatusId == (int)status)
@@ -123,9 +95,9 @@ public class RoundRepository : IRoundRepository
         return await _context.Rounds
             .Include(r => r.Course)
                 .ThenInclude(c => c.Holes)
-            .Include(r => r.Status)
             .Include(r => r.Locations)
-            .Where(r => r.UserId == userId && (r.StatusId == (int)RoundStatus.InProgress || r.StatusId == (int)RoundStatus.Paused))
+            .Include(r => r.Status)
+            .Where(r => r.UserId == userId && (r.StatusId == (int)RoundStatusEnum.InProgress || r.StatusId == (int)RoundStatusEnum.Paused))
             .FirstOrDefaultAsync();
     }
 
@@ -134,9 +106,7 @@ public class RoundRepository : IRoundRepository
         // Set default status if not provided
         if (round.StatusId == 0)
         {
-            var notStartedStatus = await _context.RoundStatuses
-                .FirstOrDefaultAsync(s => s.Id == (int)RoundStatus.NotStarted);
-            round.StatusId = notStartedStatus?.Id ?? 1;
+            round.StatusId = (int)RoundStatusEnum.NotStarted;
         }
 
         _context.Rounds.Add(round);
@@ -166,21 +136,8 @@ public class RoundRepository : IRoundRepository
         return await _context.Rounds.AnyAsync(r => r.Id == id);
     }
 
-    public async Task<bool> UpdateStatusAsync(int id, string status)
-    {
-        var round = await _context.Rounds.FindAsync(id);
-        if (round == null) return false;
 
-        var roundStatus = await _context.RoundStatuses
-            .FirstOrDefaultAsync(s => s.Name == status);
-        if (roundStatus == null) return false;
-
-        round.StatusId = roundStatus.Id;
-        await _context.SaveChangesAsync();
-        return true;
-    }
-
-    public async Task<bool> UpdateStatusAsync(int id, RoundStatus status)
+    public async Task<bool> UpdateStatusAsync(int id, RoundStatusEnum status)
     {
         var round = await _context.Rounds.FindAsync(id);
         if (round == null) return false;
@@ -231,15 +188,13 @@ public class RoundRepository : IRoundRepository
     public async Task<bool> UserHasActiveRoundAsync(int userId)
     {
         return await _context.Rounds
-            .Include(r => r.Status)
-            .AnyAsync(r => r.UserId == userId && (r.StatusId == (int)RoundStatus.InProgress || r.StatusId == (int)RoundStatus.Paused));
+            .AnyAsync(r => r.UserId == userId && (r.StatusId == (int)RoundStatusEnum.InProgress || r.StatusId == (int)RoundStatusEnum.Paused));
     }
 
     public async Task<IEnumerable<Round>> GetRecentRoundsAsync(int userId, int count = 10)
     {
         return await _context.Rounds
             .Include(r => r.Course)
-            .Include(r => r.Status)
             .Where(r => r.UserId == userId)
             .OrderByDescending(r => r.RoundDate)
             .ThenByDescending(r => r.StartTime)
@@ -247,36 +202,8 @@ public class RoundRepository : IRoundRepository
             .ToListAsync();
     }
 
-    public async Task<IEnumerable<Round>> GetPaginatedAsync(int page, int pageSize, int? userId = null, string? status = null)
-    {
-        var query = _context.Rounds
-            .Include(r => r.User)
-                .ThenInclude(u => u.SkillLevel)
-            .Include(r => r.User)
-                .ThenInclude(u => u.Status)
-            .Include(r => r.Course)
-            .Include(r => r.Status)
-            .AsQueryable();
 
-        if (userId.HasValue)
-        {
-            query = query.Where(r => r.UserId == userId.Value);
-        }
-
-        if (!string.IsNullOrEmpty(status))
-        {
-            query = query.Where(r => r.Status.Name == status);
-        }
-
-        return await query
-            .OrderByDescending(r => r.RoundDate)
-            .ThenByDescending(r => r.StartTime)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync();
-    }
-
-    public async Task<IEnumerable<Round>> GetPaginatedAsync(int page, int pageSize, int? userId = null, RoundStatus? status = null)
+    public async Task<IEnumerable<Round>> GetPaginatedAsync(int page, int pageSize, int? userId = null, RoundStatusEnum? status = null)
     {
         var query = _context.Rounds
             .Include(r => r.User)
@@ -305,24 +232,8 @@ public class RoundRepository : IRoundRepository
             .ToListAsync();
     }
 
-    public async Task<int> GetTotalCountAsync(int? userId = null, string? status = null)
-    {
-        var query = _context.Rounds.AsQueryable();
 
-        if (userId.HasValue)
-        {
-            query = query.Where(r => r.UserId == userId.Value);
-        }
-
-        if (!string.IsNullOrEmpty(status))
-        {
-            query = query.Include(r => r.Status).Where(r => r.Status.Name == status);
-        }
-
-        return await query.CountAsync();
-    }
-
-    public async Task<int> GetTotalCountAsync(int? userId = null, RoundStatus? status = null)
+    public async Task<int> GetTotalCountAsync(int? userId = null, RoundStatusEnum? status = null)
     {
         var query = _context.Rounds.AsQueryable();
 
@@ -342,8 +253,7 @@ public class RoundRepository : IRoundRepository
     public async Task<object?> GetRoundStatisticsAsync(int userId, DateOnly? startDate = null, DateOnly? endDate = null)
     {
         var query = _context.Rounds
-            .Include(r => r.Status)
-            .Where(r => r.UserId == userId && r.StatusId == (int)RoundStatus.Completed);
+            .Where(r => r.UserId == userId && r.StatusId == (int)RoundStatusEnum.Completed);
 
         if (startDate.HasValue)
         {
@@ -374,15 +284,9 @@ public class RoundRepository : IRoundRepository
             WorstScore = completedRounds.Where(r => r.TotalScore.HasValue).Any() 
                 ? completedRounds.Where(r => r.TotalScore.HasValue).Max(r => r.TotalScore!.Value) 
                 : (int?)null,
-            AveragePutts = completedRounds.Where(r => r.TotalPutts.HasValue).Any() 
-                ? completedRounds.Where(r => r.TotalPutts.HasValue).Average(r => r.TotalPutts!.Value) 
-                : (double?)null,
-            AverageFairwaysHit = completedRounds.Where(r => r.FairwaysHit.HasValue).Any() 
-                ? completedRounds.Where(r => r.FairwaysHit.HasValue).Average(r => r.FairwaysHit!.Value) 
-                : (double?)null,
-            AverageGreensInRegulation = completedRounds.Where(r => r.GreensInRegulation.HasValue).Any() 
-                ? completedRounds.Where(r => r.GreensInRegulation.HasValue).Average(r => r.GreensInRegulation!.Value) 
-                : (double?)null,
+            // Advanced statistics will be calculated from HoleScores when needed
+            // For now, only basic score statistics are available with the simplified Round model
+            TotalHolesPlayed = completedRounds.Sum(r => r.HoleScores?.Count ?? 0),
             DateRange = new
             {
                 StartDate = startDate,

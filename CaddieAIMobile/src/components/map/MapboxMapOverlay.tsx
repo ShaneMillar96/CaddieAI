@@ -39,6 +39,10 @@ export interface MapboxMapOverlayProps {
   pinDistances?: { userToPin: any; shotToPin: any };
   onTogglePinPlacement?: () => void;
   onClearPinLocation?: () => void;
+  // Hole completion props
+  onCompleteHole?: () => void;
+  completedHoles?: number[];
+  totalHoles?: number;
 }
 
 /**
@@ -80,6 +84,10 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
   pinDistances,
   onTogglePinPlacement,
   onClearPinLocation,
+  // Hole completion props
+  onCompleteHole,
+  completedHoles = [],
+  totalHoles = 18,
 }) => {
   
   // Get enhanced GPS status for Mapbox
@@ -215,10 +223,28 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
             </Text>
           </View>
           <View style={styles.holeInfo}>
-            <Text style={styles.holeNumber}>Hole {currentHole}</Text>
+            <Text style={styles.holeNumber}>Hole {currentHole}/{totalHoles}</Text>
             <View style={styles.parInfo}>
               <Text style={styles.parLabel}>Par 4</Text>
             </View>
+            {/* Complete Hole Button */}
+            {onCompleteHole && !completedHoles.includes(currentHole) && (
+              <TouchableOpacity
+                style={styles.completeHoleButton}
+                onPress={onCompleteHole}
+                activeOpacity={0.7}
+              >
+                <Icon name="flag" size={14} color="#fff" />
+                <Text style={styles.completeHoleButtonText}>Complete</Text>
+              </TouchableOpacity>
+            )}
+            {/* Completed Indicator */}
+            {completedHoles.includes(currentHole) && (
+              <View style={styles.holeCompletedIndicator}>
+                <Icon name="check-circle" size={14} color="#28a745" />
+                <Text style={styles.holeCompletedText}>Done</Text>
+              </View>
+            )}
           </View>
         </View>
         
@@ -432,6 +458,36 @@ const styles = StyleSheet.create({
   parLabel: {
     fontSize: 10,
     color: '#ffffff',
+    fontWeight: '600',
+  },
+  completeHoleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4a7c59',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+    marginLeft: 8,
+  },
+  completeHoleButtonText: {
+    fontSize: 10,
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  holeCompletedIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(40, 167, 69, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+    marginLeft: 8,
+  },
+  holeCompletedText: {
+    fontSize: 10,
+    color: '#28a745',
     fontWeight: '600',
   },
   gpsStatusContainer: {

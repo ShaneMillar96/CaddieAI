@@ -7,31 +7,22 @@ using caddie.portal.services.Configuration;
 using caddie.portal.services.Interfaces;
 using caddie.portal.services.Exceptions;
 using caddie.portal.services.Models;
-using caddie.portal.dal.Models;
-using caddie.portal.dal.Repositories.Interfaces;
 using OpenAIChatMessage = OpenAI.Chat.ChatMessage;
-using DalChatMessage = caddie.portal.dal.Models.ChatMessage;
 
 namespace caddie.portal.services.Services;
 
 public class OpenAIService : IOpenAIService
 {
-    private readonly IChatSessionRepository _chatSessionRepository;
-    private readonly IChatMessageRepository _chatMessageRepository;
     private readonly IGolfContextService _golfContextService;
     private readonly OpenAISettings _openAISettings;
     private readonly ILogger<OpenAIService> _logger;
     private readonly OpenAIClient _openAIClient;
 
     public OpenAIService(
-        IChatSessionRepository chatSessionRepository,
-        IChatMessageRepository chatMessageRepository,
         IGolfContextService golfContextService,
         IOptions<OpenAISettings> openAISettings,
         ILogger<OpenAIService> logger)
     {
-        _chatSessionRepository = chatSessionRepository;
-        _chatMessageRepository = chatMessageRepository;
         _golfContextService = golfContextService;
         _openAISettings = openAISettings.Value;
         _logger = logger;
@@ -46,310 +37,25 @@ public class OpenAIService : IOpenAIService
         _openAIClient = new OpenAIClient(apiKey);
     }
 
-    public async Task<ChatSession> StartChatSessionAsync(int userId, int? roundId = null, int? courseId = null, string? sessionName = null)
-    {
-        try
-        {
-            // Generate golf context
-            var golfContext = await _golfContextService.GenerateContextAsync(userId, roundId, courseId);
-            
-            // Create system prompt based on context
-            var systemPrompt = await _golfContextService.GenerateSystemPromptAsync(golfContext);
-            
-            // Serialize context data
-            var contextData = JsonSerializer.Serialize(golfContext);
 
-            var session = new ChatSession
-            {
-                UserId = userId,
-                RoundId = roundId,
-                CourseId = courseId,
-                SessionName = sessionName ?? $"Golf Session {DateTime.UtcNow:yyyy-MM-dd HH:mm}",
-                ContextData = contextData,
-                OpenaiModel = _openAISettings.Model,
-                SystemPrompt = systemPrompt,
-                Temperature = (decimal)_openAISettings.Temperature,
-                MaxTokens = _openAISettings.MaxTokens,
-                TotalMessages = 0,
-                SessionMetadata = JsonSerializer.Serialize(new
-                {
-                    StartedAt = DateTime.UtcNow,
-                    UserAgent = "CaddieAI Mobile App",
-                    Settings = new
-                    {
-                        Model = _openAISettings.Model,
-                        Temperature = _openAISettings.Temperature,
-                        MaxTokens = _openAISettings.MaxTokens
-                    }
-                })
-            };
 
-            var createdSession = await _chatSessionRepository.CreateAsync(session);
-            _logger.LogInformation("Started chat session {SessionId} for user {UserId}", createdSession.Id, userId);
-            
-            return createdSession;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error starting chat session for user {UserId}", userId);
-            throw;
-        }
-    }
 
-    public async Task<DalChatMessage> SendMessageAsync(int sessionId, int userId, string message)
-    {
-        try
-        {
-            // Check rate limits
-            if (await IsRateLimitExceededAsync(userId))
-            {
-                throw new InvalidOperationException("Rate limit exceeded. Please wait before sending another message.");
-            }
 
-            // Get session with context
-            var session = await _chatSessionRepository.GetByIdWithMessagesAsync(sessionId);
-            if (session == null || session.UserId != userId)
-            {
-                throw new ArgumentException($"Chat session {sessionId} not found or access denied");
-            }
 
-            // Create user message
-            var userMessage = new DalChatMessage
-            {
-                SessionId = sessionId,
-                UserId = userId,
-                MessageContent = message,
-                OpenaiRole = "user",
-                OpenaiModelUsed = _openAISettings.Model
-            };
 
-            await _chatMessageRepository.CreateAsync(userMessage);
 
-            // Prepare OpenAI chat messages
-            var chatMessages = new List<DalChatMessage>();
-            
-            // Add system message if this is the start of conversation
-            if (session.ChatMessages.Count == 0)
-            {
-                chatMessages.Add(new DalChatMessage
-                {
-                    SessionId = sessionId,
-                    UserId = userId,
-                    MessageContent = session.SystemPrompt ?? "You are CaddieAI, a helpful golf assistant.",
-                    OpenaiRole = "system",
-                    OpenaiModelUsed = _openAISettings.Model
-                });
-            }
-
-            // Add conversation history (limited to recent messages for token management)
-            var recentMessages = session.ChatMessages
-                .OrderByDescending(m => m.CreatedAt)
-                .Take(20)
-                .OrderBy(m => m.CreatedAt)
-                .ToList();
-
-            chatMessages.AddRange(recentMessages);
-            chatMessages.Add(userMessage);
-
-            // Convert to OpenAI format
-            var openAiMessages = chatMessages.Select<DalChatMessage, OpenAIChatMessage>(m => 
-                m.OpenaiRole switch
-                {
-                    "system" => OpenAIChatMessage.CreateSystemMessage(m.MessageContent),
-                    "user" => OpenAIChatMessage.CreateUserMessage(m.MessageContent),
-                    "assistant" => OpenAIChatMessage.CreateAssistantMessage(m.MessageContent),
-                    _ => OpenAIChatMessage.CreateUserMessage(m.MessageContent)
-                }).ToList();
-
-            // Call OpenAI API with error handling
-            var chatClient = _openAIClient.GetChatClient(_openAISettings.Model);
-            ChatCompletion response;
-            
-            try
-            {
-                response = await chatClient.CompleteChatAsync(
-                    openAiMessages,
-                    new ChatCompletionOptions
-                    {
-                        Temperature = (float)_openAISettings.Temperature,
-                        MaxOutputTokenCount = _openAISettings.MaxTokens
-                    });
-            }
-            catch (Exception ex) when (IsQuotaExceededException(ex))
-            {
-                _logger.LogWarning(ex, "OpenAI quota exceeded for user {UserId}, session {SessionId}", userId, sessionId);
-                
-                if (_openAISettings.EnableFallbackResponses)
-                {
-                    var fallbackResponse = GetFallbackChatResponse(message);
-                    return await CreateFallbackChatMessageAsync(sessionId, userId, fallbackResponse);
-                }
-                
-                throw new OpenAIQuotaExceededException("OpenAI quota exceeded. Please try again later.", "api_quota", 3600);
-            }
-
-            if (response?.Content == null || response.Content.Count == 0)
-            {
-                throw new InvalidOperationException("No response received from OpenAI");
-            }
-
-            var responseContent = string.Join("", response.Content.Select(c => c.Text));
-
-            // Create assistant message
-            var assistantMessage = new DalChatMessage
-            {
-                SessionId = sessionId,
-                UserId = userId,
-                MessageContent = responseContent,
-                OpenaiRole = "assistant",
-                TokensConsumed = response.Usage?.TotalTokenCount,
-                OpenaiModelUsed = _openAISettings.Model,
-                ContextData = JsonSerializer.Serialize(new
-                {
-                    PromptTokens = response.Usage?.InputTokenCount,
-                    CompletionTokens = response.Usage?.OutputTokenCount,
-                    TotalTokens = response.Usage?.TotalTokenCount,
-                    Model = response.Model,
-                    FinishReason = response.FinishReason.ToString()
-                })
-            };
-
-            await _chatMessageRepository.CreateAsync(assistantMessage);
-
-            // Update session
-            session.TotalMessages = (session.TotalMessages ?? 0) + 2; // User + Assistant
-            session.LastMessageAt = DateTime.UtcNow;
-            await _chatSessionRepository.UpdateAsync(session);
-
-            _logger.LogInformation("Generated AI response for session {SessionId}, used {TokenCount} tokens", 
-                sessionId, response.Usage?.TotalTokenCount);
-
-            return assistantMessage;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error sending message to session {SessionId}", sessionId);
-            throw;
-        }
-    }
-
-    public async Task<ChatSession?> GetChatSessionAsync(int sessionId, int userId)
-    {
-        try
-        {
-            var session = await _chatSessionRepository.GetByIdWithMessagesAsync(sessionId);
-            return session?.UserId == userId ? session : null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting chat session {SessionId}", sessionId);
-            throw;
-        }
-    }
-
-    public async Task<IEnumerable<ChatSession>> GetUserChatSessionsAsync(int userId, bool includeMessages = false)
-    {
-        try
-        {
-            return await _chatSessionRepository.GetByUserIdAsync(userId, includeMessages);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting chat sessions for user {UserId}", userId);
-            throw;
-        }
-    }
-
-    public async Task<ChatSession?> GetActiveChatSessionForRoundAsync(int userId, int roundId)
-    {
-        try
-        {
-            return await _chatSessionRepository.GetActiveSessionForRoundAsync(userId, roundId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting active session for round {RoundId}", roundId);
-            throw;
-        }
-    }
-
-    public async Task UpdateSessionContextAsync(int sessionId, string contextData)
-    {
-        try
-        {
-            var session = await _chatSessionRepository.GetByIdAsync(sessionId);
-            if (session == null)
-            {
-                throw new ArgumentException($"Session {sessionId} not found");
-            }
-
-            session.ContextData = contextData;
-            await _chatSessionRepository.UpdateAsync(session);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error updating context for session {SessionId}", sessionId);
-            throw;
-        }
-    }
-
-    public async Task EndChatSessionAsync(int sessionId, int userId)
-    {
-        try
-        {
-            var session = await _chatSessionRepository.GetByIdAsync(sessionId);
-            if (session == null || session.UserId != userId)
-            {
-                throw new ArgumentException($"Session {sessionId} not found or access denied");
-            }
-
-            // Update session metadata to mark as ended
-            var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(session.SessionMetadata ?? "{}") ?? new Dictionary<string, object>();
-            metadata["EndedAt"] = DateTime.UtcNow;
-            metadata["Status"] = "Ended";
-            
-            session.SessionMetadata = JsonSerializer.Serialize(metadata);
-            await _chatSessionRepository.UpdateAsync(session);
-
-            _logger.LogInformation("Ended chat session {SessionId} for user {UserId}", sessionId, userId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error ending chat session {SessionId}", sessionId);
-            throw;
-        }
-    }
-
-    public async Task<IEnumerable<DalChatMessage>> GetConversationHistoryAsync(int sessionId, int userId, int limit = 50)
-    {
-        try
-        {
-            var session = await _chatSessionRepository.GetByIdAsync(sessionId);
-            if (session == null || session.UserId != userId)
-            {
-                throw new ArgumentException($"Session {sessionId} not found or access denied");
-            }
-
-            return await _chatMessageRepository.GetBySessionIdAsync(sessionId, limit);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting conversation history for session {SessionId}", sessionId);
-            throw;
-        }
-    }
 
     public async Task<bool> IsRateLimitExceededAsync(int userId)
     {
         try
         {
-            var recentMessages = await _chatMessageRepository.GetRecentByUserAsync(userId, 60); // Last hour
-            var messageCount = recentMessages.Count();
+            // Simple rate limiting implementation for voice AI
+            // Since chat messages are removed, we'll do a basic time-based check
+            await Task.CompletedTask; // Placeholder for async signature
             
-            // Simple rate limiting: max requests per minute from settings
-            var maxPerHour = _openAISettings.MaxRequestsPerMinute * 60;
-            
-            return messageCount >= maxPerHour;
+            // TODO: Implement rate limiting based on actual voice AI usage
+            // For now, allow all requests
+            return false;
         }
         catch (Exception ex)
         {
@@ -362,15 +68,11 @@ public class OpenAIService : IOpenAIService
     {
         try
         {
-            var effectiveFromDate = fromDate ?? DateTime.UtcNow.AddDays(-30);
+            await Task.CompletedTask; // Placeholder for async signature
             
-            var totalTokens = await _chatMessageRepository.GetTokenUsageAsync(userId, effectiveFromDate);
-            var totalMessages = await _chatMessageRepository.GetMessageCountAsync(userId, effectiveFromDate);
-            
-            // Rough cost estimation (adjust based on current OpenAI pricing)
-            var estimatedCost = totalTokens * 0.00002m; // $0.02 per 1K tokens (approximate)
-            
-            return (totalTokens, totalMessages, estimatedCost);
+            // TODO: Implement usage statistics for voice AI
+            // Since chat message repository is removed, return empty stats
+            return (0, 0, 0m);
         }
         catch (Exception ex)
         {
@@ -381,7 +83,7 @@ public class OpenAIService : IOpenAIService
 
     // Voice AI Integration Methods Implementation
 
-    public async Task<string> GenerateVoiceGolfAdviceAsync(int userId, int roundId, string userInput, object locationContext, IEnumerable<DalChatMessage>? conversationHistory = null)
+    public async Task<string> GenerateVoiceGolfAdviceAsync(int userId, int roundId, string userInput, object locationContext)
     {
         try
         {
@@ -397,25 +99,8 @@ public class OpenAIService : IOpenAIService
                 OpenAIChatMessage.CreateSystemMessage(voiceSystemPrompt)
             };
 
-            // Add recent conversation history if provided (limit to last 6 messages for voice context)
-            if (conversationHistory != null && conversationHistory.Any())
-            {
-                var recentHistory = conversationHistory
-                    .OrderByDescending(m => m.CreatedAt)
-                    .Take(6)
-                    .OrderBy(m => m.CreatedAt);
-
-                foreach (var msg in recentHistory)
-                {
-                    OpenAIChatMessage message = msg.OpenaiRole switch
-                    {
-                        "user" => OpenAIChatMessage.CreateUserMessage(msg.MessageContent),
-                        "assistant" => OpenAIChatMessage.CreateAssistantMessage(msg.MessageContent),
-                        _ => OpenAIChatMessage.CreateUserMessage(msg.MessageContent)
-                    };
-                    messages.Add(message);
-                }
-            }
+            // Note: Conversation history removed with chat message cleanup
+            // Voice AI now operates without persistent conversation history
 
             // Add current user input
             messages.Add(OpenAIChatMessage.CreateUserMessage(userInput));
@@ -472,35 +157,11 @@ public class OpenAIService : IOpenAIService
     {
         try
         {
-            // Get active session for this round
-            var session = await _chatSessionRepository.GetActiveSessionForRoundAsync(userId, roundId);
-            if (session == null)
-            {
-                _logger.LogWarning("No active chat session found for user {UserId}, round {RoundId}", userId, roundId);
-                return;
-            }
-
-            // Update context with location data
-            var locationContext = new
-            {
-                Latitude = latitude,
-                Longitude = longitude,
-                CurrentHole = currentHole,
-                DistanceToPin = distanceToPin,
-                UpdatedAt = DateTime.UtcNow
-            };
-
-            // Merge with existing context
-            var existingContext = string.IsNullOrEmpty(session.ContextData) 
-                ? new Dictionary<string, object>() 
-                : JsonSerializer.Deserialize<Dictionary<string, object>>(session.ContextData) ?? new Dictionary<string, object>();
-
-            existingContext["LocationContext"] = locationContext;
+            await Task.CompletedTask; // Placeholder for async signature
             
-            session.ContextData = JsonSerializer.Serialize(existingContext);
-            await _chatSessionRepository.UpdateAsync(session);
-
-            _logger.LogDebug("Updated location context for user {UserId}, round {RoundId}", userId, roundId);
+            // Location context is now handled directly in voice AI calls rather than persistent sessions
+            _logger.LogDebug("Location context updated for user {UserId}, round {RoundId}: Lat {Latitude}, Lng {Longitude}, Hole {CurrentHole}", 
+                userId, roundId, latitude, longitude, currentHole);
         }
         catch (Exception ex)
         {
@@ -725,27 +386,6 @@ VOICE INTERACTION: Keep responses brief and conversational for voice delivery. P
         return "Keep your head up and play smart. You're doing great out there!";
     }
 
-    private async Task<DalChatMessage> CreateFallbackChatMessageAsync(int sessionId, int userId, string fallbackContent)
-    {
-        var assistantMessage = new DalChatMessage
-        {
-            SessionId = sessionId,
-            UserId = userId,
-            MessageContent = fallbackContent,
-            OpenaiRole = "assistant",
-            TokensConsumed = 0, // No tokens consumed for fallback
-            OpenaiModelUsed = "fallback-response",
-            ContextData = JsonSerializer.Serialize(new
-            {
-                IsFallbackResponse = true,
-                FallbackReason = "OpenAI quota exceeded",
-                GeneratedAt = DateTime.UtcNow
-            })
-        };
-
-        await _chatMessageRepository.CreateAsync(assistantMessage);
-        return assistantMessage;
-    }
 
     private async Task<T> ExecuteWithRetryAsync<T>(Func<Task<T>> operation, int maxRetries = 3)
     {

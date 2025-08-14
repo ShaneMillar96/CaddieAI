@@ -35,8 +35,9 @@ public class HoleModel
     public int Id { get; set; }
     public int CourseId { get; set; }
     public int HoleNumber { get; set; }
+    public int UserId { get; set; }
     public string? Name { get; set; }
-    public int Par { get; set; }
+    public int? Par { get; set; }
     public int? YardageBlack { get; set; }
     public int? YardageBlue { get; set; }
     public int? YardageWhite { get; set; }
@@ -92,12 +93,28 @@ public class CreateCourseModel
 
 public class CreateHoleModel
 {
+    public int CourseId { get; set; }
+    public int UserId { get; set; }
     public int HoleNumber { get; set; }
-    public int Par { get; set; }
+    public int? Par { get; set; }
+    public string? Name { get; set; }
+    public string? HoleDescription { get; set; }
     public int? YardageMen { get; set; }
     public int? YardageWomen { get; set; }
     public int? Handicap { get; set; }
     public string? Description { get; set; }
+}
+
+public class UpdateHoleModel
+{
+    public int? Par { get; set; }
+    public string? Name { get; set; }
+    public string? HoleDescription { get; set; }
+    public int? YardageBlack { get; set; }
+    public int? YardageBlue { get; set; }
+    public int? YardageWhite { get; set; }
+    public int? YardageRed { get; set; }
+    public int? StrokeIndex { get; set; }
 }
 
 public class UpdateCourseModel

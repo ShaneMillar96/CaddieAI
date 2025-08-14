@@ -6,13 +6,20 @@ import {
   TouchableOpacity,
   ViewStyle,
 } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { CourseListItem } from '../../types/golf';
 
 interface CourseCardProps {
   course: CourseListItem;
   onPress?: () => void;
   onSelect?: () => void;
+  onPlayGolf?: () => void;
   showDistance?: boolean;
+  showPlayGolf?: boolean;
+  isWithinBounds?: boolean;
+  playGolfDisabled?: boolean;
+  playGolfText?: string;
+  selectButtonText?: string;
   style?: ViewStyle;
 }
 
@@ -20,7 +27,13 @@ export const CourseCard: React.FC<CourseCardProps> = ({
   course,
   onPress,
   onSelect,
+  onPlayGolf,
   showDistance = true,
+  showPlayGolf = false,
+  isWithinBounds = false,
+  playGolfDisabled = false,
+  playGolfText = "Play Golf",
+  selectButtonText = "Select Course",
   style,
 }) => {
   const handleCardPress = () => {
@@ -29,6 +42,10 @@ export const CourseCard: React.FC<CourseCardProps> = ({
 
   const handleSelectPress = () => {
     onSelect?.();
+  };
+
+  const handlePlayGolfPress = () => {
+    onPlayGolf?.();
   };
 
   const formatLocation = () => {
@@ -103,16 +120,45 @@ export const CourseCard: React.FC<CourseCardProps> = ({
           )}
         </View>
 
-        {/* Action Button */}
-        {onSelect && (
-          <TouchableOpacity
-            style={styles.selectButton}
-            onPress={handleSelectPress}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.selectButtonText}>Select Course</Text>
-          </TouchableOpacity>
-        )}
+        {/* Action Buttons */}
+        <View style={styles.actionsContainer}>
+          {onSelect && (
+            <TouchableOpacity
+              style={[styles.selectButton, showPlayGolf && styles.selectButtonSecondary]}
+              onPress={handleSelectPress}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.selectButtonText, showPlayGolf && styles.selectButtonTextSecondary]}>
+                {selectButtonText}
+              </Text>
+            </TouchableOpacity>
+          )}
+          
+          {showPlayGolf && onPlayGolf && (
+            <TouchableOpacity
+              style={[
+                styles.playGolfButton,
+                (playGolfDisabled || !isWithinBounds) ? styles.playGolfButtonDisabled : styles.playGolfButtonEnabled
+              ]}
+              onPress={handlePlayGolfPress}
+              disabled={playGolfDisabled || !isWithinBounds}
+              activeOpacity={0.8}
+            >
+              <Icon 
+                name="play-circle-filled" 
+                size={18} 
+                color={(playGolfDisabled || !isWithinBounds) ? '#ccc' : '#fff'} 
+                style={styles.playIcon}
+              />
+              <Text style={[
+                styles.playGolfButtonText,
+                (playGolfDisabled || !isWithinBounds) ? styles.playGolfButtonTextDisabled : styles.playGolfButtonTextEnabled
+              ]}>
+                {playGolfText}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -194,6 +240,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#4a7c59',
   },
+  actionsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   selectButton: {
     backgroundColor: '#2c5530',
     paddingVertical: 10,
@@ -201,11 +251,50 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    flex: 1,
+  },
+  selectButtonSecondary: {
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#2c5530',
   },
   selectButtonText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  selectButtonTextSecondary: {
+    color: '#2c5530',
+  },
+  playGolfButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    flex: 1,
+  },
+  playGolfButtonEnabled: {
+    backgroundColor: '#2c5530',
+  },
+  playGolfButtonDisabled: {
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#e1e1e1',
+  },
+  playIcon: {
+    marginRight: 6,
+  },
+  playGolfButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  playGolfButtonTextEnabled: {
+    color: '#fff',
+  },
+  playGolfButtonTextDisabled: {
+    color: '#ccc',
   },
 });
 

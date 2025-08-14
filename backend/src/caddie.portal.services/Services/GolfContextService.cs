@@ -269,16 +269,14 @@ public class GolfContextService : IGolfContextService
         {
             CourseId = courseId,
             Name = course.Name,
-            Description = course.Description,
-            Location = $"{course.City}, {course.State}, {course.Country}",
-            TotalHoles = course.TotalHoles,
-            ParTotal = course.ParTotal,
-            CourseRating = course.CourseRating,
-            SlopeRating = course.SlopeRating,
-            Difficulty = DetermineDifficulty(course.CourseRating, course.SlopeRating),
-            Features = !string.IsNullOrEmpty(course.Amenities) 
-                ? JsonSerializer.Deserialize<Dictionary<string, object>>(course.Amenities) 
-                : null
+            Description = null, // Not available in simplified model
+            Location = "Location not specified", // Not available in simplified model
+            TotalHoles = course.Holes?.Count ?? 18,
+            ParTotal = course.Holes?.Sum(h => h.Par ?? 0) ?? 72,
+            CourseRating = null, // Not available in simplified model
+            SlopeRating = null, // Not available in simplified model
+            Difficulty = "Unknown", // Cannot determine without rating data
+            Features = null // Not available in simplified model
         };
     }
 

@@ -19,21 +19,15 @@ public class VoiceAIController : ControllerBase
 {
     private readonly IOpenAIService _openAIService;
     private readonly IRoundService _roundService;
-    private readonly IChatMessageRepository _chatMessageRepository;
-    private readonly IAIScoreService _aiScoreService;
     private readonly ILogger<VoiceAIController> _logger;
 
     public VoiceAIController(
         IOpenAIService openAIService,
         IRoundService roundService,
-        IChatMessageRepository chatMessageRepository,
-        IAIScoreService aiScoreService,
         ILogger<VoiceAIController> logger)
     {
         _openAIService = openAIService;
         _roundService = roundService;
-        _chatMessageRepository = chatMessageRepository;
-        _aiScoreService = aiScoreService;
         _logger = logger;
     }
 
@@ -77,25 +71,12 @@ public class VoiceAIController : ControllerBase
                     new { message = "Rate limit exceeded. Please wait before making another request." });
             }
 
-            // Convert conversation history if provided
-            IEnumerable<ChatMessage>? conversationHistory = null;
-            if (request.ConversationHistory?.Any() == true)
-            {
-                conversationHistory = request.ConversationHistory.Select(msg => new ChatMessage
-                {
-                    MessageContent = msg.Content,
-                    OpenaiRole = msg.Role,
-                    CreatedAt = msg.Timestamp
-                });
-            }
-
-            // Generate AI response
+            // Generate AI response (conversation history removed with chat cleanup)
             var aiResponse = await _openAIService.GenerateVoiceGolfAdviceAsync(
                 userId, 
                 request.RoundId, 
                 request.VoiceInput, 
-                request.LocationContext ?? new object(), 
-                conversationHistory
+                request.LocationContext ?? new object()
             );
 
             // Create response model
@@ -274,170 +255,9 @@ public class VoiceAIController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Get voice AI usage statistics for the current user
-    /// </summary>
-    /// <param name="fromDate">Start date for statistics (optional)</param>
-    /// <returns>Usage statistics including token consumption and costs</returns>
-    [HttpGet("usage-stats")]
-    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult> GetUsageStatistics([FromQuery] DateTime? fromDate = null)
-    {
-        try
-        {
-            var userId = GetCurrentUserId();
-            var (totalTokens, totalMessages, estimatedCost) = await _openAIService.GetUsageStatisticsAsync(userId, fromDate);
 
-            var response = new
-            {
-                UserId = userId,
-                FromDate = fromDate ?? DateTime.UtcNow.AddDays(-30),
-                ToDate = DateTime.UtcNow,
-                TotalTokens = totalTokens,
-                TotalMessages = totalMessages,
-                EstimatedCost = estimatedCost,
-                Currency = "USD"
-            };
 
-            return Ok(response);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting usage statistics for user {UserId}", GetCurrentUserId());
-            return StatusCode(StatusCodes.Status500InternalServerError, 
-                new { message = "An error occurred while retrieving usage statistics" });
-        }
-    }
 
-    /// <summary>
-    /// Process automatic hole completion and score detection
-    /// </summary>
-    /// <param name="request">Hole completion analysis request</param>
-    /// <returns>Automatic score detection results</returns>
-    [HttpPost("process-hole-completion")]
-    [ProducesResponseType(typeof(AutoScoreResult), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<AutoScoreResult>> ProcessHoleCompletion([FromBody] HoleCompletionAnalysisRequest request)
-    {
-        try
-        {
-            var userId = GetCurrentUserId();
-
-            // Validate that the round belongs to the user
-            var round = await _roundService.GetRoundByIdAsync(request.RoundId);
-            if (round == null)
-            {
-                return NotFound($"Round {request.RoundId} not found");
-            }
-
-            if (round.UserId != userId)
-            {
-                return Forbid("Round does not belong to the current user");
-            }
-
-            // Process hole completion with AI score detection
-            var result = await _aiScoreService.ProcessHoleCompletionAsync(
-                userId,
-                request.RoundId,
-                request.HoleNumber,
-                request.ShotEvents ?? new List<object>(),
-                request.FinalLocation ?? new { }
-            );
-
-            _logger.LogInformation("Processed hole completion for user {UserId}, round {RoundId}, hole {HoleNumber}, detected score {Score}",
-                userId, request.RoundId, request.HoleNumber, result.DetectedScore);
-
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error processing hole completion for user {UserId}, round {RoundId}, hole {HoleNumber}",
-                GetCurrentUserId(), request.RoundId, request.HoleNumber);
-            return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = "An error occurred while processing hole completion" });
-        }
-    }
-
-    /// <summary>
-    /// Validate and record an AI-detected score
-    /// </summary>
-    /// <param name="request">Score validation request</param>
-    /// <returns>Score validation and recording results</returns>
-    [HttpPost("validate-score")]
-    [ProducesResponseType(typeof(ScoreValidationResult), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<ScoreValidationResult>> ValidateScore([FromBody] ScoreValidationRequest request)
-    {
-        try
-        {
-            var userId = GetCurrentUserId();
-
-            // Validate that the round belongs to the user
-            var round = await _roundService.GetRoundByIdAsync(request.RoundId);
-            if (round == null)
-            {
-                return NotFound($"Round {request.RoundId} not found");
-            }
-
-            if (round.UserId != userId)
-            {
-                return Forbid("Round does not belong to the current user");
-            }
-
-            // Validate and record the score
-            var result = await _aiScoreService.ValidateAndRecordScoreAsync(
-                userId,
-                request.RoundId,
-                request.HoleNumber,
-                request.DetectedScore,
-                request.UserConfirmedScore
-            );
-
-            _logger.LogInformation("Validated and recorded score for user {UserId}, round {RoundId}, hole {HoleNumber}, final score {Score}",
-                userId, request.RoundId, request.HoleNumber, result.FinalScore);
-
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error validating score for user {UserId}, round {RoundId}, hole {HoleNumber}",
-                GetCurrentUserId(), request.RoundId, request.HoleNumber);
-            return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = "An error occurred while validating the score" });
-        }
-    }
-
-    /// <summary>
-    /// Get AI scoring statistics for the current user
-    /// </summary>
-    /// <param name="fromDate">Start date for statistics (optional)</param>
-    /// <returns>AI scoring accuracy and usage statistics</returns>
-    [HttpGet("scoring-stats")]
-    [ProducesResponseType(typeof(AIScoreStatistics), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<AIScoreStatistics>> GetScoringStatistics([FromQuery] DateTime? fromDate = null)
-    {
-        try
-        {
-            var userId = GetCurrentUserId();
-            var statistics = await _aiScoreService.GetScoringStatisticsAsync(userId, fromDate);
-
-            _logger.LogInformation("Retrieved AI scoring statistics for user {UserId}", userId);
-
-            return Ok(statistics);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting AI scoring statistics for user {UserId}", GetCurrentUserId());
-            return StatusCode(StatusCodes.Status500InternalServerError,
-                new { message = "An error occurred while retrieving scoring statistics" });
-        }
-    }
 
     /// <summary>
     /// Generate dynamic caddie response for specific golf scenarios

@@ -143,32 +143,13 @@ public class CourseService : ICourseService
             var course = new Course
             {
                 Name = model.Name.Trim(),
-                Description = model.Description?.Trim(),
-                Address = model.Address?.Trim(),
-                City = model.City?.Trim(),
-                State = model.State?.Trim(),
-                Country = model.Country.Trim(),
-                Phone = model.Phone?.Trim(),
-                Website = model.Website?.Trim(),
-                Email = model.Email?.Trim(),
-                TotalHoles = model.TotalHoles,
-                ParTotal = model.ParTotal,
-                SlopeRating = model.SlopeRating,
-                CourseRating = model.CourseRating,
-                YardageTotal = model.YardageTotal,
-                GreenFeeRange = model.GreenFeeRange,
-                Timezone = model.Timezone,
-                IsActive = model.IsActive,
                 Location = _geometryFactory.CreatePoint(new Coordinate(model.Longitude, model.Latitude)),
-                Amenities = model.Amenities != null ? JsonSerializer.Serialize(model.Amenities) : null,
+                UserId = 1, // TODO: Get from authenticated user context
                 Holes = model.Holes.Select(h => new Hole
                 {
                     HoleNumber = h.HoleNumber,
                     Par = h.Par,
-                    YardageBlue = h.YardageMen,
-                    YardageRed = h.YardageWomen,
-                    StrokeIndex = h.Handicap,
-                    HoleDescription = h.Description?.Trim()
+                    UserId = 1 // TODO: Get from authenticated user context
                 }).ToList()
             };
 
@@ -201,26 +182,9 @@ public class CourseService : ICourseService
                 throw new InvalidOperationException($"A course with the name '{model.Name}' already exists");
             }
 
-            // Update course properties
+            // Update course properties (simplified to match DAL model)
             existingCourse.Name = model.Name.Trim();
-            existingCourse.Description = model.Description?.Trim();
-            existingCourse.Address = model.Address?.Trim();
-            existingCourse.City = model.City?.Trim();
-            existingCourse.State = model.State?.Trim();
-            existingCourse.Country = model.Country.Trim();
-            existingCourse.Phone = model.Phone?.Trim();
-            existingCourse.Website = model.Website?.Trim();
-            existingCourse.Email = model.Email?.Trim();
-            existingCourse.TotalHoles = model.TotalHoles;
-            existingCourse.ParTotal = model.ParTotal;
-            existingCourse.SlopeRating = model.SlopeRating;
-            existingCourse.CourseRating = model.CourseRating;
-            existingCourse.YardageTotal = model.YardageTotal;
-            existingCourse.GreenFeeRange = model.GreenFeeRange;
-            existingCourse.Timezone = model.Timezone;
-            existingCourse.IsActive = model.IsActive;
             existingCourse.Location = _geometryFactory.CreatePoint(new Coordinate(model.Longitude, model.Latitude));
-            existingCourse.Amenities = model.Amenities != null ? JsonSerializer.Serialize(model.Amenities) : null;
 
             var updatedCourse = await _courseRepository.UpdateAsync(existingCourse);
             _logger.LogInformation("Course updated successfully: {CourseName} (ID: {CourseId})", model.Name, id);
@@ -328,34 +292,57 @@ public class CourseService : ICourseService
         {
             Id = course.Id,
             Name = course.Name,
-            Description = course.Description,
-            Address = course.Address,
-            City = course.City,
-            State = course.State,
-            Country = course.Country,
-            Phone = course.Phone,
-            Website = course.Website,
-            Email = course.Email,
-            TotalHoles = course.TotalHoles,
-            ParTotal = course.ParTotal,
-            SlopeRating = course.SlopeRating,
-            CourseRating = course.CourseRating,
-            YardageTotal = course.YardageTotal,
-            GreenFeeRange = course.GreenFeeRange,
-            Timezone = course.Timezone,
-            IsActive = course.IsActive,
+            // Set default values for properties not in simplified DAL model
+            Description = null,
+            Address = null,
+            City = null,
+            State = null,
+            Country = "Unknown", // Required property
+            Phone = null,
+            Website = null,
+            Email = null,
+            TotalHoles = course.Holes?.Count ?? 0,
+            ParTotal = course.Holes?.Sum(h => h.Par ?? 0) ?? 0,
+            SlopeRating = null,
+            CourseRating = null,
+            YardageTotal = null,
+            GreenFeeRange = null,
+            Timezone = null,
+            IsActive = true, // Default to active
             Latitude = course.Location?.Y,
             Longitude = course.Location?.X,
-            Amenities = course.Amenities != null ? JsonSerializer.Deserialize<Dictionary<string, object>>(course.Amenities) : null,
+            Amenities = null,
             Holes = course.Holes?.Select(h => new HoleModel
             {
                 Id = h.Id,
+                CourseId = h.CourseId,
                 HoleNumber = h.HoleNumber,
+                UserId = h.UserId,
                 Par = h.Par,
-                YardageMen = h.YardageBlue,
-                YardageWomen = h.YardageRed,
-                Handicap = h.StrokeIndex,
-                Description = h.HoleDescription
+                // Set default values for properties not in simplified DAL model
+                Name = null,
+                YardageBlack = null,
+                YardageBlue = null,
+                YardageWhite = null,
+                YardageRed = null,
+                StrokeIndex = null,
+                LadiesYardage = null,
+                LadiesPar = null,
+                LadiesStrokeIndex = null,
+                TeeLocation = null,
+                PinLocation = null,
+                HoleDescription = null,
+                HoleTips = null,
+                PlayingTips = null,
+                SimpleHazards = null,
+                HoleMetadata = null,
+                // Legacy properties for backward compatibility
+                YardageMen = null,
+                YardageWomen = null,
+                Handicap = null,
+                Description = null,
+                CreatedAt = h.CreatedAt,
+                UpdatedAt = h.UpdatedAt
             }).ToList() ?? new List<HoleModel>(),
             CreatedAt = course.CreatedAt,
             UpdatedAt = course.UpdatedAt

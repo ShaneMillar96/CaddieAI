@@ -1,7 +1,6 @@
 using caddie.portal.dal.Models;
 using caddie.portal.services.Models;
-using DalChatMessage = caddie.portal.dal.Models.ChatMessage;
-using DalClubRecommendation = caddie.portal.dal.Models.ClubRecommendation;
+
 
 namespace caddie.portal.services.Interfaces;
 

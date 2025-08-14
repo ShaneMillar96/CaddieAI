@@ -20,13 +20,6 @@ public class RoundModel
     public int? CurrentHole { get; set; }
     public RoundStatus Status { get; set; }
     public int? TotalScore { get; set; }
-    public int? TotalPutts { get; set; }
-    public int? FairwaysHit { get; set; }
-    public int? GreensInRegulation { get; set; }
-    public decimal? TemperatureCelsius { get; set; }
-    public decimal? WindSpeedKmh { get; set; }
-    public string? Notes { get; set; }
-    public string? RoundMetadata { get; set; }
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 
@@ -41,10 +34,6 @@ public class CreateRoundModel
     public int UserId { get; set; }
     public int CourseId { get; set; }
     public DateOnly RoundDate { get; set; }
-    public decimal? TemperatureCelsius { get; set; }
-    public decimal? WindSpeedKmh { get; set; }
-    public string? Notes { get; set; }
-    public string? RoundMetadata { get; set; }
 }
 
 public class UpdateRoundModel
@@ -52,13 +41,6 @@ public class UpdateRoundModel
     public int? CurrentHole { get; set; }
     public RoundStatus? Status { get; set; }
     public int? TotalScore { get; set; }
-    public int? TotalPutts { get; set; }
-    public int? FairwaysHit { get; set; }
-    public int? GreensInRegulation { get; set; }
-    public decimal? TemperatureCelsius { get; set; }
-    public decimal? WindSpeedKmh { get; set; }
-    public string? Notes { get; set; }
-    public string? RoundMetadata { get; set; }
 }
 
 public class RoundStatisticsModel
@@ -67,9 +49,6 @@ public class RoundStatisticsModel
     public double? AverageScore { get; set; }
     public int? BestScore { get; set; }
     public int? WorstScore { get; set; }
-    public double? AveragePutts { get; set; }
-    public double? AverageFairwaysHit { get; set; }
-    public double? AverageGreensInRegulation { get; set; }
     public DateOnly? StartDate { get; set; }
     public DateOnly? EndDate { get; set; }
 }
@@ -78,17 +57,35 @@ public class StartRoundModel
 {
     public int CourseId { get; set; }
     public DateOnly? RoundDate { get; set; }
-    public decimal? TemperatureCelsius { get; set; }
-    public decimal? WindSpeedKmh { get; set; }
-    public string? Notes { get; set; }
-    public string? RoundMetadata { get; set; }
 }
 
 public class CompleteRoundModel
 {
     public int TotalScore { get; set; }
-    public int? TotalPutts { get; set; }
-    public int? FairwaysHit { get; set; }
-    public int? GreensInRegulation { get; set; }
-    public string? Notes { get; set; }
+}
+
+public class CompleteHoleResult
+{
+    public HoleScoreModel CompletedHole { get; set; } = null!;
+    public int CurrentHole { get; set; }
+    public int TotalScore { get; set; }
+    public bool IsRoundComplete { get; set; }
+    public HoleInfo? NextHole { get; set; }
+}
+
+public class RoundProgress
+{
+    public int HolesCompleted { get; set; }
+    public int CurrentHole { get; set; }
+    public int TotalScore { get; set; }
+    public List<HoleScoreModel> CompletedHoles { get; set; } = new();
+    public bool IsRoundComplete { get; set; }
+    public int? TotalPar { get; set; }
+    public int? ScoreToPar { get; set; }
+}
+
+public class HoleInfo
+{
+    public int HoleNumber { get; set; }
+    public int? Par { get; set; }
 }

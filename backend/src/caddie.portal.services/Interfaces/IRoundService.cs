@@ -39,4 +39,11 @@ public interface IRoundService
     Task<bool> InitializeHoleScoresForRoundAsync(int roundId);
     Task<bool> ValidateHoleScoreAsync(int roundId, int holeNumber, CreateHoleScoreModel model);
     Task<bool> HoleScoreExistsAsync(int roundId, int holeNumber);
+    Task<HoleScoreModel> CompleteHoleAsync(int roundId, CompleteHoleModel model);
+
+    // Enhanced Round Management
+    Task<CompleteHoleResult> CompleteHoleWithProgressionAsync(int roundId, int holeNumber, int score, int? par = null);
+    Task<RoundProgress> GetRoundProgressAsync(int roundId);
+    Task<bool> IsRoundCompleteAsync(int roundId);
+    Task<int> CalculateRoundTotalAsync(int roundId);
 }
