@@ -22,7 +22,17 @@ import {
   abandonRound,
   fetchHoleScores,
   completeHole,
+  setShowHoleSelector,
+  setShowQuickScoreEditor,
 } from '../../store/slices/roundSlice';
+import {
+  selectCurrentHole,
+  selectViewingHole,
+  selectNavigationModals,
+  selectIsViewingDifferentHole,
+  selectShouldDisableShotPlacement,
+  selectShouldDisableGpsFeatures,
+} from '../../store/selectors/roundSelectors';
 import {
   toggleVoiceInterface,
   startVoiceSession,
@@ -49,6 +59,7 @@ import { ErrorMessage } from '../../components/auth/ErrorMessage';
 import VoiceAIInterface from '../../components/voice/VoiceAIInterface';
 import { VoiceChatModal } from '../../components/voice/VoiceChatModal';
 import { HoleCompletionModal } from '../../components/common/HoleCompletionModal';
+import { HoleNavigationModal, QuickScoreEditor } from '../../components/navigation';
 import MapboxMapView from '../../components/map/MapboxMapView';
 import MapboxMapOverlay from '../../components/map/MapboxMapOverlay';
 import MapErrorBoundary from '../../components/map/MapErrorBoundary';
@@ -102,6 +113,7 @@ export const ActiveRoundScreen: React.FC = () => {
     isUpdating,
     isCompleting,
     error,
+    dashboardState,
   } = useSelector((state: RootState) => state.rounds);
 
   const {
@@ -121,8 +133,15 @@ export const ActiveRoundScreen: React.FC = () => {
   const serviceState = useSelector(selectServiceState);
   const isPlacingShot = useSelector(selectIsPlacingShot);
 
+  // Hole navigation state from Redux selectors
+  const currentHole = useSelector(selectCurrentHole);
+  const viewingHole = useSelector(selectViewingHole);
+  const navigationModals = useSelector(selectNavigationModals);
+  const isViewingDifferentHole = useSelector(selectIsViewingDifferentHole);
+  const shouldDisableShotPlacement = useSelector(selectShouldDisableShotPlacement);
+  const shouldDisableGpsFeatures = useSelector(selectShouldDisableGpsFeatures);
+  
   // Local state - keep it simple
-  const [currentHole, setCurrentHole] = useState<number>(1);
   const [isLocationTracking, setIsLocationTracking] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [isRequestingLocation, setIsRequestingLocation] = useState(false);
@@ -169,7 +188,6 @@ export const ActiveRoundScreen: React.FC = () => {
       try {
         const result = await dispatch(fetchActiveRound()).unwrap();
         if (result) {
-          setCurrentHole(result.currentHole || 1);
           dispatch(fetchHoleScores(result.id));
         }
       } catch (error) {
@@ -523,6 +541,25 @@ export const ActiveRoundScreen: React.FC = () => {
 
   // Toggle shot placement mode
   const handleShotPlacementToggle = useCallback(async () => {
+    // Disable shot placement if viewing different hole
+    if (shouldDisableShotPlacement) {
+      Alert.alert(
+        'Shot Placement Unavailable',
+        `Shot placement is only available for the current hole (${currentHole}). You are viewing hole ${viewingHole}.`,
+        [
+          { text: 'OK' },
+          { 
+            text: 'Go to Current Hole', 
+            onPress: () => {
+              // Reset viewing hole to current hole will be handled by navigation component
+              handleHoleNavigationToggle();
+            }
+          }
+        ]
+      );
+      return;
+    }
+
     const newMode = !shotPlacementModeEnabled;
     setShotPlacementModeEnabled(newMode);
     
@@ -655,11 +692,26 @@ export const ActiveRoundScreen: React.FC = () => {
     setIsHoleCompletionModalVisible(prev => !prev);
   }, []);
 
+  // Handle hole navigation modal
+  const handleHoleNavigationToggle = useCallback(() => {
+    dispatch(setShowHoleSelector(!navigationModals.showHoleSelector));
+  }, [dispatch, navigationModals.showHoleSelector]);
+
+  // Handle quick score editor modal
+  const handleQuickScoreEditorToggle = useCallback(() => {
+    dispatch(setShowQuickScoreEditor(!navigationModals.showQuickScoreEditor));
+  }, [dispatch, navigationModals.showQuickScoreEditor]);
+
   // Handle hole completion submission
   const handleHoleCompletion = useCallback(async (completion: HoleCompletionRequest) => {
     try {
-      await dispatch(completeHole(completion)).unwrap();
+      const result = await dispatch(completeHole(completion)).unwrap();
       setIsHoleCompletionModalVisible(false);
+      
+      // Refresh the active round data to get the latest state
+      if (activeRound?.id) {
+        await dispatch(fetchActiveRound());
+      }
       
       // Check if this was the last hole
       const totalHoles = activeRound?.course?.totalHoles || 18;
@@ -689,10 +741,11 @@ export const ActiveRoundScreen: React.FC = () => {
           ]
         );
       } else {
-        // Regular hole completion
+        // Regular hole completion - show next hole info
+        const nextHole = completion.holeNumber + 1;
         Alert.alert(
           'Hole Completed!', 
-          `Great job on hole ${completion.holeNumber}! On to hole ${completion.holeNumber + 1}.`
+          `Great job on hole ${completion.holeNumber}! Ready for hole ${nextHole}.`
         );
       }
     } catch (error) {
@@ -1020,6 +1073,8 @@ export const ActiveRoundScreen: React.FC = () => {
       <MapboxMapOverlay
         courseName={activeRound?.course?.name}
         currentHole={currentHole}
+        viewingHole={viewingHole}
+        isViewingDifferentHole={isViewingDifferentHole}
         currentLocation={simpleLocationData}
         isLocationTracking={isLocationTracking}
         isVoiceInterfaceVisible={isVoiceInterfaceVisible}
@@ -1051,6 +1106,9 @@ export const ActiveRoundScreen: React.FC = () => {
         onCompleteHole={handleHoleCompletionToggle}
         completedHoles={activeRound?.holeScores?.map(hs => hs.holeNumber) || []}
         totalHoles={activeRound?.course?.totalHoles || 18}
+        // Hole navigation props
+        onShowHoleNavigation={handleHoleNavigationToggle}
+        onShowQuickScoreEditor={handleQuickScoreEditorToggle}
       />
 
       {/* Premium Round Controls Modal */}
@@ -1091,7 +1149,7 @@ export const ActiveRoundScreen: React.FC = () => {
                   ]} 
                 />
               </View>
-              {activeRound?.totalScore && (
+              {activeRound?.totalScore !== undefined && (
                 <View style={styles.scoreInfo}>
                   <Icon name="sports-golf" size={16} color="#4a7c59" />
                   <Text style={styles.currentScore}>Current Score: {activeRound.totalScore}</Text>
@@ -1212,10 +1270,26 @@ export const ActiveRoundScreen: React.FC = () => {
           onClose={handleHoleCompletionToggle}
           onSubmit={handleHoleCompletion}
           roundId={activeRound.id}
-          holeNumber={currentHole}
-          isFirstTimePlayingHole={!activeRound.course?.holes?.find(h => h.holeNumber === currentHole)?.par}
-          existingPar={activeRound.course?.holes?.find(h => h.holeNumber === currentHole)?.par}
+          holeNumber={viewingHole}
+          isFirstTimePlayingHole={!activeRound.course?.holes?.find(h => h.holeNumber === viewingHole)?.par}
+          existingPar={activeRound.course?.holes?.find(h => h.holeNumber === viewingHole)?.par}
           isLoading={isUpdating}
+        />
+      )}
+
+      {/* Hole Navigation Modal */}
+      <HoleNavigationModal
+        visible={navigationModals.showHoleSelector}
+        onClose={handleHoleNavigationToggle}
+      />
+
+      {/* Quick Score Editor Modal */}
+      {activeRound && (
+        <QuickScoreEditor
+          visible={navigationModals.showQuickScoreEditor}
+          onClose={handleQuickScoreEditorToggle}
+          holeNumber={viewingHole}
+          roundId={activeRound.id}
         />
       )}
     </SafeAreaView>
@@ -1258,12 +1332,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
-    gap: 8,
   },
   startRoundButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+    marginLeft: 8,
   },
   
   // Premium Round Controls Modal Styles
@@ -1357,12 +1431,12 @@ const styles = StyleSheet.create({
   scoreInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
   currentScore: {
     fontSize: 14,
     fontWeight: '600',
     color: '#2c5530',
+    marginLeft: 8,
   },
   controlsContainer: {
     paddingHorizontal: 20,
