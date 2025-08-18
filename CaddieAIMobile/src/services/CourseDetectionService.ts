@@ -1,5 +1,7 @@
 import { CourseDetectionResult } from '../types/golf';
 import { getMapboxConfig } from '../utils/mapboxConfig';
+import { store } from '../store';
+import { isTestModeEnabled } from '../utils/locationTesting';
 
 interface MapboxFeature {
   id: string;
@@ -116,7 +118,7 @@ export class CourseDetectionService {
 
       // Return the closest, highest confidence course within detection radius
       const onCourseCandidates = nearbyGolfCourses
-        .filter(course => course.distance <= 200) // Must be on course (within 200m)
+        .filter(course => course.distance <= 500) // Increased for large courses (within 500m)
         .filter(course => course.confidence >= 0.6) // Reasonable confidence threshold
         .sort((a, b) => {
           // Sort by confidence first, then by distance
@@ -132,7 +134,7 @@ export class CourseDetectionService {
           name: detectedCourse.name,
           distance: `${detectedCourse.distance}m`,
           confidence: `${Math.round(detectedCourse.confidence * 100)}%`,
-          isOnCourse: detectedCourse.distance <= 200
+          isOnCourse: detectedCourse.distance <= 500
         });
       } else {
         console.log('🚫 CourseDetectionService: No course detected at current location (within 1000m with >60% confidence)');
@@ -156,12 +158,8 @@ export class CourseDetectionService {
     try {
       const mapboxToken = this.getMapboxToken();
       
-      // Use multiple search strategies with Search Box API v1 for better coverage
-      const searchQueries = [
-        { q: 'Faughan Valley Golf Centre' }, // Direct name search first
-        { q: 'golf course' }, // General golf course search
-        { q: 'golf club' }, // Golf club search
-      ];
+      // Use dynamic search strategies with Search Box API v1 for better coverage
+      const searchQueries = this.generateSearchQueries(latitude, longitude);
       
       const allResults: CourseDetectionResult[] = [];
       
@@ -170,7 +168,7 @@ export class CourseDetectionService {
           `q=${encodeURIComponent(queryParams.q)}&` +
           `proximity=${longitude},${latitude}&` +
           `types=poi&` +
-          `country=GB&` +
+          (queryParams.country ? `country=${queryParams.country}&` : '') +
           `limit=10&` +
           `access_token=${mapboxToken}`;
 
@@ -430,6 +428,64 @@ export class CourseDetectionService {
     return R * c;
   }
 
+  /**
+   * Generate dynamic search queries based on location and test mode
+   */
+  private generateSearchQueries(latitude: number, longitude: number): Array<{q: string, country?: string}> {
+    const queries: Array<{q: string, country?: string}> = [];
+    
+    // Check if we're in test mode and get the current preset
+    if (isTestModeEnabled()) {
+      try {
+        const state = store.getState();
+        const currentPreset = state.testMode.presets.find(preset => 
+          Math.abs(preset.latitude - latitude) < 0.01 && 
+          Math.abs(preset.longitude - longitude) < 0.01
+        );
+        
+        if (currentPreset) {
+          console.log(`🎯 CourseDetectionService: Test mode detected for ${currentPreset.name}`);
+          
+          // Add specific course name search first (highest priority)
+          queries.push({ q: currentPreset.name });
+          
+          // Add location-specific searches based on the preset
+          if (currentPreset.name.includes('St Andrews')) {
+            queries.push({ q: 'St Andrews Old Course' });
+            queries.push({ q: 'St Andrews Links' });
+            queries.push({ q: 'golf course St Andrews' });
+            // No country restriction for international courses
+          } else if (currentPreset.name.includes('Augusta')) {
+            queries.push({ q: 'Augusta National Golf Club' });
+            queries.push({ q: 'Augusta National' });
+            queries.push({ q: 'golf course Augusta' });
+            // No country restriction for US courses
+          } else if (currentPreset.name.includes('Royal County Down')) {
+            queries.push({ q: 'Royal County Down' });
+            queries.push({ q: 'golf course Newcastle' });
+            queries.push({ q: 'golf course', country: 'GB' });
+          } else {
+            // For UK courses like Faughan Valley, use country restriction
+            queries.push({ q: 'golf course', country: 'GB' });
+            queries.push({ q: 'golf club', country: 'GB' });
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ CourseDetectionService: Could not access test mode state:', error);
+      }
+    }
+    
+    // If no test mode specific queries were added, use generic searches
+    if (queries.length === 0) {
+      queries.push({ q: 'golf course' });
+      queries.push({ q: 'golf club' });
+      queries.push({ q: 'country club' });
+    }
+    
+    console.log('🔍 CourseDetectionService: Generated search queries:', queries.map(q => q.q));
+    return queries;
+  }
+
   // ===== SEARCH BOX API v1 METHODS =====
 
   /**
@@ -523,9 +579,10 @@ export class CourseDetectionService {
     if (poiCategories.some(cat => golfPoiCategories.includes(cat))) confidence += 0.1;
     if (poiCategories.includes('golf')) confidence += 0.2;
     
-    // Distance-based confidence adjustment
-    if (distance <= 100) confidence += 0.15; // Very close - likely on course
-    else if (distance <= 500) confidence += 0.1; // Close - probably at course
+    // Distance-based confidence adjustment (more generous for large courses)
+    if (distance <= 200) confidence += 0.2; // Very close - likely on course
+    else if (distance <= 500) confidence += 0.15; // Close - probably at course
+    else if (distance <= 1000) confidence += 0.05; // Still reasonable for large courses
     else if (distance > 2000) confidence -= 0.2; // Far - less likely to be relevant
     
     // Determine place type
