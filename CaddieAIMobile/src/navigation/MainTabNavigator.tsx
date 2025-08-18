@@ -1,4 +1,5 @@
 import React from 'react';
+import { View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { MainTabParamList } from '../types';
@@ -7,6 +8,7 @@ import ActiveRoundScreen from '../screens/main/ActiveRoundScreen';
 import AIChatScreen from '../screens/main/AIChatScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import CoursesNavigator from './CoursesNavigator';
+import { TestModeIndicator } from '../components/testMode';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -29,6 +31,13 @@ const AIChatIcon = ({ color, size }: { color: string; size: number }) => (
 
 const ProfileIcon = ({ color, size }: { color: string; size: number }) => (
   <Icon name="person" size={size} color={color} />
+);
+
+// Header right component with test mode indicator
+const HeaderRight = () => (
+  <View style={{ marginRight: 16 }}>
+    <TestModeIndicator />
+  </View>
 );
 
 export const MainTabNavigator: React.FC = () => {
@@ -56,6 +65,7 @@ export const MainTabNavigator: React.FC = () => {
         headerTitleStyle: {
           fontWeight: '600',
         },
+        headerRight: HeaderRight,
       }}
     >
       <Tab.Screen

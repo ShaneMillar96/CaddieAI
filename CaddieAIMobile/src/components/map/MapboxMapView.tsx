@@ -16,14 +16,14 @@ import Mapbox, {
   ShapeSource,
 } from '@rnmapbox/maps';
 
-import { SimpleLocationData } from '../../services/SimpleLocationService';
+import { LocationData } from '../../services/LocationService';
 import { validateMapboxToken } from '../../utils/mapboxConfig';
 import { pinDistanceCalculator } from '../../utils/PinDistanceCalculator';
 
 
 
 export interface MapboxMapViewProps {
-  currentLocation: SimpleLocationData | null;
+  currentLocation: LocationData | null;
   onMapPress?: (coordinate: { latitude: number; longitude: number }) => void;
   onLocationUpdate?: (coordinate: { latitude: number; longitude: number }) => void;
   initialRegion?: {

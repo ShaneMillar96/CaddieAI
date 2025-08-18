@@ -7,6 +7,7 @@ import roundReducer from './slices/roundSlice';
 import voiceReducer from './slices/voiceSlice';
 import shotPlacementReducer from './slices/shotPlacementSlice';
 import userCoursesReducer from './slices/userCoursesSlice';
+import testModeReducer from './slices/testModeSlice';
 
 // Root reducer combining all slices
 const rootReducer = combineReducers({
@@ -16,12 +17,13 @@ const rootReducer = combineReducers({
   voice: voiceReducer,
   shotPlacement: shotPlacementReducer,
   userCourses: userCoursesReducer,
+  testMode: testModeReducer,
 });
 
 const persistConfig = {
   key: 'root',
   storage: AsyncStorage,
-  whitelist: ['auth', 'rounds', 'userCourses'], // Persist auth, rounds, and user courses
+  whitelist: ['auth', 'rounds', 'userCourses', 'testMode'], // Persist auth, rounds, user courses, and test mode
   blacklist: ['courses', 'voice'], // Don't persist course data or voice state (real-time data)
 };
 

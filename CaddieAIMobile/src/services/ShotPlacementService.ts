@@ -1,4 +1,4 @@
-import { SimpleLocationData, simpleLocationService } from './SimpleLocationService';
+import { LocationData, golfLocationService } from './LocationService';
 import voiceAIApiService from './voiceAIApi';
 
 export interface ShotPlacementCoordinates {
@@ -47,8 +47,8 @@ export class ShotPlacementService {
   private listeners: Array<(data: ShotPlacementData | null, state: ShotPlacementState) => void> = [];
   private movementCheckInterval: ReturnType<typeof setInterval> | null = null;
   private shotCompletionTimeout: ReturnType<typeof setTimeout> | null = null;
-  private lastKnownLocation: SimpleLocationData | null = null;
-  private shotStartLocation: SimpleLocationData | null = null;
+  private lastKnownLocation: LocationData | null = null;
+  private shotStartLocation: LocationData | null = null;
 
   constructor() {
     this.setupLocationTracking();
@@ -58,7 +58,7 @@ export class ShotPlacementService {
    * Setup location tracking for movement detection
    */
   private setupLocationTracking(): void {
-    simpleLocationService.onLocationUpdate((location) => {
+    golfLocationService.onLocationUpdate((location) => {
       this.handleLocationUpdate(location);
     });
   }
@@ -96,7 +96,7 @@ export class ShotPlacementService {
   /**
    * Handle location updates for movement detection
    */
-  private handleLocationUpdate(location: SimpleLocationData): void {
+  private handleLocationUpdate(location: LocationData): void {
     this.lastKnownLocation = location;
 
     // Only track movement if we have an active shot placement
@@ -130,7 +130,7 @@ export class ShotPlacementService {
     pinLocation?: { latitude: number; longitude: number },
     currentHole?: number
   ): Promise<ShotPlacementData> {
-    const currentLocation = this.lastKnownLocation || simpleLocationService.getLastKnownLocation();
+    const currentLocation = this.lastKnownLocation || golfLocationService.getLastKnownLocation();
     
     if (!currentLocation) {
       throw new Error('Current location not available for shot placement');

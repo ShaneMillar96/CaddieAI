@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { SimpleLocationData } from '../services/SimpleLocationService';
+import { LocationData } from '../services/LocationService';
 
 export interface GPSStabilityState {
   isStable: boolean;
@@ -40,7 +40,7 @@ const DEFAULT_CONFIG: GPSStabilizationConfig = {
  * - Quality level assessment
  */
 export const useGPSStabilization = (
-  currentLocation: SimpleLocationData | null,
+  currentLocation: LocationData | null,
   config: Partial<GPSStabilizationConfig> = {}
 ): GPSStabilityState => {
   const mergedConfig = { ...DEFAULT_CONFIG, ...config };
