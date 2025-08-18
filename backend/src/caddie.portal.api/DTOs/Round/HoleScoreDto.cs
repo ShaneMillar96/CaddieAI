@@ -23,6 +23,7 @@ public class HoleScoreResponseDto
     public string? LiePosition { get; set; }
     public string? ShotNotes { get; set; }
     public string? PerformanceNotes { get; set; }
+    public string? Notes { get; set; }
     public Dictionary<string, object>? HoleMetadata { get; set; }
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }

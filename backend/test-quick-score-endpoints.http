@@ -1,0 +1,72 @@
+### Test Quick Score Editing Endpoints
+### Simplified API - only handles score editing for completed holes
+
+### 1. Check if a hole can be edited
+GET {{host}}/api/round/1/holes/2/can-edit
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+### 2. Update a quick score for a completed hole
+PATCH {{host}}/api/round/1/holes/2/quick-score
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "score": 4
+}
+
+### 3. Update score for a different hole
+PATCH {{host}}/api/round/1/holes/3/quick-score
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "score": 5
+}
+
+### 4. Test validation - invalid score (too high)
+PATCH {{host}}/api/round/1/holes/2/quick-score
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "score": 16
+}
+
+### 5. Test validation - invalid score (too low)
+PATCH {{host}}/api/round/1/holes/2/quick-score
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "score": 0
+}
+
+### 6. Test validation - missing score
+PATCH {{host}}/api/round/1/holes/2/quick-score
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+}
+
+### 7. Test unauthorized access
+PATCH {{host}}/api/round/1/holes/2/quick-score
+Content-Type: application/json
+
+{
+  "score": 4
+}
+
+### 8. Test invalid hole number
+PATCH {{host}}/api/round/1/holes/19/quick-score
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "score": 4
+}
+
+### Variables for testing
+@host = https://localhost:5001
+@token = your_jwt_token_here

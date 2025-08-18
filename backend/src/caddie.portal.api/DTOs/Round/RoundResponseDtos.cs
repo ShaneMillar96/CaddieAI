@@ -93,3 +93,9 @@ public class HoleInfoDto
     public string? HoleName { get; set; }
     public string? HoleDescription { get; set; }
 }
+
+public class HoleEditValidationResponseDto
+{
+    public bool CanEdit { get; set; }
+    public string? Reason { get; set; }
+}

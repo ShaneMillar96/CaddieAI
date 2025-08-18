@@ -37,20 +37,14 @@ export const HoleCompletionModal: React.FC<HoleCompletionModalProps> = ({
 }) => {
   const [par, setPar] = useState<string>(existingPar?.toString() || '');
   const [score, setScore] = useState<string>('');
-  const [putts, setPutts] = useState<string>('');
-  const [fairwayHit, setFairwayHit] = useState<boolean | null>(null);
-  const [greenInRegulation, setGreenInRegulation] = useState<boolean | null>(null);
-  const [notes, setNotes] = useState<string>('');
+  const [isEditingPar, setIsEditingPar] = useState<boolean>(false);
 
   // Reset form when modal opens
   useEffect(() => {
     if (visible) {
       setPar(existingPar?.toString() || '');
       setScore('');
-      setPutts('');
-      setFairwayHit(null);
-      setGreenInRegulation(null);
-      setNotes('');
+      setIsEditingPar(false); // Reset edit mode when modal opens
     }
   }, [visible, existingPar]);
 
@@ -61,14 +55,13 @@ export const HoleCompletionModal: React.FC<HoleCompletionModalProps> = ({
       return;
     }
 
-    if (isFirstTimePlayingHole && !par.trim()) {
-      Alert.alert('Required Field', 'Please enter the par for this hole since this is your first time playing it.');
+    if ((isFirstTimePlayingHole || isEditingPar) && !par.trim()) {
+      Alert.alert('Required Field', 'Please enter the par for this hole.');
       return;
     }
 
     const scoreNum = parseInt(score, 10);
     const parNum = par.trim() ? parseInt(par, 10) : undefined;
-    const puttsNum = putts.trim() ? parseInt(putts, 10) : undefined;
 
     // Validate numeric inputs
     if (isNaN(scoreNum) || scoreNum < 1 || scoreNum > 15) {
@@ -81,26 +74,11 @@ export const HoleCompletionModal: React.FC<HoleCompletionModalProps> = ({
       return;
     }
 
-    if (puttsNum !== undefined && (isNaN(puttsNum) || puttsNum < 0 || puttsNum > 10)) {
-      Alert.alert('Invalid Putts', 'Please enter a valid number of putts between 0 and 10.');
-      return;
-    }
-
-    // Validate putts vs score
-    if (puttsNum !== undefined && puttsNum > scoreNum) {
-      Alert.alert('Invalid Putts', 'Number of putts cannot be greater than your total score.');
-      return;
-    }
-
     const completion: HoleCompletionRequest = {
       roundId,
       holeNumber,
       score: scoreNum,
       par: parNum,
-      putts: puttsNum,
-      fairwayHit: fairwayHit ?? undefined,
-      greenInRegulation: greenInRegulation ?? undefined,
-      notes: notes.trim() || undefined,
     };
 
     try {
@@ -143,49 +121,6 @@ export const HoleCompletionModal: React.FC<HoleCompletionModalProps> = ({
     );
   };
 
-  const renderBooleanOption = (
-    label: string,
-    value: boolean | null,
-    onPress: (val: boolean | null) => void,
-    trueLabel = 'Yes',
-    falseLabel = 'No'
-  ) => (
-    <View style={styles.booleanOptionContainer}>
-      <Text style={styles.inputLabel}>{label}</Text>
-      <View style={styles.booleanOptions}>
-        <TouchableOpacity
-          style={[
-            styles.booleanOption,
-            value === true && styles.booleanOptionSelected
-          ]}
-          onPress={() => onPress(value === true ? null : true)}
-          activeOpacity={0.7}
-        >
-          <Text style={[
-            styles.booleanOptionText,
-            value === true && styles.booleanOptionTextSelected
-          ]}>
-            {trueLabel}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.booleanOption,
-            value === false && styles.booleanOptionSelected
-          ]}
-          onPress={() => onPress(value === false ? null : false)}
-          activeOpacity={0.7}
-        >
-          <Text style={[
-            styles.booleanOptionText,
-            value === false && styles.booleanOptionTextSelected
-          ]}>
-            {falseLabel}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
 
   return (
     <Modal
@@ -202,28 +137,76 @@ export const HoleCompletionModal: React.FC<HoleCompletionModalProps> = ({
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
             <Icon name="close" size={24} color="#666" />
           </TouchableOpacity>
-          <Text style={styles.title}>Hole {holeNumber} Completion</Text>
+          <Text style={styles.title}>Score for Hole {holeNumber}</Text>
           <View style={styles.placeholder} />
         </View>
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          {/* Par Input (only for first time playing hole) */}
-          {isFirstTimePlayingHole && (
+          {/* Par Section */}
+          {(isFirstTimePlayingHole || existingPar) && (
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>
                 Par for Hole {holeNumber} <Text style={styles.required}>*</Text>
               </Text>
-              <Text style={styles.inputDescription}>
-                This is your first time playing this hole. Please set the par value.
-              </Text>
-              <TextInput
-                style={styles.numberInput}
-                value={par}
-                onChangeText={setPar}
-                placeholder="e.g., 4"
-                keyboardType="numeric"
-                maxLength={1}
-              />
+              
+              {isFirstTimePlayingHole ? (
+                <>
+                  <Text style={styles.inputDescription}>
+                    This is your first time playing this hole. Please set the par value.
+                  </Text>
+                  <TextInput
+                    style={styles.numberInput}
+                    value={par}
+                    onChangeText={setPar}
+                    placeholder="e.g., 4"
+                    keyboardType="numeric"
+                    maxLength={1}
+                  />
+                </>
+              ) : existingPar && !isEditingPar ? (
+                <View style={styles.parDisplayContainer}>
+                  <View style={styles.parDisplay}>
+                    <Text style={styles.parDisplayText}>Par {existingPar}</Text>
+                    <TouchableOpacity
+                      style={styles.editParButton}
+                      onPress={() => setIsEditingPar(true)}
+                      activeOpacity={0.7}
+                    >
+                      <Icon name="edit" size={16} color="#4a7c59" />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.parDisplayDescription}>
+                    Tap the edit icon if the par value is incorrect
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.parEditContainer}>
+                  <Text style={styles.inputDescription}>
+                    Edit the par value for this hole:
+                  </Text>
+                  <View style={styles.parEditRow}>
+                    <TextInput
+                      style={[styles.numberInput, styles.parEditInput]}
+                      value={par}
+                      onChangeText={setPar}
+                      placeholder="e.g., 4"
+                      keyboardType="numeric"
+                      maxLength={1}
+                      autoFocus
+                    />
+                    <TouchableOpacity
+                      style={styles.cancelEditButton}
+                      onPress={() => {
+                        setPar(existingPar?.toString() || '');
+                        setIsEditingPar(false);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.cancelEditButtonText}>Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
             </View>
           )}
 
@@ -243,47 +226,6 @@ export const HoleCompletionModal: React.FC<HoleCompletionModalProps> = ({
             />
           </View>
 
-          {/* Putts Input */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>Number of Putts (optional)</Text>
-            <TextInput
-              style={styles.numberInput}
-              value={putts}
-              onChangeText={setPutts}
-              placeholder="e.g., 2"
-              keyboardType="numeric"
-              maxLength={2}
-            />
-          </View>
-
-          {/* Fairway Hit */}
-          {renderBooleanOption(
-            'Hit Fairway? (optional)',
-            fairwayHit,
-            setFairwayHit
-          )}
-
-          {/* Green in Regulation */}
-          {renderBooleanOption(
-            'Green in Regulation? (optional)',
-            greenInRegulation,
-            setGreenInRegulation
-          )}
-
-          {/* Notes */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>Notes (optional)</Text>
-            <TextInput
-              style={styles.textArea}
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="Add any notes about this hole..."
-              multiline
-              numberOfLines={3}
-              maxLength={200}
-            />
-            <Text style={styles.characterCount}>{notes.length}/200</Text>
-          </View>
         </ScrollView>
 
         <View style={styles.footer}>
@@ -302,9 +244,9 @@ export const HoleCompletionModal: React.FC<HoleCompletionModalProps> = ({
             activeOpacity={0.7}
           >
             {isLoading ? (
-              <Text style={styles.submitButtonText}>Saving...</Text>
+              <Text style={styles.submitButtonText}>Saving Score...</Text>
             ) : (
-              <Text style={styles.submitButtonText}>Complete Hole</Text>
+              <Text style={styles.submitButtonText}>Save Score</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -494,6 +436,64 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  // Par display styles
+  parDisplayContainer: {
+    marginBottom: 12,
+  },
+  parDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#e1e1e1',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    justifyContent: 'space-between',
+  },
+  parDisplayText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2c5530',
+  },
+  editParButton: {
+    padding: 4,
+    borderRadius: 4,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#4a7c59',
+  },
+  parDisplayDescription: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 6,
+    fontStyle: 'italic',
+  },
+  // Par edit styles
+  parEditContainer: {
+    marginBottom: 12,
+  },
+  parEditRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  parEditInput: {
+    flex: 1,
+  },
+  cancelEditButton: {
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  cancelEditButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#666',
   },
 });
 

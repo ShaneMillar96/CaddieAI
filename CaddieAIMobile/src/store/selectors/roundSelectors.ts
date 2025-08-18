@@ -248,6 +248,11 @@ export const selectHoleScoreForEditing = createSelector(
  */
 export const selectHoleScoreByNumber = selectHoleScoreForEditing;
 
+/**
+ * Select show quick score editor modal state
+ */
+export const selectShowQuickScoreEditor = (state: RootState) => state.rounds.dashboardState.showQuickScoreEditor;
+
 // =============================================================================
 // FEATURE FLAG SELECTORS
 // =============================================================================
@@ -258,7 +263,7 @@ export const selectHoleScoreByNumber = selectHoleScoreForEditing;
  */
 export const selectShouldDisableGpsFeatures = createSelector(
   [selectIsViewingDifferentHole],
-  (isViewingDifferent) => isViewingDifferent
+  (isViewingDifferent) => Boolean(isViewingDifferent)
 );
 
 /**
@@ -267,7 +272,7 @@ export const selectShouldDisableGpsFeatures = createSelector(
  */
 export const selectShouldDisableShotPlacement = createSelector(
   [selectIsViewingDifferentHole],
-  (isViewingDifferent) => isViewingDifferent
+  (isViewingDifferent) => Boolean(isViewingDifferent)
 );
 
 // =============================================================================

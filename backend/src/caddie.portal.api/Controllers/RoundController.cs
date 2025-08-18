@@ -879,6 +879,120 @@ public class RoundController : ControllerBase
     }
 
     /// <summary>
+    /// Update score for a completed hole (quick score editing)
+    /// </summary>
+    /// <param name="roundId">Round ID</param>
+    /// <param name="holeNumber">Hole number (1-18)</param>
+    /// <param name="request">Quick score update request</param>
+    /// <returns>Updated hole score</returns>
+    [HttpPatch("{roundId:int}/holes/{holeNumber:int}/quick-score")]
+    [ProducesResponseType(typeof(ApiResponse<HoleScoreResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> UpdateQuickScore(int roundId, int holeNumber, [FromBody] QuickScoreUpdateRequestDto request)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+                
+                return BadRequest(ApiResponse.ErrorResponse("Validation failed", "VALIDATION_ERROR", errors));
+            }
+
+            var userId = GetCurrentUserId();
+            if (userId == null)
+                return Unauthorized(ApiResponse.ErrorResponse("User not authenticated", "UNAUTHORIZED"));
+
+            // Verify round exists and user has access
+            var round = await _roundService.GetRoundByIdAsync(roundId);
+            if (round == null)
+                return NotFound(ApiResponse.ErrorResponse("Round not found", "ROUND_NOT_FOUND"));
+
+            if (round.UserId != userId.Value)
+                return Forbid();
+
+            // Validate hole number
+            if (holeNumber < 1 || holeNumber > 18)
+                return BadRequest(ApiResponse.ErrorResponse("Hole number must be between 1 and 18", "INVALID_HOLE_NUMBER"));
+
+            // Update the quick score
+            var updatedHoleScore = await _roundService.UpdateQuickScoreAsync(roundId, holeNumber, request.Score);
+            var responseDto = _mapper.Map<HoleScoreResponseDto>(updatedHoleScore);
+
+            _logger.LogInformation("User {UserId} updated quick score for round {RoundId}, hole {HoleNumber}: score {Score}", 
+                userId.Value, roundId, holeNumber, request.Score);
+
+            return Ok(ApiResponse.SuccessResponse(responseDto, "Hole score updated successfully"));
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning("Invalid operation while updating quick score for round {RoundId}, hole {HoleNumber}: {Error}", roundId, holeNumber, ex.Message);
+            return BadRequest(ApiResponse.ErrorResponse(ex.Message, "INVALID_OPERATION"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating quick score for round {RoundId}, hole {HoleNumber}", roundId, holeNumber);
+            return StatusCode(500, ApiResponse.ErrorResponse("Failed to update hole score", "INTERNAL_ERROR"));
+        }
+    }
+
+    /// <summary>
+    /// Check if a specific hole can be edited
+    /// </summary>
+    /// <param name="roundId">Round ID</param>
+    /// <param name="holeNumber">Hole number (1-18)</param>
+    /// <returns>Validation result indicating if hole can be edited</returns>
+    [HttpGet("{roundId:int}/holes/{holeNumber:int}/can-edit")]
+    [ProducesResponseType(typeof(ApiResponse<HoleEditValidationResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> CanEditHole(int roundId, int holeNumber)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+                return Unauthorized(ApiResponse.ErrorResponse("User not authenticated", "UNAUTHORIZED"));
+
+            // Verify round exists and user has access
+            var round = await _roundService.GetRoundByIdAsync(roundId);
+            if (round == null)
+                return NotFound(ApiResponse.ErrorResponse("Round not found", "ROUND_NOT_FOUND"));
+
+            if (round.UserId != userId.Value)
+                return Forbid();
+
+            // Validate hole number
+            if (holeNumber < 1 || holeNumber > 18)
+                return BadRequest(ApiResponse.ErrorResponse("Hole number must be between 1 and 18", "INVALID_HOLE_NUMBER"));
+
+            // Check if hole can be edited
+            var canEdit = await _roundService.CanEditHoleAsync(roundId, holeNumber);
+            
+            var response = new HoleEditValidationResponseDto
+            {
+                CanEdit = canEdit,
+                Reason = canEdit ? null : GetEditRestrictionReason(round, holeNumber)
+            };
+
+            return Ok(ApiResponse.SuccessResponse(response, "Edit validation completed"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking edit permission for round {RoundId}, hole {HoleNumber}", roundId, holeNumber);
+            return StatusCode(500, ApiResponse.ErrorResponse("Failed to validate edit permission", "INTERNAL_ERROR"));
+        }
+    }
+
+    /// <summary>
     /// Get current user ID from JWT claims
     /// </summary>
     /// <returns>User ID or null if not authenticated</returns>
@@ -886,5 +1000,36 @@ public class RoundController : ControllerBase
     {
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         return int.TryParse(userIdClaim, out var userId) ? userId : null;
+    }
+
+    /// <summary>
+    /// Get human-readable reason why a hole cannot be edited
+    /// </summary>
+    /// <param name="round">Round information</param>
+    /// <param name="holeNumber">Hole number</param>
+    /// <returns>Reason string</returns>
+    private string GetEditRestrictionReason(RoundModel round, int holeNumber)
+    {
+        // Check round status
+        if (round.Status == RoundStatus.Completed)
+            return "Cannot edit holes in a completed round";
+        
+        if (round.Status == RoundStatus.Abandoned)
+            return "Cannot edit holes in an abandoned round";
+
+        // Check hole completion status
+        var holeScore = round.HoleScores?.FirstOrDefault(hs => hs.HoleNumber == holeNumber);
+        if (holeScore == null || !holeScore.IsComplete)
+            return "Can only edit completed holes";
+
+        // Check if it's the current hole
+        if (round.CurrentHole == holeNumber)
+            return "Cannot edit current hole - use hole completion flow instead";
+
+        // Check if it's a future hole
+        if (holeNumber > (round.CurrentHole ?? 1))
+            return "Cannot edit holes that haven't been played yet";
+
+        return "Hole cannot be edited at this time";
     }
 }

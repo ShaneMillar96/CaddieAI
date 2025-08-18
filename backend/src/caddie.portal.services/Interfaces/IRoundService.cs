@@ -46,4 +46,8 @@ public interface IRoundService
     Task<RoundProgress> GetRoundProgressAsync(int roundId);
     Task<bool> IsRoundCompleteAsync(int roundId);
     Task<int> CalculateRoundTotalAsync(int roundId);
+
+    // Quick Score Editing
+    Task<HoleScoreModel> UpdateQuickScoreAsync(int roundId, int holeNumber, int score);
+    Task<bool> CanEditHoleAsync(int roundId, int holeNumber);
 }

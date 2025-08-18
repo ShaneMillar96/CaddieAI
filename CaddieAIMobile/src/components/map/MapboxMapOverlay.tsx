@@ -14,6 +14,8 @@ import { SimpleLocationData, simpleLocationService } from '../../services/Simple
 export interface MapboxMapOverlayProps {
   courseName?: string;
   currentHole?: number;
+  viewingHole?: number;
+  isViewingDifferentHole?: boolean;
   currentLocation: SimpleLocationData | null;
   isLocationTracking: boolean;
   isVoiceInterfaceVisible: boolean;
@@ -43,6 +45,12 @@ export interface MapboxMapOverlayProps {
   onCompleteHole?: () => void;
   completedHoles?: number[];
   totalHoles?: number;
+  onShowQuickScoreEditor?: () => void;
+  // Navigation actions
+  onNavigateToNextHole?: () => void;
+  onNavigateToPreviousHole?: () => void;
+  // Hole data props
+  activeRound?: any;
 }
 
 /**
@@ -59,6 +67,8 @@ export interface MapboxMapOverlayProps {
 const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
   courseName,
   currentHole = 1,
+  viewingHole = 1,
+  isViewingDifferentHole = false,
   currentLocation,
   isLocationTracking,
   isVoiceInterfaceVisible,
@@ -88,8 +98,46 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
   onCompleteHole,
   completedHoles = [],
   totalHoles = 18,
+  onShowQuickScoreEditor,
+  // Navigation actions
+  onNavigateToNextHole,
+  onNavigateToPreviousHole,
+  // Hole data props
+  activeRound,
 }) => {
   
+  // Get current hole data for display
+  const getCurrentHoleData = () => {
+    if (!activeRound?.course?.holes) {
+      return {
+        par: 4,
+        handicap: 1,
+        yardage: 350,
+        distance: '350y to green'
+      };
+    }
+
+    const hole = activeRound.course.holes.find((h: any) => h.holeNumber === viewingHole);
+    if (!hole) {
+      return {
+        par: 4,
+        handicap: 1,
+        yardage: 350,
+        distance: '350y to green'
+      };
+    }
+
+    const yardage = hole.yardageMen || hole.yardageWomen || 350;
+    return {
+      par: hole.par || 4,
+      handicap: hole.handicap || 1,
+      yardage,
+      distance: `${yardage}y to green`
+    };
+  };
+
+  const currentHoleData = getCurrentHoleData();
+
   // Get enhanced GPS status for Mapbox
   const getGPSStatus = () => {
     if (locationError) {
@@ -223,23 +271,28 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
             </Text>
           </View>
           <View style={styles.holeInfo}>
-            <Text style={styles.holeNumber}>Hole {currentHole}/{totalHoles}</Text>
+            <Text style={styles.holeNumber}>Hole {viewingHole}/{totalHoles}</Text>
+            {isViewingDifferentHole && (
+              <View style={styles.viewingIndicator}>
+                <Text style={styles.viewingIndicatorText}>Viewing</Text>
+              </View>
+            )}
             <View style={styles.parInfo}>
               <Text style={styles.parLabel}>Par 4</Text>
             </View>
-            {/* Complete Hole Button */}
-            {onCompleteHole && !completedHoles.includes(currentHole) && (
+            {/* Score Hole Button */}
+            {onCompleteHole && !completedHoles.includes(viewingHole) && (
               <TouchableOpacity
-                style={styles.completeHoleButton}
+                style={styles.scoreHoleButton}
                 onPress={onCompleteHole}
                 activeOpacity={0.7}
               >
-                <Icon name="flag" size={14} color="#fff" />
-                <Text style={styles.completeHoleButtonText}>Complete</Text>
+                <Icon name="edit" size={14} color="#fff" />
+                <Text style={styles.scoreHoleButtonText}>Score Hole</Text>
               </TouchableOpacity>
             )}
             {/* Completed Indicator */}
-            {completedHoles.includes(currentHole) && (
+            {completedHoles.includes(viewingHole) && (
               <View style={styles.holeCompletedIndicator}>
                 <Icon name="check-circle" size={14} color="#28a745" />
                 <Text style={styles.holeCompletedText}>Done</Text>
@@ -295,6 +348,7 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
 
       {/* Right Side Enhanced Controls */}
       <View style={styles.rightControls}>
+
         {/* Center on User Button */}
         {currentLocation && onCenterOnUser && (
           <TouchableOpacity
@@ -373,6 +427,7 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
         </TouchableOpacity>
       </View>
 
+
       {/* Minimal Instructions - Only show in active placement modes */}
       {currentLocation && shotPlacementMode && (
         <View style={styles.instructionsContainer}>
@@ -391,6 +446,41 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
           </Text>
         </View>
       )}
+
+      {/* Bottom Hole Navigation Card */}
+      <View style={styles.bottomNavigationCard}>
+        <TouchableOpacity 
+          style={[styles.navArrow, viewingHole <= 1 && styles.navArrowDisabled]}
+          onPress={() => viewingHole > 1 && onNavigateToPreviousHole?.()}
+          disabled={viewingHole <= 1}
+        >
+          <Icon name="chevron-left" size={24} color={viewingHole <= 1 ? "#cccccc" : "#4a7c59"} />
+        </TouchableOpacity>
+
+        <View style={styles.holeInfoSection}>
+          <Text style={styles.holeNumberLarge}>{String(viewingHole).padStart(2, '0')}</Text>
+          <View style={styles.holeDetails}>
+            <Text style={styles.parText}>Par {currentHoleData.par} • Handicap {currentHoleData.handicap}</Text>
+            <Text style={styles.distanceText}>{currentHoleData.distance}</Text>
+            {completedHoles.includes(viewingHole) ? (
+              <TouchableOpacity style={styles.scoreDisplay} onPress={() => onShowQuickScoreEditor?.()}>
+                <Icon name="edit" size={12} color="#28a745" />
+                <Text style={styles.scoreText}>{activeRound?.holeScores?.find((hs: any) => hs.holeNumber === viewingHole)?.score || 'N/A'}</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.noScoreText}>No score</Text>
+            )}
+          </View>
+        </View>
+
+        <TouchableOpacity 
+          style={[styles.navArrow, viewingHole >= totalHoles && styles.navArrowDisabled]}
+          onPress={() => viewingHole < totalHoles && onNavigateToNextHole?.()}
+          disabled={viewingHole >= totalHoles}
+        >
+          <Icon name="chevron-right" size={24} color={viewingHole >= totalHoles ? "#cccccc" : "#4a7c59"} />
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 };
@@ -460,20 +550,26 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
   },
-  completeHoleButton: {
+  scoreHoleButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#4a7c59',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: '#FF6B35',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
     gap: 4,
     marginLeft: 8,
+    shadowColor: '#FF6B35',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  completeHoleButtonText: {
-    fontSize: 10,
+  scoreHoleButtonText: {
+    fontSize: 11,
     color: '#ffffff',
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   holeCompletedIndicator: {
     flexDirection: 'row',
@@ -488,6 +584,18 @@ const styles = StyleSheet.create({
   holeCompletedText: {
     fontSize: 10,
     color: '#28a745',
+    fontWeight: '600',
+  },
+  viewingIndicator: {
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  viewingIndicatorText: {
+    fontSize: 10,
+    color: '#ffffff',
     fontWeight: '600',
   },
   gpsStatusContainer: {
@@ -818,6 +926,84 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  
+
+  // Bottom Navigation Card Styles
+  bottomNavigationCard: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingBottom: 34, // Extra padding for safe area
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  navArrow: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#f8f9fa',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  navArrowDisabled: {
+    backgroundColor: '#f0f0f0',
+  },
+  holeInfoSection: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  holeNumberLarge: {
+    fontSize: 36,
+    fontWeight: '700',
+    color: '#2c5530',
+    marginBottom: 4,
+  },
+  holeDetails: {
+    alignItems: 'center',
+  },
+  parText: {
+    fontSize: 14,
+    color: '#666666',
+    marginBottom: 4,
+  },
+  distanceText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#4a7c59',
+    marginBottom: 6,
+  },
+  scoreDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f9f0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  scoreText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#28a745',
+  },
+  noScoreText: {
+    fontSize: 12,
+    color: '#999999',
+    fontStyle: 'italic',
   },
 });
 

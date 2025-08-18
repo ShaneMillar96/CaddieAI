@@ -106,3 +106,10 @@ public class AbandonRoundRequestDto
     [MaxLength(500)]
     public string? Reason { get; set; }
 }
+
+public class QuickScoreUpdateRequestDto
+{
+    [Required]
+    [Range(1, 15, ErrorMessage = "Score must be between 1 and 15")]
+    public int Score { get; set; }
+}
