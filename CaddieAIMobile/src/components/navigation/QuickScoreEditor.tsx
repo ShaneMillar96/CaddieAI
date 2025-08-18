@@ -1,20 +1,19 @@
 /**
  * QuickScoreEditor Component
  * 
- * A compact modal for quickly editing scores of completed holes during a round.
- * Provides fast, focused interface for correcting score mistakes without interrupting gameplay.
+ * A simple, focused modal for quickly editing scores of completed holes during a round.
+ * Provides fast score correction without interrupting gameplay - focused on score only.
  * 
  * Features:
- * - Compact modal layout (not full screen)
+ * - Compact single-field modal layout
  * - Score validation (1-15 range)
- * - Optional putts and notes fields
  * - Real-time validation feedback
  * - Optimistic updates with error rollback
  * - Integration with Redux state and backend API
  * 
- * @version 1.0.0
+ * @version 2.0.0 - Simplified to score-only editing
  * @author Claude Code Assistant  
- * @date August 15, 2025
+ * @date August 18, 2025
  */
 
 import React, { useState, useEffect } from 'react';
@@ -52,8 +51,6 @@ interface QuickScoreEditorProps {
 
 interface QuickScoreEditorState {
   score: string;
-  putts: string;
-  notes: string;
   isLoading: boolean;
   error: string | null;
 }
@@ -79,8 +76,6 @@ const QuickScoreEditor: React.FC<QuickScoreEditorProps> = ({
   // Local state
   const [formState, setFormState] = useState<QuickScoreEditorState>({
     score: '',
-    putts: '',
-    notes: '',
     isLoading: false,
     error: null,
   });
@@ -95,8 +90,6 @@ const QuickScoreEditor: React.FC<QuickScoreEditorProps> = ({
       setFormState(prev => ({
         ...prev,
         score: existingScore.score?.toString() || '',
-        putts: existingScore.putts?.toString() || '',
-        notes: existingScore.notes || '',
         error: null,
       }));
     } else if (visible) {
@@ -104,8 +97,6 @@ const QuickScoreEditor: React.FC<QuickScoreEditorProps> = ({
       setFormState(prev => ({
         ...prev,
         score: '',
-        putts: '',
-        notes: '',
         error: null,
       }));
     }
@@ -124,19 +115,6 @@ const QuickScoreEditor: React.FC<QuickScoreEditorProps> = ({
     const scoreNum = parseInt(formState.score, 10);
     if (isNaN(scoreNum) || scoreNum < 1 || scoreNum > 15) {
       return { isValid: false, error: 'Score must be between 1 and 15' };
-    }
-
-    // Validate putts if provided
-    if (formState.putts.trim()) {
-      const puttsNum = parseInt(formState.putts, 10);
-      if (isNaN(puttsNum) || puttsNum < 0 || puttsNum > 10) {
-        return { isValid: false, error: 'Putts must be between 0 and 10' };
-      }
-    }
-
-    // Validate notes length
-    if (formState.notes.length > 100) {
-      return { isValid: false, error: 'Notes must be 100 characters or less' };
     }
 
     return { isValid: true };
@@ -164,14 +142,11 @@ const QuickScoreEditor: React.FC<QuickScoreEditorProps> = ({
 
     // Prepare update data
     const scoreNum = parseInt(formState.score, 10);
-    const puttsNum = formState.putts.trim() ? parseInt(formState.putts, 10) : undefined;
 
     const quickScoreUpdate: QuickScoreUpdate = {
       roundId,
       holeNumber,
       score: scoreNum,
-      putts: puttsNum,
-      notes: formState.notes.trim() || undefined,
     };
 
     setFormState(prev => ({ ...prev, isLoading: true, error: null }));
@@ -185,8 +160,6 @@ const QuickScoreEditor: React.FC<QuickScoreEditorProps> = ({
       // Update via API
       const updatedScore = await roundApi.updateHoleScore(roundId, existingScore.id, {
         score: scoreNum,
-        putts: puttsNum,
-        notes: formState.notes.trim() || undefined,
       });
 
       // Update Redux store
@@ -217,8 +190,6 @@ const QuickScoreEditor: React.FC<QuickScoreEditorProps> = ({
       setFormState(prev => ({
         ...prev,
         score: existingScore.score?.toString() || '',
-        putts: existingScore.putts?.toString() || '',
-        notes: existingScore.notes || '',
         error: null,
       }));
     }
@@ -284,66 +255,30 @@ const QuickScoreEditor: React.FC<QuickScoreEditorProps> = ({
 
             {/* Content */}
             <View style={styles.content}>
-              {/* Score Field */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>
+              {/* Score Field - Enhanced for single field layout */}
+              <View style={styles.scoreInputContainer}>
+                <Text style={styles.scoreInputLabel}>
                   Score <Text style={styles.required}>*</Text>
                 </Text>
                 <TextInput
                   style={[
-                    styles.numberInput,
-                    formState.error?.includes('Score') && styles.inputError
+                    styles.scoreInput,
+                    formState.error && styles.inputError
                   ]}
                   value={formState.score}
                   onChangeText={(value) => handleInputChange('score', value)}
-                  placeholder="Enter strokes"
+                  placeholder="Enter strokes (1-15)"
                   keyboardType="number-pad"
                   maxLength={2}
-                  returnKeyType="next"
+                  returnKeyType="done"
                   editable={!formState.isLoading}
                   autoFocus
                 />
-              </View>
-
-              {/* Putts Field */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Putts</Text>
-                <TextInput
-                  style={[
-                    styles.numberInput,
-                    formState.error?.includes('Putts') && styles.inputError
-                  ]}
-                  value={formState.putts}
-                  onChangeText={(value) => handleInputChange('putts', value)}
-                  placeholder="Enter putts (optional)"
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  returnKeyType="next"
-                  editable={!formState.isLoading}
-                />
-              </View>
-
-              {/* Notes Field */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Notes</Text>
-                <TextInput
-                  style={[
-                    styles.textInput,
-                    formState.error?.includes('Notes') && styles.inputError
-                  ]}
-                  value={formState.notes}
-                  onChangeText={(value) => handleInputChange('notes', value)}
-                  placeholder="Optional notes (max 100 chars)"
-                  maxLength={100}
-                  multiline
-                  numberOfLines={3}
-                  returnKeyType="done"
-                  editable={!formState.isLoading}
-                />
-                <Text style={styles.characterCount}>
-                  {formState.notes.length}/100
+                <Text style={styles.scoreHint}>
+                  Valid range: 1-15 strokes
                 </Text>
               </View>
+
 
               {/* Error Message */}
               {renderErrorMessage()}
@@ -375,7 +310,7 @@ const QuickScoreEditor: React.FC<QuickScoreEditorProps> = ({
                     <Text style={styles.saveButtonText}>Saving...</Text>
                   </View>
                 ) : (
-                  <Text style={styles.saveButtonText}>Save Changes</Text>
+                  <Text style={styles.saveButtonText}>Save Score</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -401,9 +336,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   keyboardAvoidingView: {
-    width: '90%',
-    maxWidth: 400,
-    maxHeight: '80%',
+    width: '85%',
+    maxWidth: 360,
+    maxHeight: '60%',
   },
   container: {
     backgroundColor: '#fff',
@@ -438,12 +373,47 @@ const styles = StyleSheet.create({
     width: 32,
   },
   content: {
-    paddingHorizontal: 20,
-    paddingVertical: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+    alignItems: 'center',
   },
   inputContainer: {
     marginBottom: 20,
   },
+  // Enhanced styles for single score input
+  scoreInputContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  scoreInputLabel: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#2c5530',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  scoreInput: {
+    backgroundColor: '#f8f9fa',
+    borderWidth: 2,
+    borderColor: '#2c5530',
+    borderRadius: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#2c5530',
+    textAlign: 'center',
+    minWidth: 100,
+    maxWidth: 120,
+  },
+  scoreHint: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 8,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  // Legacy styles (kept for compatibility)
   inputLabel: {
     fontSize: 16,
     fontWeight: '600',
@@ -463,27 +433,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
   },
-  textInput: {
-    backgroundColor: '#f8f9fa',
-    borderWidth: 1,
-    borderColor: '#e1e1e1',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#333',
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
   inputError: {
     borderColor: '#e74c3c',
     backgroundColor: '#ffeaea',
-  },
-  characterCount: {
-    fontSize: 12,
-    color: '#666',
-    textAlign: 'right',
-    marginTop: 4,
   },
   errorContainer: {
     flexDirection: 'row',

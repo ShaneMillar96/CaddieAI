@@ -387,6 +387,19 @@ export interface CourseState {
 }
 
 /**
+ * Dashboard state interface for hole navigation and UI management
+ */
+export interface DashboardState {
+  currentHole: number;          // Actual hole for GPS/AI features
+  viewingHole: number;          // Hole displayed in UI
+  showScoreModal: boolean;      // Full completion modal
+  showQuickScoreEditor: boolean; // Quick score editor modal
+  isLocationTracking: boolean;
+  lastLocationUpdate: string | null;
+  roundTimer: string | null;
+}
+
+/**
  * Round Redux state interface
  */
 export interface RoundState {
@@ -399,13 +412,7 @@ export interface RoundState {
   isCompleting: boolean;
   error: string | null;
   lastSyncTime: string | null;
-  dashboardState: {
-    currentHole: number;
-    showScoreModal: boolean;
-    isLocationTracking: boolean;
-    lastLocationUpdate: string | null;
-    roundTimer: string | null;
-  };
+  dashboardState: DashboardState;
 }
 
 // =============================================================================
@@ -485,15 +492,54 @@ export interface UserCoursesState {
 }
 
 /**
- * Hole completion request interface
+ * Hole completion request interface - simplified for essential data only
  */
 export interface HoleCompletionRequest {
   roundId: number;
   holeNumber: number;
   par?: number; // Only provided first time playing this hole
   score: number;
-  putts?: number;
-  fairwayHit?: boolean;
-  greenInRegulation?: boolean;
-  notes?: string;
+}
+
+// =============================================================================
+// HOLE NAVIGATION TYPES
+// =============================================================================
+
+/**
+ * Quick score update interface for rapid score editing - simplified to score only
+ */
+export interface QuickScoreUpdate {
+  roundId: number;
+  holeNumber: number;
+  score: number;
+}
+
+/**
+ * Hole navigation state interface for current navigation status
+ */
+export interface HoleNavigationState {
+  currentHole: number;
+  viewingHole: number;
+  totalHoles: number;
+  completedHoles: number[];
+}
+
+/**
+ * Hole status enumeration for UI display states
+ */
+export enum HoleStatusType {
+  Completed = 'completed',
+  Current = 'current',
+  Upcoming = 'upcoming'
+}
+
+/**
+ * Hole status interface for navigation and display logic
+ */
+export interface HoleStatus {
+  holeNumber: number;
+  status: HoleStatusType;
+  score?: number;
+  par?: number;
+  strokesOverPar?: number;
 }

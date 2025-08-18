@@ -1049,7 +1049,6 @@ public class RoundService : IRoundService
             HoleNumber = holeScore.HoleNumber,
             Score = holeScore.Score,
             // Set default values for properties not in simplified DAL model
-            Putts = null,
             FairwayHit = null,
             GreenInRegulation = null,
             UpAndDown = null,
@@ -1337,6 +1336,104 @@ public class RoundService : IRoundService
             .ToListAsync();
 
         return holeScores.Sum(hs => hs.Score ?? 0);
+    }
+
+    #endregion
+
+    #region Quick Score Editing
+
+    public async Task<HoleScoreModel> UpdateQuickScoreAsync(int roundId, int holeNumber, int score)
+    {
+        try
+        {
+            // Get the existing hole score
+            var holeScore = await _context.HoleScores
+                .Include(hs => hs.Hole)
+                .Include(hs => hs.Round)
+                .FirstOrDefaultAsync(hs => hs.RoundId == roundId && hs.HoleNumber == holeNumber);
+            
+            if (holeScore == null)
+            {
+                throw new InvalidOperationException($"No hole score found for round {roundId}, hole {holeNumber}");
+            }
+
+            // Validate that the hole can be edited
+            if (!await CanEditHoleInternalAsync(holeScore.Round, holeNumber))
+            {
+                throw new InvalidOperationException($"Hole {holeNumber} cannot be edited");
+            }
+
+            // Update the hole score
+            holeScore.Score = score;
+            holeScore.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Quick score updated for round {RoundId}, hole {HoleNumber}: score {Score}", 
+                roundId, holeNumber, score);
+
+            return MapToHoleScoreModel(holeScore);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating quick score for round {RoundId}, hole {HoleNumber}", roundId, holeNumber);
+            throw;
+        }
+    }
+
+    public async Task<bool> CanEditHoleAsync(int roundId, int holeNumber)
+    {
+        try
+        {
+            var round = await _context.Rounds
+                .FirstOrDefaultAsync(r => r.Id == roundId);
+            
+            if (round == null)
+            {
+                return false;
+            }
+
+            return await CanEditHoleInternalAsync(round, holeNumber);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking if hole can be edited for round {RoundId}, hole {HoleNumber}", roundId, holeNumber);
+            return false;
+        }
+    }
+
+    private async Task<bool> CanEditHoleInternalAsync(Round round, int holeNumber)
+    {
+        // Business Rules:
+        // 1. Round must not be completed or abandoned
+        if (round.StatusId == (int)RoundStatusEnum.Completed || 
+            round.StatusId == (int)RoundStatusEnum.Abandoned)
+        {
+            return false;
+        }
+
+        // 2. Can only edit completed holes (holes with existing scores)
+        var holeScore = await _context.HoleScores
+            .FirstOrDefaultAsync(hs => hs.RoundId == round.Id && hs.HoleNumber == holeNumber);
+        
+        if (holeScore == null || !holeScore.Score.HasValue)
+        {
+            return false; // Hole not completed yet
+        }
+
+        // 3. Cannot edit current hole (use full completion flow instead)
+        if (round.CurrentHole == holeNumber)
+        {
+            return false;
+        }
+
+        // 4. Cannot edit future holes
+        if (holeNumber > (round.CurrentHole ?? 1))
+        {
+            return false;
+        }
+
+        return true;
     }
 
     #endregion

@@ -14,6 +14,8 @@ public class RoundMappingProfile : Profile
         CreateMap<StartRoundRequestDto, StartRoundModel>();
         CreateMap<CompleteRoundRequestDto, CompleteRoundModel>();
         CreateMap<CompleteHoleRequestDto, CompleteHoleModel>();
+        
+        // Quick Score Editing - No direct mapping needed as parameters are passed individually
 
         // Service Models to Response DTOs
         CreateMap<RoundModel, RoundResponseDto>()

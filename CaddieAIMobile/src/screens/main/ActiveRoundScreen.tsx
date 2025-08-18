@@ -22,16 +22,18 @@ import {
   abandonRound,
   fetchHoleScores,
   completeHole,
-  setShowHoleSelector,
   setShowQuickScoreEditor,
+  resetToCurrentHole,
+  navigateToNextHole,
+  navigateToPreviousHole,
 } from '../../store/slices/roundSlice';
 import {
   selectCurrentHole,
   selectViewingHole,
-  selectNavigationModals,
   selectIsViewingDifferentHole,
   selectShouldDisableShotPlacement,
   selectShouldDisableGpsFeatures,
+  selectShowQuickScoreEditor,
 } from '../../store/selectors/roundSelectors';
 import {
   toggleVoiceInterface,
@@ -59,7 +61,7 @@ import { ErrorMessage } from '../../components/auth/ErrorMessage';
 import VoiceAIInterface from '../../components/voice/VoiceAIInterface';
 import { VoiceChatModal } from '../../components/voice/VoiceChatModal';
 import { HoleCompletionModal } from '../../components/common/HoleCompletionModal';
-import { HoleNavigationModal, QuickScoreEditor } from '../../components/navigation';
+import { QuickScoreEditor } from '../../components/navigation';
 import MapboxMapView from '../../components/map/MapboxMapView';
 import MapboxMapOverlay from '../../components/map/MapboxMapOverlay';
 import MapErrorBoundary from '../../components/map/MapErrorBoundary';
@@ -136,7 +138,6 @@ export const ActiveRoundScreen: React.FC = () => {
   // Hole navigation state from Redux selectors
   const currentHole = useSelector(selectCurrentHole);
   const viewingHole = useSelector(selectViewingHole);
-  const navigationModals = useSelector(selectNavigationModals);
   const isViewingDifferentHole = useSelector(selectIsViewingDifferentHole);
   const shouldDisableShotPlacement = useSelector(selectShouldDisableShotPlacement);
   const shouldDisableGpsFeatures = useSelector(selectShouldDisableGpsFeatures);
@@ -551,8 +552,8 @@ export const ActiveRoundScreen: React.FC = () => {
           { 
             text: 'Go to Current Hole', 
             onPress: () => {
-              // Reset viewing hole to current hole will be handled by navigation component
-              handleHoleNavigationToggle();
+              // Reset viewing hole to current hole
+              dispatch(resetToCurrentHole());
             }
           }
         ]
@@ -692,15 +693,22 @@ export const ActiveRoundScreen: React.FC = () => {
     setIsHoleCompletionModalVisible(prev => !prev);
   }, []);
 
-  // Handle hole navigation modal
-  const handleHoleNavigationToggle = useCallback(() => {
-    dispatch(setShowHoleSelector(!navigationModals.showHoleSelector));
-  }, [dispatch, navigationModals.showHoleSelector]);
 
   // Handle quick score editor modal
+  const showQuickScoreEditor = useSelector(selectShowQuickScoreEditor);
+
   const handleQuickScoreEditorToggle = useCallback(() => {
-    dispatch(setShowQuickScoreEditor(!navigationModals.showQuickScoreEditor));
-  }, [dispatch, navigationModals.showQuickScoreEditor]);
+    dispatch(setShowQuickScoreEditor(!showQuickScoreEditor));
+  }, [dispatch, showQuickScoreEditor]);
+
+  // Handle hole navigation
+  const handleNavigateToNextHole = useCallback(() => {
+    dispatch(navigateToNextHole());
+  }, [dispatch]);
+
+  const handleNavigateToPreviousHole = useCallback(() => {
+    dispatch(navigateToPreviousHole());
+  }, [dispatch]);
 
   // Handle hole completion submission
   const handleHoleCompletion = useCallback(async (completion: HoleCompletionRequest) => {
@@ -1106,9 +1114,12 @@ export const ActiveRoundScreen: React.FC = () => {
         onCompleteHole={handleHoleCompletionToggle}
         completedHoles={activeRound?.holeScores?.map(hs => hs.holeNumber) || []}
         totalHoles={activeRound?.course?.totalHoles || 18}
-        // Hole navigation props
-        onShowHoleNavigation={handleHoleNavigationToggle}
         onShowQuickScoreEditor={handleQuickScoreEditorToggle}
+        // Navigation props
+        onNavigateToNextHole={handleNavigateToNextHole}
+        onNavigateToPreviousHole={handleNavigateToPreviousHole}
+        // Hole data props
+        activeRound={activeRound}
       />
 
       {/* Premium Round Controls Modal */}
@@ -1277,16 +1288,11 @@ export const ActiveRoundScreen: React.FC = () => {
         />
       )}
 
-      {/* Hole Navigation Modal */}
-      <HoleNavigationModal
-        visible={navigationModals.showHoleSelector}
-        onClose={handleHoleNavigationToggle}
-      />
 
       {/* Quick Score Editor Modal */}
       {activeRound && (
         <QuickScoreEditor
-          visible={navigationModals.showQuickScoreEditor}
+          visible={showQuickScoreEditor}
           onClose={handleQuickScoreEditorToggle}
           holeNumber={viewingHole}
           roundId={activeRound.id}

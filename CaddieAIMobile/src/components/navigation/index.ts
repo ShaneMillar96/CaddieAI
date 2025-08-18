@@ -8,5 +8,4 @@
  * @date August 15, 2025
  */
 
-export { default as HoleNavigationModal } from './HoleNavigationModal';
 export { default as QuickScoreEditor } from './QuickScoreEditor';

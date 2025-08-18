@@ -335,12 +335,9 @@ class RoundApiService {
     const response: AxiosResponse<ApiResponse<HoleScore>> = await this.api.post(
       `/round/${holeCompletion.roundId}/holes/${holeCompletion.holeNumber}/complete`,
       {
-        par: holeCompletion.par,
+        holeNumber: holeCompletion.holeNumber,
         score: holeCompletion.score,
-        putts: holeCompletion.putts,
-        fairwayHit: holeCompletion.fairwayHit,
-        greenInRegulation: holeCompletion.greenInRegulation,
-        notes: holeCompletion.notes,
+        par: holeCompletion.par,
       }
     );
     

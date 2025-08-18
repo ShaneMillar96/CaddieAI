@@ -6,6 +6,8 @@ import {
   HoleScore,
   RoundStatus,
   HoleCompletionRequest,
+  QuickScoreUpdate,
+  DashboardState,
 } from '../../types';
 import roundApi from '../../services/roundApi';
 
@@ -22,7 +24,9 @@ const initialState: RoundState = {
   // Dashboard-specific state
   dashboardState: {
     currentHole: 1,
+    viewingHole: 1,                    // Default to current hole
     showScoreModal: false,
+    showQuickScoreEditor: false,       // Quick score editor modal
     isLocationTracking: false,
     lastLocationUpdate: null,
     roundTimer: null,
@@ -301,7 +305,10 @@ const roundSlice = createSlice({
       state.lastSyncTime = null;
       state.dashboardState = {
         currentHole: 1,
+        viewingHole: 1,
         showScoreModal: false,
+        showQuickScoreEditor: false,
+        showHoleSelector: false,
         isLocationTracking: false,
         lastLocationUpdate: null,
         roundTimer: null,
@@ -347,6 +354,71 @@ const roundSlice = createSlice({
     },
     setRoundTimer: (state, action: PayloadAction<string>) => {
       state.dashboardState.roundTimer = action.payload;
+    },
+    // Hole navigation actions
+    setViewingHole: (state, action: PayloadAction<number>) => {
+      state.dashboardState.viewingHole = action.payload;
+    },
+    setShowQuickScoreEditor: (state, action: PayloadAction<boolean>) => {
+      state.dashboardState.showQuickScoreEditor = action.payload;
+    },
+    navigateToNextHole: (state) => {
+      const currentViewing = state.dashboardState.viewingHole;
+      const maxHoles = state.activeRound?.course?.totalHoles || 18;
+      if (currentViewing < maxHoles) {
+        state.dashboardState.viewingHole = currentViewing + 1;
+      }
+    },
+    navigateToPreviousHole: (state) => {
+      const currentViewing = state.dashboardState.viewingHole;
+      if (currentViewing > 1) {
+        state.dashboardState.viewingHole = currentViewing - 1;
+      }
+    },
+    resetToCurrentHole: (state) => {
+      state.dashboardState.viewingHole = state.dashboardState.currentHole;
+    },
+    // Quick score editing action
+    updateQuickScore: (state, action: PayloadAction<QuickScoreUpdate>) => {
+      const { roundId, holeNumber, score, putts, notes } = action.payload;
+      
+      // Update in active round if it matches
+      if (state.activeRound && state.activeRound.id === roundId && state.activeRound.holeScores) {
+        const existingScore = state.activeRound.holeScores.find(
+          hs => hs.holeNumber === holeNumber
+        );
+        
+        if (existingScore) {
+          existingScore.score = score;
+          if (putts !== undefined) existingScore.putts = putts;
+          if (notes !== undefined) existingScore.notes = notes;
+          
+          // Recalculate total score
+          state.activeRound.totalScore = state.activeRound.holeScores.reduce(
+            (total, hs) => total + hs.score, 0
+          );
+        }
+      }
+      
+      // Update in selected round if it matches
+      if (state.selectedRound && state.selectedRound.id === roundId && state.selectedRound.holeScores) {
+        const existingScore = state.selectedRound.holeScores.find(
+          hs => hs.holeNumber === holeNumber
+        );
+        
+        if (existingScore) {
+          existingScore.score = score;
+          if (putts !== undefined) existingScore.putts = putts;
+          if (notes !== undefined) existingScore.notes = notes;
+          
+          // Recalculate total score if available
+          if (state.selectedRound.holeScores) {
+            state.selectedRound.totalScore = state.selectedRound.holeScores.reduce(
+              (total, hs) => total + hs.score, 0
+            );
+          }
+        }
+      }
     },
     // Optimistic update for hole score (for offline support)
     optimisticUpdateHoleScore: (state, action: PayloadAction<{ roundId: number; holeScore: HoleScore }>) => {
@@ -709,6 +781,10 @@ const roundSlice = createSlice({
         const maxHoles = state.activeRound.course?.totalHoles || 18;
         if (holeScore.holeNumber < maxHoles) {
           state.dashboardState.currentHole = holeScore.holeNumber + 1;
+          // Also update viewing hole if it was on the current hole
+          if (state.dashboardState.viewingHole === holeScore.holeNumber) {
+            state.dashboardState.viewingHole = holeScore.holeNumber + 1;
+          }
         }
         
         // Recalculate total score
@@ -756,6 +832,13 @@ export const {
   setLocationTracking,
   setLastLocationUpdate,
   setRoundTimer,
+  // Hole navigation actions
+  setViewingHole,
+  setShowQuickScoreEditor,
+  navigateToNextHole,
+  navigateToPreviousHole,
+  resetToCurrentHole,
+  updateQuickScore,
 } = roundSlice.actions;
 
 export default roundSlice.reducer;
