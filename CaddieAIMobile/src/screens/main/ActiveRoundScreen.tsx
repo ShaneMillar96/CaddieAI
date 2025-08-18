@@ -1047,7 +1047,7 @@ export const ActiveRoundScreen: React.FC = () => {
 
   // Main render - Active round with robust map handling
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/* Mapbox Map - Enhanced Golf Experience */}
       {isMapboxReady && (
       <MapErrorBoundary
@@ -1120,6 +1120,11 @@ export const ActiveRoundScreen: React.FC = () => {
         onNavigateToPreviousHole={handleNavigateToPreviousHole}
         // Hole data props
         activeRound={activeRound}
+        // Enhanced navigation props
+        enhancedHoleNavigation={true}
+        pinDistanceInfo={pinDistances}
+        onCompleteRound={roundControlHandlers.complete}
+        onAbandonRound={roundControlHandlers.abandon}
       />
 
       {/* Premium Round Controls Modal */}
@@ -1298,7 +1303,7 @@ export const ActiveRoundScreen: React.FC = () => {
           roundId={activeRound.id}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 };
 
