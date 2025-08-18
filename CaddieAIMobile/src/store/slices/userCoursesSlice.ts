@@ -134,7 +134,7 @@ export const checkProximityToUserCourses = createAsyncThunk(
       
       console.log(`🏌️ Proximity Check: Checking against ${userCourses.length} user courses`);
       
-      const PROXIMITY_THRESHOLD = 100; // 100 meters
+      const PROXIMITY_THRESHOLD = 1600; // 1 mile (1600 meters) - reasonable for golf courses
       const proximityResults: { [courseId: number]: boolean } = {};
       
       let nearestCourse: { courseId: number; courseName: string; distance: number } | null = null;

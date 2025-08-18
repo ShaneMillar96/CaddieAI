@@ -7,11 +7,11 @@ import {
   Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { SimpleLocationData } from '../../services/SimpleLocationService';
+import { LocationData } from '../../services/LocationService';
 
 interface Props {
   children: ReactNode;
-  currentLocation: SimpleLocationData | null;
+  currentLocation: LocationData | null;
   onMapPress?: (coordinate: { latitude: number; longitude: number }) => void;
   onRetryMap?: () => void;
   fallbackMode?: 'gps-only' | 'minimal' | 'full-fallback';

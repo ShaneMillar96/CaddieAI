@@ -2,7 +2,7 @@ import Geolocation from '@react-native-community/geolocation';
 import { Platform, PermissionsAndroid, Alert } from 'react-native';
 import TokenStorage from './tokenStorage';
 import { buildApiUrl, isNetworkError, API_TIMEOUT } from '../config/api';
-import { getLocationWithOverride, logLocationSource } from '../utils/locationTesting';
+import { getLocationWithTestMode, logLocationSource, isTestModeEnabled, getTestModeLocation } from '../utils/locationTesting';
 
 // Types for location data
 export interface LocationData {
@@ -87,6 +87,11 @@ export class GolfLocationService {
   private updateCallbacks: Array<(location: LocationData) => void> = [];
   private contextUpdateCallbacks: Array<(context: CourseLocationContext) => void> = [];
   private shotDetectionCallbacks: Array<(shotData: any) => void> = [];
+  private testModeInterval: ReturnType<typeof setInterval> | null = null;
+  
+  // Real-time tracking callbacks (for compatibility with SimpleLocationService)
+  private locationCallbacks: Array<(location: LocationData) => void> = [];
+  private errorCallbacks: Array<(error: string) => void> = [];
   
   // Map-specific state
   private mapTargetPin: MapTargetData | null = null;
@@ -266,19 +271,287 @@ export class GolfLocationService {
   }
 
   /**
+   * Start real-time tracking (SimpleLocationService compatibility)
+   * Uses test mode location if enabled
+   */
+  async startTracking(): Promise<boolean> {
+    try {
+      console.log('🚀 LocationService: Starting real-time GPS tracking...');
+      
+      // Check if test mode is enabled
+      if (isTestModeEnabled()) {
+        console.log('🏌️ LocationService: Test mode enabled, using dynamic mock location');
+        
+        // Set up interval to check for test location changes
+        this.testModeInterval = setInterval(() => {
+          if (isTestModeEnabled()) {
+            const currentTestLocation = getTestModeLocation();
+            
+            // Check if test location has changed
+            if (this.currentLocation && 
+                (this.currentLocation.latitude !== currentTestLocation.latitude ||
+                 this.currentLocation.longitude !== currentTestLocation.longitude)) {
+              console.log('🔄 LocationService: Test mode location changed, updating...');
+              this.activateTestModeLocation();
+            }
+          } else {
+            // Test mode was disabled, clear interval and switch to real GPS
+            this.clearTestModeInterval();
+            console.log('🏌️ LocationService: Test mode disabled, switching to real GPS');
+            this.startRealGPS();
+          }
+        }, 1000); // Check every second
+        
+        // Immediately activate test mode location
+        setTimeout(() => {
+          this.activateTestModeLocation();
+        }, 1000); // Small delay to simulate GPS acquisition
+        
+        return true;
+      }
+      
+      // Check permissions first
+      const hasPermission = await this.requestLocationPermissions();
+      if (!hasPermission) {
+        console.error('❌ LocationService: Location permission denied');
+        this.notifyError('Location permission denied. Please enable location access in settings.');
+        return false;
+      }
+
+      console.log('✅ LocationService: Permissions granted, starting location watch...');
+
+      // Start location updates with test mode support
+      this.watchId = Geolocation.watchPosition(
+        (position) => {
+          console.log('📍 LocationService: Got position from GPS:', {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            accuracy: position.coords.accuracy,
+            timestamp: position.timestamp
+          });
+          
+          this.handleRealtimeLocationUpdate(position);
+        },
+        (error) => {
+          console.error('❌ LocationService: GPS error:', error);
+          this.handleRealtimeLocationError(error);
+        },
+        {
+          enableHighAccuracy: this.defaultOptions.enableHighAccuracy,
+          timeout: this.defaultOptions.timeout,
+          maximumAge: this.defaultOptions.maximumAge,
+          distanceFilter: this.defaultOptions.distanceFilter,
+        }
+      );
+
+      this.isTracking = true;
+      console.log('✅ LocationService: Real-time GPS tracking started successfully');
+      return true;
+    } catch (error) {
+      console.error('❌ LocationService: Error starting real-time tracking:', error);
+      this.notifyError('Failed to start GPS tracking');
+      return false;
+    }
+  }
+
+  /**
+   * Stop real-time tracking
+   */
+  stopTracking(): void {
+    if (this.watchId !== null) {
+      Geolocation.clearWatch(this.watchId);
+      this.watchId = null;
+    }
+    
+    // Clear test mode interval if active
+    this.clearTestModeInterval();
+    
+    this.isTracking = false;
+    this.currentLocation = null;
+    console.log('LocationService: Real-time GPS tracking stopped');
+  }
+
+
+  /**
+   * Subscribe to real-time location errors (SimpleLocationService compatibility)
+   */
+  onLocationError(callback: (error: string) => void): () => void {
+    this.errorCallbacks.push(callback);
+    
+    // Return unsubscribe function
+    return () => {
+      const index = this.errorCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.errorCallbacks.splice(index, 1);
+      }
+    };
+  }
+
+  /**
+   * Activate test mode location for testing purposes
+   */
+  private activateTestModeLocation(): void {
+    const testLocation = getTestModeLocation();
+    console.log('🏌️ LocationService: Activating test mode location');
+    
+    this.currentLocation = testLocation;
+    
+    // Notify all real-time subscribers of test location
+    this.locationCallbacks.forEach(callback => {
+      try {
+        callback(testLocation);
+      } catch (error) {
+        console.error('Error in test mode location callback:', error);
+      }
+    });
+    
+    console.log('✅ LocationService: Test mode location activated:', {
+      lat: testLocation.latitude,
+      lng: testLocation.longitude,
+      accuracy: testLocation.accuracy,
+      isTestMode: true
+    });
+  }
+
+  /**
+   * Clear test mode interval if active
+   */
+  private clearTestModeInterval(): void {
+    if (this.testModeInterval !== null) {
+      clearInterval(this.testModeInterval);
+      this.testModeInterval = null;
+      console.log('🏌️ LocationService: Test mode interval cleared');
+    }
+  }
+
+  /**
+   * Start real GPS tracking (helper method for test mode switching)
+   */
+  private async startRealGPS(): Promise<void> {
+    try {
+      // Check permissions first
+      const hasPermission = await this.requestLocationPermissions();
+      if (!hasPermission) {
+        console.error('❌ LocationService: Location permission denied');
+        this.notifyError('Location permission denied. Please enable location access in settings.');
+        return;
+      }
+
+      console.log('✅ LocationService: Switching to real GPS tracking...');
+
+      // Clear previous tracking data
+      this.locationHistory = [];
+      this.currentLocation = null;
+
+      // Start location updates
+      this.watchId = Geolocation.watchPosition(
+        (position) => this.handleRealtimeLocationUpdate(position),
+        (error) => this.handleLocationError(error),
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 5000,
+          distanceFilter: 5,
+        }
+      );
+
+      this.isTracking = true;
+    } catch (error) {
+      console.error('❌ LocationService: Failed to start real GPS:', error);
+      this.notifyError(`Failed to start GPS tracking: ${error}`);
+    }
+  }
+
+  /**
+   * Handle real-time location updates
+   */
+  private handleRealtimeLocationUpdate(position: any): void {
+    // Validate coordinates
+    const latitude = position.coords.latitude;
+    const longitude = position.coords.longitude;
+    
+    if (!latitude || !longitude || 
+        Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+      console.warn('Invalid GPS coordinates received, skipping update');
+      return;
+    }
+
+    const locationData: LocationData = {
+      latitude,
+      longitude,
+      accuracy: position.coords.accuracy,
+      altitude: position.coords.altitude || undefined,
+      heading: position.coords.heading || undefined,
+      speed: position.coords.speed || undefined,
+      timestamp: position.timestamp,
+    };
+
+    this.currentLocation = locationData;
+
+    // Notify real-time subscribers
+    this.locationCallbacks.forEach(callback => {
+      try {
+        callback(locationData);
+      } catch (error) {
+        console.error('Error in real-time location callback:', error);
+      }
+    });
+  }
+
+  /**
+   * Handle real-time location errors
+   */
+  private handleRealtimeLocationError(error: any): void {
+    let errorMessage = 'GPS error occurred';
+    
+    switch (error.code) {
+      case 1: // PERMISSION_DENIED
+        errorMessage = 'Location permission denied';
+        break;
+      case 2: // POSITION_UNAVAILABLE
+        errorMessage = 'GPS signal unavailable';
+        break;
+      case 3: // TIMEOUT
+        errorMessage = 'GPS taking longer than expected...';
+        break;
+      default:
+        errorMessage = `GPS error: ${error.message}`;
+    }
+
+    console.warn('LocationService GPS Error:', errorMessage);
+    this.notifyError(errorMessage);
+  }
+
+  /**
+   * Notify error callbacks
+   */
+  private notifyError(error: string): void {
+    this.errorCallbacks.forEach(callback => {
+      try {
+        callback(error);
+      } catch (err) {
+        console.error('Error in error callback:', err);
+      }
+    });
+  }
+
+  /**
    * Clear all registered callbacks to prevent memory leaks
    */
   private clearAllCallbacks(): void {
     try {
       const totalBefore = this.updateCallbacks.length + this.contextUpdateCallbacks.length + 
                          this.shotDetectionCallbacks.length + this.mapLocationCallbacks.length +
-                         this.shotTrackingCallbacks.length;
+                         this.shotTrackingCallbacks.length + this.locationCallbacks.length + 
+                         this.errorCallbacks.length;
       
       this.updateCallbacks = [];
       this.contextUpdateCallbacks = [];
       this.shotDetectionCallbacks = [];
       this.mapLocationCallbacks = [];
       this.shotTrackingCallbacks = [];
+      this.locationCallbacks = [];
+      this.errorCallbacks = [];
       
       // Reset error logging flags
       this.hasLoggedNoCallbacksError = false;
@@ -725,7 +998,17 @@ export class GolfLocationService {
     }
     
     this.updateCallbacks.push(callback);
+    this.locationCallbacks.push(callback); // Also add to real-time callback array for SimpleLocationService compatibility
     this.throttledLog('callback-registration', '🔵 LocationService.onLocationUpdate: New callback registered. Total callbacks now:', this.updateCallbacks.length);
+    
+    // Send current location immediately if available (SimpleLocationService compatibility)
+    if (this.currentLocation) {
+      try {
+        callback(this.currentLocation);
+      } catch (error) {
+        console.error('Error in immediate location callback:', error);
+      }
+    }
     
     // Resume GPS tracking if it was paused due to no callbacks
     // Note: We can't access roundId/courseId here, so we rely on the component to restart tracking
@@ -737,10 +1020,18 @@ export class GolfLocationService {
     return () => {
       try {
         const index = this.updateCallbacks.indexOf(callback);
+        const locationIndex = this.locationCallbacks.indexOf(callback);
+        
         if (index > -1) {
           this.updateCallbacks.splice(index, 1);
           this.throttledLog('callback-unsubscribe', '🔵 LocationService: Location update callback unsubscribed. Total callbacks now:', this.updateCallbacks.length);
-        } else {
+        }
+        
+        if (locationIndex > -1) {
+          this.locationCallbacks.splice(locationIndex, 1);
+        }
+        
+        if (index === -1 && locationIndex === -1) {
           this.throttledLog('callback-warning', '🟡 LocationService: Attempted to unsubscribe callback that was not found');
         }
       } catch (error) {
@@ -865,11 +1156,39 @@ export class GolfLocationService {
   }
 
   /**
+   * Get current location async (SimpleLocationService compatibility)
+   */
+  async getCurrentLocationAsync(): Promise<LocationData | null> {
+    return this.getCurrentPosition();
+  }
+
+  /**
+   * Get the last known location (SimpleLocationService compatibility)
+   */
+  getLastKnownLocation(): LocationData | null {
+    return this.currentLocation;
+  }
+
+  /**
+   * Check if using test mode location (SimpleLocationService compatibility)
+   */
+  isUsingMockGolfLocation(): boolean {
+    return isTestModeEnabled();
+  }
+
+  /**
+   * Check if using fallback location (SimpleLocationService compatibility)
+   */
+  isUsingFallbackLocation(): boolean {
+    return isTestModeEnabled();
+  }
+
+  /**
    * Get one-time location reading with enhanced error handling and progressive accuracy
    */
   async getCurrentPosition(): Promise<LocationData | null> {
-    // Use location override utility which handles mock location if enabled
-    const location = await getLocationWithOverride(async () => {
+    // Use test mode location utility which handles mock location if enabled
+    const location = await getLocationWithTestMode(async () => {
       return new Promise((resolve) => {
         // First try: Quick coarse location
         Geolocation.getCurrentPosition(

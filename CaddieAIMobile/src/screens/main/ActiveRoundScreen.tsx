@@ -66,10 +66,10 @@ import MapboxMapView from '../../components/map/MapboxMapView';
 import MapboxMapOverlay from '../../components/map/MapboxMapOverlay';
 import MapErrorBoundary from '../../components/map/MapErrorBoundary';
 import { 
-  simpleLocationService, 
-  SimpleLocationData,
+  golfLocationService, 
+  LocationData,
   isLocationServiceAvailable 
-} from '../../services/SimpleLocationService';
+} from '../../services/LocationService';
 import { mapboxService } from '../../services/MapboxService';
 import { 
   shotPlacementService, 
@@ -165,8 +165,8 @@ export const ActiveRoundScreen: React.FC = () => {
   const [isHoleCompletionModalVisible, setIsHoleCompletionModalVisible] = useState(false);
   
   
-  // Convert Redux currentLocation to SimpleLocationData format with stable reference
-  const simpleLocationData: SimpleLocationData | null = useMemo(() => {
+  // Convert Redux currentLocation to LocationData format with stable reference
+  const simpleLocationData: LocationData | null = useMemo(() => {
     if (!currentLocation || 
         typeof currentLocation.latitude !== 'number' || 
         typeof currentLocation.longitude !== 'number' ||
@@ -308,8 +308,8 @@ export const ActiveRoundScreen: React.FC = () => {
       }
 
       // Subscribe to location updates
-      const unsubscribeLocation = simpleLocationService.onLocationUpdate(
-        (location: SimpleLocationData) => {
+      const unsubscribeLocation = golfLocationService.onLocationUpdate(
+        (location: LocationData) => {
           console.log('📍 ActiveRoundScreen: Location update received:', {
             lat: location.latitude,
             lng: location.longitude,
@@ -330,7 +330,7 @@ export const ActiveRoundScreen: React.FC = () => {
       );
 
       // Subscribe to location errors
-      const unsubscribeError = simpleLocationService.onLocationError(
+      const unsubscribeError = golfLocationService.onLocationError(
         (error: string) => {
           console.error('❌ ActiveRoundScreen: Location error received:', error);
           setLocationError(error);
@@ -341,7 +341,7 @@ export const ActiveRoundScreen: React.FC = () => {
       console.log('🎯 ActiveRoundScreen: Starting GPS tracking service...');
       
       // Start GPS tracking
-      const success = await simpleLocationService.startTracking();
+      const success = await golfLocationService.startTracking();
       
       console.log('🔍 ActiveRoundScreen: GPS tracking start result:', success);
       
@@ -352,7 +352,7 @@ export const ActiveRoundScreen: React.FC = () => {
         
         // Try to get immediate location
         console.log('⚡ ActiveRoundScreen: Attempting to get current location immediately...');
-        const currentLoc = await simpleLocationService.getCurrentLocation();
+        const currentLoc = await golfLocationService.getCurrentLocationAsync();
         if (currentLoc) {
           console.log('🎯 ActiveRoundScreen: Got immediate location:', currentLoc);
           dispatch(updateCurrentLocation({
@@ -390,7 +390,7 @@ export const ActiveRoundScreen: React.FC = () => {
   // Stop GPS tracking
   const stopLocationTracking = useCallback(() => {
     if (isLocationServiceAvailable()) {
-      simpleLocationService.stopTracking();
+      golfLocationService.stopTracking();
     }
     
     setIsLocationTracking(false);

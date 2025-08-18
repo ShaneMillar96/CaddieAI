@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { SimpleLocationData, simpleLocationService } from '../../services/SimpleLocationService';
+import { LocationData, golfLocationService } from '../../services/LocationService';
 
 // const { width } = Dimensions.get('window'); // Unused for now
 
@@ -15,7 +15,7 @@ export interface MapboxMapOverlayProps {
   currentHole?: number;
   viewingHole?: number;
   isViewingDifferentHole?: boolean;
-  currentLocation: SimpleLocationData | null;
+  currentLocation: LocationData | null;
   isLocationTracking: boolean;
   isVoiceInterfaceVisible: boolean;
   roundStatus?: string;
