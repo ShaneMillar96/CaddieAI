@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { SimpleLocationData, simpleLocationService } from '../../services/SimpleLocationService';
@@ -51,6 +50,11 @@ export interface MapboxMapOverlayProps {
   onNavigateToPreviousHole?: () => void;
   // Hole data props
   activeRound?: any;
+  // Enhanced navigation props
+  enhancedHoleNavigation?: boolean;
+  pinDistanceInfo?: { userToPin: any; shotToPin: any };
+  onCompleteRound?: () => void;
+  onAbandonRound?: () => void;
 }
 
 /**
@@ -65,35 +69,35 @@ export interface MapboxMapOverlayProps {
  * - Real-time location tracking status
  */
 const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
-  courseName,
-  currentHole = 1,
+  courseName: _courseName,
+  currentHole: _currentHole = 1,
   viewingHole = 1,
-  isViewingDifferentHole = false,
+  isViewingDifferentHole: _isViewingDifferentHole = false,
   currentLocation,
   isLocationTracking,
-  isVoiceInterfaceVisible,
+  isVoiceInterfaceVisible: _isVoiceInterfaceVisible,
   roundStatus,
   locationError,
   isRequestingLocation = false,
-  onVoiceToggle,
+  onVoiceToggle: _onVoiceToggle,
   onRoundControlsPress,
   onCenterOnUser,
-  onRetryLocation,
+  onRetryLocation: _onRetryLocation,
   // Shot placement props
   shotPlacementMode = false,
   // shotPlacementActive = false, // Unused prop
-  shotPlacementDistance = 0,
-  clubRecommendation = null,
+  shotPlacementDistance: _shotPlacementDistance = 0,
+  clubRecommendation: _clubRecommendation = null,
   onShotPlacementToggle,
-  onActivateShot,
-  onCancelShotPlacement,
-  shotPlacementState = 'inactive',
+  onActivateShot: _onActivateShot,
+  onCancelShotPlacement: _onCancelShotPlacement,
+  shotPlacementState: _shotPlacementState = 'inactive',
   // Pin location props
   pinLocation,
   isPinPlacementMode = false,
-  pinDistances,
+  pinDistances: _pinDistances,
   onTogglePinPlacement,
-  onClearPinLocation,
+  onClearPinLocation: _onClearPinLocation,
   // Hole completion props
   onCompleteHole,
   completedHoles = [],
@@ -104,250 +108,128 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
   onNavigateToPreviousHole,
   // Hole data props
   activeRound,
+  // Enhanced navigation props
+  enhancedHoleNavigation = false,
+  pinDistanceInfo,
+  onCompleteRound,
+  onAbandonRound,
 }) => {
   
   // Get current hole data for display
   const getCurrentHoleData = () => {
     if (!activeRound?.course?.holes) {
       return {
-        par: 4,
+        par: null,
         handicap: 1,
         yardage: 350,
-        distance: '350y to green'
+        distance: '350y to green',
+        needsParInput: true
       };
     }
 
     const hole = activeRound.course.holes.find((h: any) => h.holeNumber === viewingHole);
     if (!hole) {
       return {
-        par: 4,
+        par: null,
         handicap: 1,
         yardage: 350,
-        distance: '350y to green'
+        distance: '350y to green',
+        needsParInput: true
       };
     }
 
     const yardage = hole.yardageMen || hole.yardageWomen || 350;
     return {
-      par: hole.par || 4,
+      par: hole.par || null,
       handicap: hole.handicap || 1,
       yardage,
-      distance: `${yardage}y to green`
+      distance: `${yardage}y to green`,
+      needsParInput: !hole.par
     };
   };
 
   const currentHoleData = getCurrentHoleData();
 
-  // Get enhanced GPS status for Mapbox
-  const getGPSStatus = () => {
-    if (locationError) {
-      return { 
-        icon: 'location-off', 
-        color: '#dc3545', 
-        text: locationError.includes('permission') ? 'No Permission' : 'GPS Error',
-        description: 'Location services unavailable'
-      };
-    }
-    
-    if (isRequestingLocation || !currentLocation) {
-      return { 
-        icon: isRequestingLocation ? 'gps-not-fixed' : 'location-off', 
-        color: '#ffc107', 
-        text: isRequestingLocation ? 'Acquiring GPS' : 'No GPS',
-        description: isRequestingLocation ? 'Searching for satellites' : 'GPS not active'
-      };
-    }
-    
-    const accuracy = currentLocation.accuracy;
-    const isUsingFallback = simpleLocationService.isUsingFallbackLocation();
-    
-    // Special handling for fallback location
-    if (isUsingFallback) {
-      return { 
-        icon: 'golf-course', 
-        color: '#9C27B0', 
-        text: 'Test Mode',
-        description: 'Using Faughan Valley fallback location'
-      };
-    }
-    
-    if (!accuracy) {
-      return { 
-        icon: 'gps-not-fixed', 
-        color: '#ffc107', 
-        text: 'Searching',
-        description: 'Acquiring GPS fix'
-      };
-    }
-    
-    // Enhanced accuracy classification for golf
-    if (accuracy <= 3) {
-      return { 
-        icon: 'gps-fixed', 
-        color: '#00C851', 
-        text: 'Excellent',
-        description: 'Tournament-grade accuracy'
-      };
-    } else if (accuracy <= 5) {
-      return { 
-        icon: 'gps-fixed', 
-        color: '#28a745', 
-        text: 'Superb',
-        description: 'Perfect for distance measurements'
-      };
-    } else if (accuracy <= 10) {
-      return { 
-        icon: 'gps-fixed', 
-        color: '#4CAF50', 
-        text: 'Good',
-        description: 'Suitable for golf navigation'
-      };
-    } else if (accuracy <= 15) {
-      return { 
-        icon: 'gps-not-fixed', 
-        color: '#FFBB33', 
-        text: 'Fair',
-        description: 'Adequate for general use'
-      };
-    } else if (accuracy <= 25) {
-      return { 
-        icon: 'gps-not-fixed', 
-        color: '#FF9800', 
-        text: 'Poor',
-        description: 'Consider moving to open area'
-      };
-    } else {
-      return { 
-        icon: 'gps-off', 
-        color: '#FF4444', 
-        text: 'Very Poor',
-        description: 'GPS signal obstructed'
-      };
-    }
-  };
-
-  const gpsStatus = getGPSStatus();
-
-  // Calculate distance to course features (placeholder for future implementation)
-  const calculateDistanceToPin = (): string => {
-    // TODO: Implement distance calculation to pin location
-    // This would use the current location and pin coordinates
-    return currentLocation ? '150y' : '--';
-  };
-
-  const calculateDistanceToTee = (): string => {
-    // TODO: Implement distance calculation to tee
-    return currentLocation ? '285y' : '--';
-  };
-
-  // Helper functions for shot placement status
-  const getShotPlacementStatusColor = (state: string): string => {
-    switch (state) {
-      case 'placement': return '#FF6B35';
-      case 'in_progress': return '#28a745';
-      case 'completed': return '#007bff';
-      default: return '#6c757d';
-    }
-  };
-
-  const getShotPlacementStatusText = (state: string): string => {
-    switch (state) {
-      case 'placement': return 'Ready';
-      case 'in_progress': return 'Active';
-      case 'completed': return 'Complete';
-      default: return 'Inactive';
-    }
-  };
+  // Remove unused variables and functions to satisfy linter
+  // const calculateDistanceToPin = (): string => {
+  //   return currentLocation ? '150y' : '--';
+  // };
+  // const calculateDistanceToTee = (): string => {
+  //   return currentLocation ? '285y' : '--';
+  // };
+  // const getShotPlacementStatusColor = (state: string): string => {
+  //   switch (state) {
+  //     case 'placement': return '#FF6B35';
+  //     case 'in_progress': return '#28a745';
+  //     case 'completed': return '#007bff';
+  //     default: return '#6c757d';
+  //   }
+  // };
+  // const getShotPlacementStatusText = (state: string): string => {
+  //   switch (state) {
+  //     case 'placement': return 'Ready';
+  //     case 'in_progress': return 'Active';
+  //     case 'completed': return 'Complete';
+  //     default: return 'Inactive';
+  //   }
+  // };
 
   return (
-    <SafeAreaView style={styles.container} pointerEvents="box-none">
-      {/* Enhanced Top Information Bar */}
-      <View style={styles.topBar}>
-        <View style={styles.courseInfo}>
-          <View style={styles.courseHeader}>
-            <Icon name="golf-course" size={20} color="#2c5530" />
-            <Text style={styles.courseName} numberOfLines={1}>
-              {courseName || 'Golf Course'}
-            </Text>
-          </View>
-          <View style={styles.holeInfo}>
-            <Text style={styles.holeNumber}>Hole {viewingHole}/{totalHoles}</Text>
-            {isViewingDifferentHole && (
-              <View style={styles.viewingIndicator}>
-                <Text style={styles.viewingIndicatorText}>Viewing</Text>
-              </View>
-            )}
-            <View style={styles.parInfo}>
-              <Text style={styles.parLabel}>Par 4</Text>
-            </View>
-            {/* Score Hole Button */}
-            {onCompleteHole && !completedHoles.includes(viewingHole) && (
-              <TouchableOpacity
-                style={styles.scoreHoleButton}
-                onPress={onCompleteHole}
-                activeOpacity={0.7}
-              >
-                <Icon name="edit" size={14} color="#fff" />
-                <Text style={styles.scoreHoleButtonText}>Score Hole</Text>
-              </TouchableOpacity>
-            )}
-            {/* Completed Indicator */}
-            {completedHoles.includes(viewingHole) && (
-              <View style={styles.holeCompletedIndicator}>
-                <Icon name="check-circle" size={14} color="#28a745" />
-                <Text style={styles.holeCompletedText}>Done</Text>
-              </View>
-            )}
-          </View>
-        </View>
+    <View style={styles.container} pointerEvents="box-none">
+
+      {/* Left Side Round Controls */}
+      <View style={styles.leftControls}>
+        {/* Complete Round Button */}
+        {onCompleteRound && (
+          <TouchableOpacity
+            style={[styles.controlButton, styles.completeControlButton]}
+            onPress={onCompleteRound}
+            activeOpacity={0.8}
+          >
+            <Icon name="check-circle" size={24} color="#3b82f6" />
+            <Text style={styles.controlButtonLabel}>Complete</Text>
+          </TouchableOpacity>
+        )}
         
-        <TouchableOpacity 
-          style={[styles.gpsStatusContainer, { backgroundColor: `${gpsStatus.color}15` }]}
-          onPress={locationError || (!currentLocation && !isRequestingLocation) ? onRetryLocation : undefined}
-          disabled={isRequestingLocation}
-        >
-          <Icon name={gpsStatus.icon} size={16} color={gpsStatus.color} />
-          <View style={styles.gpsStatusText}>
-            <Text style={[styles.gpsMainText, { color: gpsStatus.color }]}>
-              {gpsStatus.text}
-            </Text>
-            {currentLocation?.accuracy && (
-              <Text style={styles.accuracyText}>
-                {simpleLocationService.isUsingFallbackLocation() 
-                  ? 'Faughan Valley' 
-                  : `±${Math.round(currentLocation.accuracy)}m`}
-              </Text>
-            )}
-          </View>
-          {(locationError || (!currentLocation && !isRequestingLocation)) && onRetryLocation && (
-            <Icon name="refresh" size={12} color={gpsStatus.color} style={{ marginLeft: 4 }} />
-          )}
-        </TouchableOpacity>
+        {/* Abandon Round Button */}
+        {onAbandonRound && (
+          <TouchableOpacity
+            style={[styles.controlButton, styles.abandonControlButton]}
+            onPress={onAbandonRound}
+            activeOpacity={0.8}
+          >
+            <Icon name="cancel" size={24} color="#ef4444" />
+            <Text style={styles.controlButtonLabel}>Abandon</Text>
+          </TouchableOpacity>
+        )}
       </View>
-
-      {/* Minimal Shot Placement Indicator - Show only club recommendation */}
-      {shotPlacementMode && clubRecommendation && (
-        <View style={styles.minimalistShotInfo}>
-          <Icon name="golf-course" size={14} color="#ffffff" />
-          <Text style={styles.shotClubText}>{clubRecommendation}</Text>
-        </View>
-      )}
-
-      {/* Minimal Distance Information - Hole19 Style with Pin Support */}
-      {currentLocation && !shotPlacementMode && !isPinPlacementMode && (
-        <View style={styles.minimalistDistanceInfo}>
-          {pinLocation && pinDistances?.userToPin ? (
-            <Text style={styles.distanceInfoText}>
-              🚩 {Math.round(pinDistances.userToPin.distanceYards)}y to pin
-            </Text>
-          ) : (
-            <Text style={styles.distanceInfoText}>📍 {calculateDistanceToPin()}</Text>
-          )}
-        </View>
-      )}
 
       {/* Right Side Enhanced Controls */}
       <View style={styles.rightControls}>
+
+        {/* Score Hole Button */}
+        {onCompleteHole && (
+          <TouchableOpacity
+            style={[
+              styles.controlButton,
+              completedHoles.includes(viewingHole) && styles.scoreCompletedButton
+            ]}
+            onPress={completedHoles.includes(viewingHole) ? onShowQuickScoreEditor : onCompleteHole}
+            activeOpacity={0.8}
+          >
+            <Icon 
+              name={completedHoles.includes(viewingHole) ? "edit" : "add-circle"} 
+              size={24} 
+              color={completedHoles.includes(viewingHole) ? "#28a745" : "#4a7c59"} 
+            />
+            <Text style={[
+              styles.controlButtonLabel,
+              completedHoles.includes(viewingHole) && styles.scoreCompletedLabel
+            ]}>
+              {completedHoles.includes(viewingHole) ? 'Edit' : 'Score'}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* Center on User Button */}
         {currentLocation && onCenterOnUser && (
@@ -447,41 +329,101 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
         </View>
       )}
 
-      {/* Bottom Hole Navigation Card */}
-      <View style={styles.bottomNavigationCard}>
-        <TouchableOpacity 
-          style={[styles.navArrow, viewingHole <= 1 && styles.navArrowDisabled]}
-          onPress={() => viewingHole > 1 && onNavigateToPreviousHole?.()}
-          disabled={viewingHole <= 1}
-        >
-          <Icon name="chevron-left" size={24} color={viewingHole <= 1 ? "#cccccc" : "#4a7c59"} />
-        </TouchableOpacity>
-
-        <View style={styles.holeInfoSection}>
-          <Text style={styles.holeNumberLarge}>{String(viewingHole).padStart(2, '0')}</Text>
-          <View style={styles.holeDetails}>
-            <Text style={styles.parText}>Par {currentHoleData.par} • Handicap {currentHoleData.handicap}</Text>
-            <Text style={styles.distanceText}>{currentHoleData.distance}</Text>
-            {completedHoles.includes(viewingHole) ? (
-              <TouchableOpacity style={styles.scoreDisplay} onPress={() => onShowQuickScoreEditor?.()}>
-                <Icon name="edit" size={12} color="#28a745" />
-                <Text style={styles.scoreText}>{activeRound?.holeScores?.find((hs: any) => hs.holeNumber === viewingHole)?.score || 'N/A'}</Text>
+      {/* Enhanced Hole Navigation Footer */}
+      {enhancedHoleNavigation && (
+        <View style={styles.enhancedHoleNavigation}>
+          <View style={styles.navigationCard}>
+            {/* Hole Info Section */}
+            <View style={styles.enhancedHoleInfoSection}>
+              <View style={styles.enhancedHoleNumber}>
+                <Text style={styles.enhancedHoleNumberText}>HOLE</Text>
+                <Text style={styles.enhancedHoleNumberValue}>{viewingHole || 1}</Text>
+              </View>
+              <View style={styles.enhancedParInfo}>
+                <Text style={styles.enhancedParLabel}>PAR</Text>
+                <Text style={styles.enhancedParValue}>{currentHoleData?.par || '-'}</Text>
+              </View>
+              {/* Score Display (when hole is completed) */}
+              {activeRound?.holeScores?.find(
+                (hs: any) => hs.holeNumber === viewingHole && hs.roundId === activeRound.id
+              ) && (
+                <View style={styles.scoreInfo}>
+                  <Text style={styles.scoreLabel}>SCORE</Text>
+                  <Text style={styles.scoreValue}>
+                    {activeRound.holeScores.find(
+                      (hs: any) => hs.holeNumber === viewingHole && hs.roundId === activeRound.id
+                    )?.score || '-'}
+                  </Text>
+                </View>
+              )}
+              {/* Pin Distance (when pin is placed) */}
+              {pinLocation && pinDistanceInfo?.userToPin && (
+                <View style={styles.pinInfo}>
+                  <Text style={styles.pinLabel}>🚩 PIN</Text>
+                  <Text style={styles.pinDistance}>{Math.round(pinDistanceInfo.userToPin.distanceYards)}y</Text>
+                </View>
+              )}
+            </View>
+            
+            {/* Navigation Controls */}
+            <View style={styles.navigationControls}>
+              <TouchableOpacity 
+                style={styles.navButton}
+                onPress={onNavigateToPreviousHole}
+                disabled={viewingHole === 1}
+              >
+                <Icon name="chevron-left" size={24} color={viewingHole === 1 ? "#cccccc" : "#4a7c59"} />
               </TouchableOpacity>
-            ) : (
-              <Text style={styles.noScoreText}>No score</Text>
-            )}
+              
+              <TouchableOpacity 
+                style={styles.navButton}
+                onPress={onNavigateToNextHole}
+                disabled={viewingHole === totalHoles}
+              >
+                <Icon name="chevron-right" size={24} color={viewingHole === totalHoles ? "#cccccc" : "#4a7c59"} />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
+      )}
 
-        <TouchableOpacity 
-          style={[styles.navArrow, viewingHole >= totalHoles && styles.navArrowDisabled]}
-          onPress={() => viewingHole < totalHoles && onNavigateToNextHole?.()}
-          disabled={viewingHole >= totalHoles}
-        >
-          <Icon name="chevron-right" size={24} color={viewingHole >= totalHoles ? "#cccccc" : "#4a7c59"} />
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
+      {/* Fallback - Original Navigation (when enhanced navigation is disabled) */}
+      {!enhancedHoleNavigation && (
+        <View style={styles.bottomNavigationCard}>
+          <TouchableOpacity 
+            style={[styles.navArrow, viewingHole <= 1 && styles.navArrowDisabled]}
+            onPress={() => viewingHole > 1 && onNavigateToPreviousHole?.()}
+            disabled={viewingHole <= 1}
+          >
+            <Icon name="chevron-left" size={24} color={viewingHole <= 1 ? "#cccccc" : "#4a7c59"} />
+          </TouchableOpacity>
+
+          <View style={styles.holeInfoSectionOriginal}>
+            <Text style={styles.holeNumberLarge}>{String(viewingHole).padStart(2, '0')}</Text>
+            <View style={styles.holeDetails}>
+              <Text style={styles.parText}>Par {currentHoleData.par} • Handicap {currentHoleData.handicap}</Text>
+              <Text style={styles.distanceText}>{currentHoleData.distance}</Text>
+              {completedHoles.includes(viewingHole) ? (
+                <TouchableOpacity style={styles.scoreDisplay} onPress={() => onShowQuickScoreEditor?.()}>
+                  <Icon name="edit" size={12} color="#28a745" />
+                  <Text style={styles.scoreText}>{activeRound?.holeScores?.find((hs: any) => hs.holeNumber === viewingHole)?.score || 'N/A'}</Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={styles.noScoreText}>No score</Text>
+              )}
+            </View>
+          </View>
+
+          <TouchableOpacity 
+            style={[styles.navArrow, viewingHole >= totalHoles && styles.navArrowDisabled]}
+            onPress={() => viewingHole < totalHoles && onNavigateToNextHole?.()}
+            disabled={viewingHole >= totalHoles}
+          >
+            <Icon name="chevron-right" size={24} color={viewingHole >= totalHoles ? "#cccccc" : "#4a7c59"} />
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
   );
 };
 
@@ -660,6 +602,15 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 
+  // Modern Left Controls
+  leftControls: {
+    position: 'absolute',
+    left: 20,
+    top: '40%',
+    alignItems: 'center',
+    gap: 12,
+  },
+  
   // Modern Right Controls
   rightControls: {
     position: 'absolute',
@@ -695,6 +646,21 @@ const styles = StyleSheet.create({
   },
   controlButtonLabelActive: {
     color: '#ffffff',
+  },
+  completeControlButton: {
+    borderColor: '#3b82f6',
+    backgroundColor: '#ffffff',
+  },
+  abandonControlButton: {
+    borderColor: '#ef4444',
+    backgroundColor: '#ffffff',
+  },
+  scoreCompletedButton: {
+    borderColor: '#28a745',
+    backgroundColor: '#f0fff4',
+  },
+  scoreCompletedLabel: {
+    color: '#28a745',
   },
 
   // Modern Bottom Bar Styles
@@ -961,7 +927,7 @@ const styles = StyleSheet.create({
   navArrowDisabled: {
     backgroundColor: '#f0f0f0',
   },
-  holeInfoSection: {
+  holeInfoSectionOriginal: {
     flex: 1,
     alignItems: 'center',
     paddingHorizontal: 20,
@@ -1005,6 +971,134 @@ const styles = StyleSheet.create({
     color: '#999999',
     fontStyle: 'italic',
   },
+  
+  // Enhanced hole navigation styles
+  enhancedHoleNavigation: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingBottom: 20,
+    paddingHorizontal: 16,
+  },
+  
+  navigationCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  
+  enhancedHoleInfoSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  
+  enhancedHoleNumber: {
+    alignItems: 'center',
+    marginRight: 24,
+  },
+  
+  enhancedHoleNumberText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6b7280',
+    letterSpacing: 0.5,
+  },
+  
+  enhancedHoleNumberValue: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#2c5530',
+    marginTop: 2,
+  },
+  
+  enhancedParInfo: {
+    alignItems: 'center',
+    marginRight: 24,
+  },
+  
+  enhancedParLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6b7280',
+    letterSpacing: 0.5,
+  },
+  
+  enhancedParValue: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#4a7c59',
+    marginTop: 2,
+  },
+  
+  scoreInfo: {
+    alignItems: 'center',
+    backgroundColor: '#e6f4ea',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    marginRight: 12,
+  },
+  
+  scoreLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#16a34a',
+    letterSpacing: 0.5,
+  },
+  
+  scoreValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#16a34a',
+    marginTop: 2,
+  },
+  
+  pinInfo: {
+    alignItems: 'center',
+    backgroundColor: '#f0f9ff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  
+  pinLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#0369a1',
+  },
+  
+  pinDistance: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0369a1',
+    marginTop: 2,
+  },
+  
+  navigationControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  
+  navButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#f8f9fa',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 8,
+  },
+  
 });
 
 export default MapboxMapOverlay;

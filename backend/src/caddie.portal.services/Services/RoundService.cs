@@ -663,7 +663,39 @@ public class RoundService : IRoundService
             Status = MapEnumToServiceStatus((RoundStatusEnum)round.StatusId),
             TotalScore = round.TotalScore,
             CreatedAt = round.CreatedAt,
-            UpdatedAt = round.UpdatedAt
+            UpdatedAt = round.UpdatedAt,
+            Course = round.Course != null ? MapToCourseModel(round.Course) : null
+        };
+    }
+
+    private CourseModel MapToCourseModel(Course course)
+    {
+        return new CourseModel
+        {
+            Id = course.Id,
+            Name = course.Name,
+            Address = course.Address,
+            City = course.City,
+            State = course.State,
+            Country = course.Country ?? string.Empty,
+            Latitude = (double?)course.Latitude,
+            Longitude = (double?)course.Longitude,
+            Holes = course.Holes?.Select(MapToHoleModel).ToList() ?? new(),
+            CreatedAt = course.CreatedAt,
+            UpdatedAt = course.UpdatedAt
+        };
+    }
+
+    private HoleModel MapToHoleModel(Hole hole)
+    {
+        return new HoleModel
+        {
+            Id = hole.Id,
+            CourseId = hole.CourseId,
+            HoleNumber = hole.HoleNumber,
+            Par = hole.Par,
+            CreatedAt = hole.CreatedAt,
+            UpdatedAt = hole.UpdatedAt
         };
     }
 
