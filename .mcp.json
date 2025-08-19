@@ -1,9 +1,5 @@
 {
   "mcpServers": {
-    "playwright": {
-      "command": "npx",
-      "args": ["@playwright/mcp@latest"]
-    },
     "jira-mcp": {
       "command": "node",
       "args": ["/Users/shane.millar/Desktop/Projects/CaddieAI/jira-mcp/build/index.js"],
