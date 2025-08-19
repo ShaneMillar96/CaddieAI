@@ -394,6 +394,7 @@ export interface DashboardState {
   viewingHole: number;          // Hole displayed in UI
   showScoreModal: boolean;      // Full completion modal
   showQuickScoreEditor: boolean; // Quick score editor modal
+  showScorecardOverlay: boolean; // Scorecard overlay visibility
   isLocationTracking: boolean;
   lastLocationUpdate: string | null;
   roundTimer: string | null;

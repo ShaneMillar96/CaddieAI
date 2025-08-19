@@ -48,6 +48,8 @@ export interface MapboxMapOverlayProps {
   // Navigation actions
   onNavigateToNextHole?: () => void;
   onNavigateToPreviousHole?: () => void;
+  // Scorecard overlay props
+  onShowScorecardOverlay?: () => void;
   // Hole data props
   activeRound?: any;
   // Enhanced navigation props
@@ -113,6 +115,8 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
   pinDistanceInfo,
   onCompleteRound,
   onAbandonRound,
+  // Scorecard overlay props
+  onShowScorecardOverlay,
 }) => {
   
   // Get current hole data for display
@@ -276,6 +280,18 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
               styles.controlButtonLabel,
               isPinPlacementMode && styles.controlButtonLabelActive
             ]}>Pin</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Scorecard Overlay Toggle */}
+        {onShowScorecardOverlay && !shotPlacementMode && !isPinPlacementMode && (
+          <TouchableOpacity
+            style={styles.controlButton}
+            onPress={onShowScorecardOverlay}
+            activeOpacity={0.8}
+          >
+            <Icon name="assignment" size={24} color="#4a7c59" />
+            <Text style={styles.controlButtonLabel}>Card</Text>
           </TouchableOpacity>
         )}
 

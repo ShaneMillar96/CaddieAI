@@ -14,3 +14,5 @@ export { default as RoundProgressCard } from './RoundProgressCard';
 export { default as ScorecardComponent } from './ScorecardComponent';
 export { default as RoundStatsWidget } from './RoundStatsWidget';
 export { default as HoleNavigator } from './HoleNavigator';
+export { default as ScorecardOverlay } from './ScorecardOverlay';
+export { default as HoleScoreCard } from './HoleScoreCard';
