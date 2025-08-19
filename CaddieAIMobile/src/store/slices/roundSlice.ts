@@ -27,6 +27,7 @@ const initialState: RoundState = {
     viewingHole: 1,                    // Default to current hole
     showScoreModal: false,
     showQuickScoreEditor: false,       // Quick score editor modal
+    showScorecardOverlay: false,       // Scorecard overlay visibility
     isLocationTracking: false,
     lastLocationUpdate: null,
     roundTimer: null,
@@ -308,7 +309,7 @@ const roundSlice = createSlice({
         viewingHole: 1,
         showScoreModal: false,
         showQuickScoreEditor: false,
-        showHoleSelector: false,
+        showScorecardOverlay: false,
         isLocationTracking: false,
         lastLocationUpdate: null,
         roundTimer: null,
@@ -361,6 +362,9 @@ const roundSlice = createSlice({
     },
     setShowQuickScoreEditor: (state, action: PayloadAction<boolean>) => {
       state.dashboardState.showQuickScoreEditor = action.payload;
+    },
+    setShowScorecardOverlay: (state, action: PayloadAction<boolean>) => {
+      state.dashboardState.showScorecardOverlay = action.payload;
     },
     navigateToNextHole: (state) => {
       const currentViewing = state.dashboardState.viewingHole;
@@ -835,6 +839,7 @@ export const {
   // Hole navigation actions
   setViewingHole,
   setShowQuickScoreEditor,
+  setShowScorecardOverlay,
   navigateToNextHole,
   navigateToPreviousHole,
   resetToCurrentHole,

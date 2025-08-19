@@ -23,6 +23,7 @@ import {
   fetchHoleScores,
   completeHole,
   setShowQuickScoreEditor,
+  setShowScorecardOverlay,
   resetToCurrentHole,
   navigateToNextHole,
   navigateToPreviousHole,
@@ -62,6 +63,7 @@ import VoiceAIInterface from '../../components/voice/VoiceAIInterface';
 import { VoiceChatModal } from '../../components/voice/VoiceChatModal';
 import { HoleCompletionModal } from '../../components/common/HoleCompletionModal';
 import { QuickScoreEditor } from '../../components/navigation';
+import { ScorecardOverlay } from '../../components/common';
 import MapboxMapView from '../../components/map/MapboxMapView';
 import MapboxMapOverlay from '../../components/map/MapboxMapOverlay';
 import MapErrorBoundary from '../../components/map/MapErrorBoundary';
@@ -701,6 +703,13 @@ export const ActiveRoundScreen: React.FC = () => {
     dispatch(setShowQuickScoreEditor(!showQuickScoreEditor));
   }, [dispatch, showQuickScoreEditor]);
 
+  // Handle scorecard overlay
+  const showScorecardOverlay = useSelector((state: RootState) => state.rounds.dashboardState.showScorecardOverlay);
+
+  const handleScorecardOverlayToggle = useCallback(() => {
+    dispatch(setShowScorecardOverlay(!showScorecardOverlay));
+  }, [dispatch, showScorecardOverlay]);
+
   // Handle hole navigation
   const handleNavigateToNextHole = useCallback(() => {
     dispatch(navigateToNextHole());
@@ -1125,6 +1134,8 @@ export const ActiveRoundScreen: React.FC = () => {
         pinDistanceInfo={pinDistances}
         onCompleteRound={roundControlHandlers.complete}
         onAbandonRound={roundControlHandlers.abandon}
+        // Scorecard overlay props
+        onShowScorecardOverlay={handleScorecardOverlayToggle}
       />
 
       {/* Premium Round Controls Modal */}
@@ -1301,6 +1312,16 @@ export const ActiveRoundScreen: React.FC = () => {
           onClose={handleQuickScoreEditorToggle}
           holeNumber={viewingHole}
           roundId={activeRound.id}
+        />
+      )}
+
+      {/* Scorecard Overlay */}
+      {activeRound && (
+        <ScorecardOverlay
+          visible={showScorecardOverlay}
+          activeRound={activeRound}
+          currentHole={currentHole}
+          onClose={handleScorecardOverlayToggle}
         />
       )}
     </View>
