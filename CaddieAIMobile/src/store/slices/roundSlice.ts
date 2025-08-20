@@ -28,6 +28,7 @@ const initialState: RoundState = {
     showScoreModal: false,
     showQuickScoreEditor: false,       // Quick score editor modal
     showScorecardOverlay: false,       // Scorecard overlay visibility
+    showHoleSelector: false,           // Hole selector visibility
     isLocationTracking: false,
     lastLocationUpdate: null,
     roundTimer: null,
@@ -310,6 +311,7 @@ const roundSlice = createSlice({
         showScoreModal: false,
         showQuickScoreEditor: false,
         showScorecardOverlay: false,
+        showHoleSelector: false,
         isLocationTracking: false,
         lastLocationUpdate: null,
         roundTimer: null,
@@ -845,5 +847,13 @@ export const {
   resetToCurrentHole,
   updateQuickScore,
 } = roundSlice.actions;
+
+// Selectors
+export const selectActiveRound = (state: any) => state.rounds.activeRound;
+export const selectRoundHistory = (state: any) => state.rounds.roundHistory;
+export const selectSelectedRound = (state: any) => state.rounds.selectedRound;
+export const selectRoundsLoading = (state: any) => state.rounds.isLoading;
+export const selectRoundsError = (state: any) => state.rounds.error;
+export const selectDashboardState = (state: any) => state.rounds.dashboardState;
 
 export default roundSlice.reducer;

@@ -122,7 +122,7 @@ export type MainTabParamList = {
   Home: undefined;
   Courses: undefined;
   ActiveRound: undefined;
-  AIChat: undefined;
+  AIChat: undefined; // Keep same key for navigation compatibility, but now shows AI Caddie
   Profile: undefined;
 };
 

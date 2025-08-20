@@ -78,19 +78,26 @@ public class RealtimeAudioController : ControllerBase
             }
         }
         
-        // Validate round ownership
-        var round = await _roundService.GetRoundByIdAsync(roundId);
-        if (round == null)
+        // Validate round ownership (skip for general advice mode when roundId = 0)
+        if (roundId > 0)
         {
-            return NotFound($"Round {roundId} not found");
-        }
+            var round = await _roundService.GetRoundByIdAsync(roundId);
+            if (round == null)
+            {
+                return NotFound($"Round {roundId} not found");
+            }
 
-        if (round.UserId != userId)
+            if (round.UserId != userId)
+            {
+                return Forbid("Round does not belong to the current user");
+            }
+            
+            _logger.LogInformation("Starting realtime audio session for user {UserId}, round {RoundId}", userId, roundId);
+        }
+        else
         {
-            return Forbid("Round does not belong to the current user");
+            _logger.LogInformation("Starting general advice mode (no active round) for user {UserId}", userId);
         }
-
-        _logger.LogInformation("Starting realtime audio session for user {UserId}, round {RoundId}", userId, roundId);
 
         // Accept WebSocket connection
         using var clientWebSocket = await HttpContext.WebSockets.AcceptWebSocketAsync();

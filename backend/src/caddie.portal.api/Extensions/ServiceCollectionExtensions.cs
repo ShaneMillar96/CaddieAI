@@ -90,6 +90,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IGolfContextService, GolfContextService>();
         services.AddScoped<IAIScoreService, AIScoreService>();
         services.AddScoped<IRealtimeAudioService, RealtimeAudioService>();
+        
+        // Enhanced AI Caddie services
+        services.AddScoped<IShotTypeDetectionService, ShotTypeDetectionService>();
+        services.AddScoped<ISkillBasedAdviceService, SkillBasedAdviceService>();
+        services.AddScoped<IEnhancedShotAnalysisService, EnhancedShotAnalysisService>();
+        
         // Removed IClubRecommendationService - unused implementation
         
         // Analytics services - removed unused implementations
@@ -213,7 +219,8 @@ public static class ServiceCollectionExtensions
             typeof(CourseMappingProfile), 
             typeof(UserCourseMappingProfile),
             typeof(RoundMappingProfile),
-            typeof(HoleScoreMappingProfile)
+            typeof(HoleScoreMappingProfile),
+            typeof(AICaddieMappingProfile)
             // Removed unused mapping profiles
         );
 

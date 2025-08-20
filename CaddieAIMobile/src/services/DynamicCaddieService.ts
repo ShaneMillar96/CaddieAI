@@ -2,6 +2,12 @@ import { RealtimeAudioService } from './RealtimeAudioService';
 import { OPENAI_CONFIG } from '../config/openai';
 import { CaddieContext, CaddieScenario, DynamicCaddieHelper } from './TextToSpeechService';
 import TokenStorage from './tokenStorage';
+import { SkillLevel } from '../types';
+import { store } from '../store';
+import { selectUser } from '../store/slices/authSlice';
+import { selectActiveRound } from '../store/slices/roundSlice';
+import { selectUserSkillContext, selectCurrentShotType } from '../store/slices/aiCaddieSlice';
+import { apiService } from './ApiService';
 
 /**
  * Request queue item for managing sequential API calls
@@ -15,6 +21,27 @@ interface QueuedRequest {
   userInput?: string;
   priority: number;
   timestamp: number;
+  skillLevel?: SkillLevel;
+  shotTypeContext?: any;
+}
+
+/**
+ * Enhanced caddie context with backend integration
+ */
+interface EnhancedCaddieContext extends CaddieContext {
+  userSkillLevel?: SkillLevel;
+  userHandicap?: number;
+  shotAnalysis?: {
+    shotType: string;
+    confidence: number;
+    distance?: number;
+    clubRecommendation?: string;
+  };
+  backendContext?: {
+    sessionId?: string;
+    analysisId?: string;
+    greetingMessage?: string;
+  };
 }
 
 /**
@@ -35,6 +62,9 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
   // Response caching for cost efficiency
   private responseCache: Map<string, string> = new Map();
   private cacheTimeout = 300000; // 5 minutes
+  
+  // Backend API integration
+  public backendSessionId: string | null = null;
   
   /**
    * Initialize connection to OpenAI real-time audio service
@@ -87,7 +117,7 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
 
   /**
    * Generate and speak dynamic caddie response for specific golf scenarios
-   * Now uses request queuing and caching to prevent simultaneous API calls and reduce costs
+   * Enhanced with backend AI integration and skill-level context
    */
   async generateResponse(
     scenario: CaddieScenario,
@@ -97,29 +127,39 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
     userInput?: string,
     priority: number = 5
   ): Promise<void> {
-    console.log(`🎯 DynamicCaddieService: Queuing response for scenario: ${scenario}`);
+    console.log(`🎯 DynamicCaddieService: Queuing enhanced response for scenario: ${scenario}`);
 
-    // Check cache first for cost efficiency
-    const cacheKey = this.buildCacheKey(scenario, context);
+    // Get current user context from Redux store
+    const state = store.getState();
+    const user = selectUser(state);
+    const activeRound = selectActiveRound(state);
+    const userSkillContext = selectUserSkillContext(state);
+    const currentShotType = selectCurrentShotType(state);
+    
+    // Enhance context with skill level and shot type
+    const enhancedContext = this.buildEnhancedContext(context, userSkillContext, currentShotType);
+    
+    // Check cache first for cost efficiency (with skill level)
+    const cacheKey = this.buildCacheKey(scenario, enhancedContext);
     const cachedResponse = this.getCachedResponse(cacheKey);
     if (cachedResponse) {
       console.log(`💰 DynamicCaddieService: Using cached response for ${scenario}`);
-      // For cached responses, use fallback text-to-speech instead of OpenAI
-      const fallbackMessage = this.getFallbackMessage(scenario, context);
-      // Could implement basic TTS here if available
+      const fallbackMessage = this.getFallbackMessage(scenario, enhancedContext);
       return;
     }
 
-    // Add request to queue
+    // Add request to queue with enhanced context
     const queuedRequest: QueuedRequest = {
       id: `${scenario}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       scenario,
-      context,
+      context: enhancedContext,
       userId,
       roundId,
       userInput,
       priority,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      skillLevel: userSkillContext?.skillLevel,
+      shotTypeContext: currentShotType
     };
 
     this.addToQueue(queuedRequest);
@@ -196,11 +236,17 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
   }
 
   /**
-   * Execute a queued request
+   * Execute a queued request with enhanced backend integration
    */
   private async executeQueuedRequest(request: QueuedRequest): Promise<void> {
     try {
-      console.log(`🎯 DynamicCaddieService: Executing response for scenario: ${request.scenario}`);
+      console.log(`🎯 DynamicCaddieService: Executing enhanced response for scenario: ${request.scenario}`);
+
+      // Try backend AI integration first for enhanced context
+      let backendEnhancedMessage: string | null = null;
+      if (this.shouldUseBackendIntegration(request.scenario)) {
+        backendEnhancedMessage = await this.getBackendEnhancedMessage(request);
+      }
 
       // Initialize or ensure real-time audio connection
       await this.initializeRealtimeAudio(request.roundId);
@@ -209,18 +255,19 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
         throw new Error('Real-time audio service not available');
       }
 
-      // Update contextual instructions for this scenario
-      await this.updateContextualInstructions(request.scenario, request.context);
+      // Update contextual instructions with skill level awareness
+      await this.updateContextualInstructions(request.scenario, request.context, request.skillLevel);
 
-      // Build contextual message for the AI
-      const contextualMessage = this.buildContextualMessage(request.scenario, request.context, request.userInput);
+      // Use backend-enhanced message or build contextual message
+      const contextualMessage = backendEnhancedMessage || 
+        this.buildContextualMessage(request.scenario, request.context, request.userInput);
       
       console.log(`🎤 DynamicCaddieService: Sending context to OpenAI: "${contextualMessage}"`);
       
       // Send message to OpenAI real-time audio for immediate voice response
       await this.realtimeAudioService.sendTextMessage(contextualMessage);
       
-      console.log('✅ DynamicCaddieService: Message sent to OpenAI real-time audio');
+      console.log('✅ DynamicCaddieService: Enhanced message sent to OpenAI real-time audio');
 
       // Add timeout fallback in case response completion event isn't fired
       setTimeout(() => {
@@ -231,9 +278,6 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
           this.processNextQueueItem();
         }
       }, 15000); // 15 second timeout
-
-      // Note: Response completion will be handled by the responseCompleted listener
-      // which will call processNextQueueItem() and reset isProcessingQueue
 
     } catch (error: any) {
       console.error(`❌ DynamicCaddieService: Error executing request for ${request.scenario}:`, error);
@@ -261,8 +305,8 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
       includeWeather?: boolean;
       includePlayerStats?: boolean;
       includeConversationHistory?: boolean;
-      playerSkillLevel?: 'beginner' | 'intermediate' | 'advanced' | 'professional';
-      communicationStyle?: 'encouraging' | 'technical' | 'balanced' | 'casual' | 'professional';
+      playerSkillLevel?: SkillLevel;
+      communicationStyle?: string;
     },
     userInput?: string,
     priority: number = 5
@@ -273,8 +317,8 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
         ...baseContext,
         player: {
           ...baseContext.player,
-          skillLevel: enhancementOptions?.playerSkillLevel ?? baseContext.player?.skillLevel ?? 'intermediate',
-          communicationStyle: enhancementOptions?.communicationStyle ?? baseContext.player?.communicationStyle ?? 'encouraging',
+          skillLevel: enhancementOptions?.playerSkillLevel ?? baseContext.player?.skillLevel ?? SkillLevel.Intermediate,
+          communicationStyle: (enhancementOptions?.communicationStyle ?? baseContext.player?.communicationStyle ?? 'encouraging') as 'encouraging' | 'technical' | 'balanced' | 'casual' | 'professional',
         },
         metadata: {
           ...baseContext.metadata,
@@ -338,7 +382,7 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
         shotHistory: shotContext.shotHistory,
       },
       player: {
-        skillLevel: 'intermediate', // Could be enhanced with user preferences
+        skillLevel: SkillLevel.Intermediate, // Could be enhanced with user preferences
         communicationStyle: 'encouraging',
       }
     };
@@ -347,7 +391,7 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
   }
 
   /**
-   * Generate club recommendation with enhanced distance and conditions context
+   * Generate skill-aware club recommendation with backend integration
    */
   async generateClubRecommendation(
     userId: number,
@@ -363,6 +407,11 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
     playerClubDistances?: Record<string, number>,
     priority: number = 8
   ): Promise<void> {
+    // Get current skill level from Redux store
+    const state = store.getState();
+    const userSkillContext = selectUserSkillContext(state);
+    const skillLevel = userSkillContext?.skillLevel || SkillLevel.Intermediate;
+    
     const context: CaddieContext = {
       golfContext: {
         currentHole,
@@ -370,8 +419,8 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
         shotType: this.determineShotType(distanceYards),
       },
       player: {
-        skillLevel: 'intermediate',
-        communicationStyle: 'encouraging',
+        skillLevel,
+        communicationStyle: this.getCommunicationStyleForSkillLevel(userSkillContext?.skillLevel) as 'encouraging' | 'technical' | 'balanced' | 'casual' | 'professional',
         clubDistances: playerClubDistances,
       },
       conditions: conditions ? {
@@ -432,25 +481,22 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
   }
 
   /**
-   * Update contextual instructions for 2 core shot placement scenarios only
+   * Update contextual instructions with skill level awareness
    */
-  private async updateContextualInstructions(scenario: CaddieScenario, context: CaddieContext): Promise<void> {
+  private async updateContextualInstructions(
+    scenario: CaddieScenario, 
+    context: CaddieContext, 
+    skillLevel?: SkillLevel
+  ): Promise<void> {
     if (!this.realtimeAudioService) return;
 
-    // Concise instructions for only 2 essential cases
-    let instruction = 'Brief helpful golf caddie. Under 10 words.';
-    switch (scenario) {
-      case 'ShotPlacementWelcome':
-        instruction = 'Welcome user to shot placement mode';
-        break;
-      case 'ClubRecommendation':
-        instruction = 'Recommend club for distance';
-        break;
-      default:
-        instruction = 'Brief helpful golf caddie. Under 10 words.';
-    }
+    // Build skill-appropriate instructions
+    let instruction = this.buildSkillBasedInstruction(scenario, skillLevel);
+    
+    const skillLevelName = skillLevel ? SkillLevel[skillLevel] : 'Intermediate';
+    console.log(`🎯 DynamicCaddieService: Setting skill-based instruction for ${skillLevelName}: "${instruction}"`);
 
-    // Update with concise scenario instructions
+    // Update with skill-aware scenario instructions
     this.realtimeAudioService.updateConfig({
       instructions: instruction,
       voice: 'ash',
@@ -459,32 +505,102 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
   }
 
   /**
-   * Get fallback message for scenarios when API is unavailable
+   * Get skill-appropriate fallback message for scenarios when API is unavailable
    */
-  private getFallbackMessage(scenario: CaddieScenario, context: CaddieContext): string {
+  private getFallbackMessage(scenario: CaddieScenario, context: EnhancedCaddieContext): string {
+    const skillLevel = context.userSkillLevel || SkillLevel.Intermediate;
+    
     switch (scenario) {
       case 'ShotPlacementWelcome':
-        return "Please select your shot location";
+        return this.getSkillBasedWelcomeMessage(skillLevel);
       
       case 'ClubRecommendation':
         const distance = context.golfContext?.targetDistanceYards ?? 150;
-        return this.getStaticClubRecommendation(distance);
+        return this.getSkillBasedClubRecommendation(distance, skillLevel);
+      
+      case 'GeneralAssistance':
+        return this.getSkillBasedGeneralAdvice(skillLevel);
       
       case 'ErrorHandling':
-        return "No worries! Let's get back to your game.";
+        return this.getSkillBasedErrorMessage(skillLevel);
       
       default:
-        return "I'm here to help with your golf game!";
+        return this.getSkillBasedGeneralAdvice(skillLevel);
     }
   }
 
-  private getStaticClubRecommendation(yards: number): string {
-    if (yards < 80) return `For ${yards} yards, try using a wedge`;
-    if (yards < 120) return `For ${yards} yards, try using a 9 iron`;
-    if (yards < 150) return `For ${yards} yards, try using a 7 iron`;
-    if (yards < 170) return `For ${yards} yards, try using a 5 iron`;
-    if (yards < 200) return `For ${yards} yards, try using a 4 iron`;
-    return `For ${yards} yards, try using a 3 wood`;
+  /**
+   * Get skill-based club recommendation with appropriate complexity
+   */
+  private getSkillBasedClubRecommendation(yards: number, skillLevel: SkillLevel): string {
+    let club = this.getClubForDistance(yards);
+    
+    switch (skillLevel) {
+      case SkillLevel.Beginner:
+        return `Try a ${club} for ${yards} yards. Focus on smooth contact.`;
+      case SkillLevel.Intermediate:
+        return `For ${yards} yards, use a ${club}. Trust your swing.`;
+      case SkillLevel.Advanced:
+        return `${yards} yards calls for a ${club}. Consider wind and pin position.`;
+      case SkillLevel.Professional:
+        return `${club} for ${yards}y. Factor in conditions and spin rate.`;
+      default:
+        return `For ${yards} yards, try a ${club}.`;
+    }
+  }
+  
+  private getClubForDistance(yards: number): string {
+    if (yards < 80) return 'wedge';
+    if (yards < 120) return '9 iron';
+    if (yards < 150) return '7 iron';
+    if (yards < 170) return '5 iron';
+    if (yards < 200) return '4 iron';
+    return '3 wood';
+  }
+  
+  private getSkillBasedWelcomeMessage(skillLevel: SkillLevel): string {
+    switch (skillLevel) {
+      case SkillLevel.Beginner:
+        return 'Welcome! Select where you want to hit the ball.';
+      case SkillLevel.Intermediate:
+        return 'Ready to place your shot. Tap your target location.';
+      case SkillLevel.Advanced:
+        return 'Shot placement active. Choose your strategic target.';
+      case SkillLevel.Professional:
+        return 'Shot placement engaged. Select optimal target position.';
+      default:
+        return 'Select your shot location on the map.';
+    }
+  }
+  
+  private getSkillBasedGeneralAdvice(skillLevel: SkillLevel): string {
+    switch (skillLevel) {
+      case SkillLevel.Beginner:
+        return "I'm here to help you learn golf basics!";
+      case SkillLevel.Intermediate:
+        return "Ready to help improve your game!";
+      case SkillLevel.Advanced:
+        return "Let's work on strategy and technique!";
+      case SkillLevel.Professional:
+        return "Ready to analyze advanced golf scenarios!";
+      default:
+        return "How can I help with your golf game?";
+    }
+  }
+  
+  private getSkillBasedErrorMessage(skillLevel: SkillLevel): string {
+    switch (skillLevel) {
+      case SkillLevel.Beginner:
+        return "No worries! Let's keep practicing together.";
+      case SkillLevel.Intermediate:
+        return "All good! Let's get back to your game.";
+      case SkillLevel.Advanced:
+        return "No problem! Ready to continue with strategic advice.";
+      case SkillLevel.Professional:
+        return "System restored. Ready for advanced analysis.";
+      default:
+        return "No worries! Let's continue with your round.";
+    }
   }
 
   private determineShotType(distanceYards: number): string {
@@ -518,15 +634,63 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
     
     return parts.join(', ') || 'Good conditions';
   }
+  
+  /**
+   * Get appropriate communication style based on skill level
+   */
+  private getCommunicationStyleForSkillLevel(skillLevel?: number): string {
+    switch (skillLevel) {
+      case SkillLevel.Beginner:
+        return 'encouraging';
+      case SkillLevel.Intermediate:
+        return 'balanced';
+      case SkillLevel.Advanced:
+        return 'technical';
+      case SkillLevel.Professional:
+        return 'professional';
+      default:
+        return 'encouraging';
+    }
+  }
 
   /**
-   * Build cache key for response caching
+   * Generate general golf advice outside of active rounds
    */
-  private buildCacheKey(scenario: CaddieScenario, context: CaddieContext): string {
+  async generateGeneralAdvice(
+    userId: number,
+    userInput?: string,
+    priority: number = 5
+  ): Promise<void> {
+    console.log('🎯 DynamicCaddieService: Generating general golf advice');
+    
+    // Get current skill level from Redux store
+    const state = store.getState();
+    const userSkillContext = selectUserSkillContext(state);
+    const activeRound = selectActiveRound(state);
+    
+    const context: CaddieContext = {
+      player: {
+        skillLevel: userSkillContext?.skillLevel || SkillLevel.Intermediate,
+        communicationStyle: this.getCommunicationStyleForSkillLevel(userSkillContext?.skillLevel) as 'encouraging' | 'technical' | 'balanced' | 'casual' | 'professional',
+      },
+      metadata: {
+        isGeneralAdvice: true,
+        hasActiveRound: !!activeRound,
+      }
+    };
+
+    await this.generateResponse('GeneralAssistance', context, userId, activeRound?.id || 0, userInput, priority);
+  }
+
+  /**
+   * Build cache key for response caching with skill level
+   */
+  private buildCacheKey(scenario: CaddieScenario, context: EnhancedCaddieContext): string {
     const distance = context.golfContext?.targetDistanceYards || 150;
+    const skillLevel = context.userSkillLevel || SkillLevel.Intermediate;
     // Round distance to nearest 10 for better cache hits
     const roundedDistance = Math.round(distance / 10) * 10;
-    return `${scenario}-${roundedDistance}`;
+    return `${scenario}-${skillLevel}-${roundedDistance}`;
   }
 
   /**
@@ -550,6 +714,115 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
       this.responseCache.delete(cacheKey);
     }, this.cacheTimeout);
   }
+
+  /**
+   * Build enhanced context with skill level and shot type information
+   */
+  private buildEnhancedContext(
+    baseContext: CaddieContext, 
+    userSkillContext: any, 
+    currentShotType: any
+  ): EnhancedCaddieContext {
+    return {
+      ...baseContext,
+      userSkillLevel: userSkillContext?.skillLevel,
+      userHandicap: userSkillContext?.handicap,
+      shotAnalysis: currentShotType ? {
+        shotType: currentShotType.type,
+        confidence: currentShotType.confidence,
+        distance: currentShotType.distance,
+      } : undefined,
+      backendContext: {
+        sessionId: this.backendSessionId || undefined
+      }
+    };
+  }
+
+  /**
+   * Build skill-appropriate instruction for OpenAI
+   */
+  private buildSkillBasedInstruction(scenario: CaddieScenario, skillLevel?: SkillLevel): string {
+    const baseInstruction = 'Brief helpful golf caddie. Under 10 words.';
+    
+    // Adjust instruction complexity based on skill level
+    const skillSuffix = this.getSkillBasedSuffix(skillLevel);
+    
+    switch (scenario) {
+      case 'ShotPlacementWelcome':
+        return `Welcome to shot placement. ${skillSuffix}`;
+      case 'ClubRecommendation':
+        return `Recommend club for distance. ${skillSuffix}`;
+      case 'GeneralAssistance':
+        return `Provide golf advice. ${skillSuffix}`;
+      case 'ErrorHandling':
+        return `Reassure and help continue. ${skillSuffix}`;
+      default:
+        return `${baseInstruction} ${skillSuffix}`;
+    }
+  }
+
+  /**
+   * Get skill-appropriate instruction suffix
+   */
+  private getSkillBasedSuffix(skillLevel?: SkillLevel): string {
+    switch (skillLevel) {
+      case SkillLevel.Beginner:
+        return 'Use simple terms and encouraging tone.';
+      case SkillLevel.Intermediate:
+        return 'Provide standard golf advice.';
+      case SkillLevel.Advanced:
+        return 'Include technical details and strategy.';
+      case SkillLevel.Professional:
+        return 'Advanced technical analysis and precise recommendations.';
+      default:
+        return 'Provide standard golf advice.';
+    }
+  }
+
+  /**
+   * Check if scenario should use backend integration for enhanced context
+   */
+  private shouldUseBackendIntegration(scenario: CaddieScenario): boolean {
+    return ['ClubRecommendation', 'ShotPlacementWelcome', 'GeneralAssistance'].includes(scenario);
+  }
+
+  /**
+   * Get backend-enhanced message with skill level and shot analysis
+   */
+  private async getBackendEnhancedMessage(request: QueuedRequest): Promise<string | null> {
+    try {
+      // For club recommendations, get backend analysis
+      if (request.scenario === 'ClubRecommendation' && request.context.golfContext?.targetDistanceYards) {
+        const response = await apiService.get(
+          `ai-caddie/club-recommendation/${request.userId}?distanceYards=${request.context.golfContext.targetDistanceYards}`,
+          { retryAttempts: 1, timeout: 5000 }
+        );
+
+        if (response.success && response.data) {
+          return `${response.data.primaryClub} for ${request.context.golfContext.targetDistanceYards} yards. ${response.data.advice || ''}`;
+        }
+      }
+      
+      // For general assistance, try to get contextual greeting
+      if (request.scenario === 'GeneralAssistance' || request.scenario === 'ShotPlacementWelcome') {
+        if (!request.roundId) return null;
+
+        const response = await apiService.get(
+          `ai-caddie/greeting/${request.userId}/${request.roundId}`,
+          { retryAttempts: 1, timeout: 5000 }
+        );
+
+        if (response.success && response.data) {
+          return response.data;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.warn('🔄 DynamicCaddieService: Backend integration failed, using fallback:', error);
+      return null;
+    }
+  }
 }
 
 // Export singleton instance
@@ -567,6 +840,34 @@ export const isDynamicCaddieServiceAvailable = (): boolean => {
   } catch (error) {
     console.error('Dynamic Caddie service is not available:', error);
     return false;
+  }
+};
+
+/**
+ * Initialize enhanced AI caddie session with backend integration
+ */
+export const initializeEnhancedAICaddieSession = async (
+  userId: number,
+  roundId?: number,
+  currentHole?: number
+): Promise<{ sessionId: string; success: boolean }> => {
+  try {
+    const response = await apiService.post('ai-caddie/voice-session', {
+      userId,
+      roundId,
+      currentHole
+    });
+
+    if (response.success && response.data) {
+      dynamicCaddieService.backendSessionId = response.data.sessionId;
+      console.log('✅ Enhanced AI Caddie session initialized:', response.data.sessionId);
+      return { sessionId: response.data.sessionId, success: true };
+    } else {
+      throw new Error(response.message || 'Backend initialization failed');
+    }
+  } catch (error) {
+    console.error('❌ Failed to initialize enhanced AI caddie session:', error);
+    return { sessionId: '', success: false };
   }
 };
 

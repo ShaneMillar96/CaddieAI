@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { LocationData, golfLocationService } from '../../services/LocationService';
+import { VoiceAICaddieInterface } from '../ai/VoiceAICaddieInterface';
 
 // const { width } = Dimensions.get('window'); // Unused for now
 
@@ -48,6 +49,9 @@ export interface MapboxMapOverlayProps {
   // Navigation actions
   onNavigateToNextHole?: () => void;
   onNavigateToPreviousHole?: () => void;
+  // AI Caddie integration
+  showAICaddie?: boolean;
+  onAICaddieAdvice?: (advice: any) => void;
   // Scorecard overlay props
   onShowScorecardOverlay?: () => void;
   // Hole data props
@@ -108,6 +112,9 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
   // Navigation actions
   onNavigateToNextHole,
   onNavigateToPreviousHole,
+  // AI Caddie integration
+  showAICaddie = false,
+  onAICaddieAdvice,
   // Hole data props
   activeRound,
   // Enhanced navigation props
@@ -281,6 +288,16 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
               isPinPlacementMode && styles.controlButtonLabelActive
             ]}>Pin</Text>
           </TouchableOpacity>
+        )}
+
+        {/* AI Caddie Compact Interface */}
+        {showAICaddie && !shotPlacementMode && !isPinPlacementMode && (
+          <View style={styles.aiCaddieCompact}>
+            <VoiceAICaddieInterface 
+              compact 
+              onAdviceReceived={onAICaddieAdvice}
+            />
+          </View>
         )}
 
         {/* Scorecard Overlay Toggle */}
@@ -1113,6 +1130,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginHorizontal: 8,
+  },
+  
+  aiCaddieCompact: {
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
   },
   
 });

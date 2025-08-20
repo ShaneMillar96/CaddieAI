@@ -5,6 +5,10 @@ import {
   ShotPlacementState as ServiceShotPlacementState,
   ShotPlacementCoordinates
 } from '../../services/ShotPlacementService';
+import { SkillLevel } from '../../types';
+import { getSkillBasedDistanceSuggestions, validateDistanceForSkillLevel } from '../../services/SkillBasedAdviceEngine';
+import { dynamicCaddieService } from '../../services/DynamicCaddieService';
+import type { RootState } from '../index';
 
 // Redux state interface
 export interface ShotPlacementState {
@@ -43,6 +47,14 @@ export interface ShotPlacementState {
     showYardageOverlay: boolean;
     voiceGuidanceEnabled: boolean;
   };
+  
+  // Skill-based suggestions
+  skillSuggestions: {
+    suggestedDistances: number[];
+    clubSuggestions: string[];
+    validationMessage: string | null;
+    isDistanceRealistic: boolean;
+  } | null;
 }
 
 const initialState: ShotPlacementState = {
@@ -66,12 +78,13 @@ const initialState: ShotPlacementState = {
     showYardageOverlay: true,
     voiceGuidanceEnabled: true,
   },
+  skillSuggestions: null,
 };
 
 // Async thunks for shot placement operations
 
 /**
- * Create a new shot placement at the specified coordinates
+ * Create a new shot placement with skill-based validation and AI integration
  */
 export const createShotPlacement = createAsyncThunk(
   'shotPlacement/createShotPlacement',
@@ -79,14 +92,50 @@ export const createShotPlacement = createAsyncThunk(
     coordinates: { latitude: number; longitude: number };
     pinLocation?: { latitude: number; longitude: number };
     currentHole?: number;
-  }, { rejectWithValue }) => {
+    skillLevel?: SkillLevel;
+    userId?: number;
+    roundId?: number;
+  }, { rejectWithValue, getState }) => {
     try {
-      const { coordinates, pinLocation, currentHole } = payload;
+      const { coordinates, pinLocation, currentHole, skillLevel, userId, roundId } = payload;
+      
+      // Create shot placement through service
       const shotData = await shotPlacementService.createShotPlacement(
         coordinates, 
         pinLocation, 
         currentHole
       );
+      
+      // Trigger AI analysis if user context is available
+      if (userId && skillLevel && shotData.distanceFromCurrentLocation > 0) {
+        // Validate distance for skill level
+        const validation = validateDistanceForSkillLevel(
+          Math.round(shotData.distanceFromCurrentLocation * 1.094), // Convert meters to yards
+          skillLevel,
+          'approach'
+        );
+        
+        // Generate AI club recommendation with voice
+        try {
+          await dynamicCaddieService.generateClubRecommendation(
+            userId,
+            roundId || 0,
+            Math.round(shotData.distanceFromCurrentLocation * 1.094), // Convert meters to yards
+            undefined, // conditions
+            currentHole,
+            undefined, // player club distances
+            8 // High priority for shot placement
+          );
+        } catch (aiError) {
+          console.warn('AI club recommendation failed:', aiError);
+        }
+        
+        return {
+          ...shotData,
+          skillValidation: validation
+        };
+      }
+      
       return shotData;
     } catch (error: any) {
       return rejectWithValue(error.message || 'Failed to create shot placement');
@@ -248,15 +297,17 @@ const shotPlacementSlice = createSlice({
       state.isCreatingShot = false;
       state.isActivatingShot = false;
       state.error = null;
+      state.skillSuggestions = null;
     },
     
-    // Quick distance calculation for preview (before creating shot)
+    // Quick distance calculation for preview with skill-based suggestions
     setPreviewDistance: (state, action: PayloadAction<{
       distanceFromCurrent: number;
       distanceToPin: number;
       coordinates: { latitude: number; longitude: number };
+      skillLevel?: SkillLevel;
     }>) => {
-      const { distanceFromCurrent, distanceToPin, coordinates } = action.payload;
+      const { distanceFromCurrent, distanceToPin, coordinates, skillLevel } = action.payload;
       
       state.distanceFromCurrentLocation = distanceFromCurrent;
       state.distanceToPin = distanceToPin;
@@ -267,6 +318,20 @@ const shotPlacementSlice = createSlice({
         longitude: coordinates.longitude,
         timestamp: Date.now(),
       };
+      
+      // Generate skill-based suggestions if skill level provided
+      if (skillLevel && distanceFromCurrent > 0) {
+        const distanceYards = Math.round(distanceFromCurrent * 1.094); // Convert meters to yards
+        const suggestions = getSkillBasedDistanceSuggestions(skillLevel, 'approach');
+        const validation = validateDistanceForSkillLevel(distanceYards, skillLevel, 'approach');
+        
+        state.skillSuggestions = {
+          suggestedDistances: suggestions.typical,
+          clubSuggestions: suggestions.clubSuggestions,
+          validationMessage: validation.suggestion || null,
+          isDistanceRealistic: validation.isRealistic
+        };
+      }
     },
     
     clearPreview: (state) => {
@@ -274,7 +339,31 @@ const shotPlacementSlice = createSlice({
         state.targetLocation = null;
         state.distanceFromCurrentLocation = 0;
         state.distanceToPin = 0;
+        state.skillSuggestions = null;
       }
+    },
+    
+    // Update skill suggestions manually
+    updateSkillSuggestions: (state, action: PayloadAction<{
+      skillLevel: SkillLevel;
+      distance: number;
+      shotType?: 'tee' | 'approach' | 'short';
+    }>) => {
+      const { skillLevel, distance, shotType = 'approach' } = action.payload;
+      
+      const suggestions = getSkillBasedDistanceSuggestions(skillLevel, shotType);
+      const validation = validateDistanceForSkillLevel(distance, skillLevel, shotType);
+      
+      state.skillSuggestions = {
+        suggestedDistances: suggestions.typical,
+        clubSuggestions: suggestions.clubSuggestions,
+        validationMessage: validation.suggestion || null,
+        isDistanceRealistic: validation.isRealistic
+      };
+    },
+    
+    clearSkillSuggestions: (state) => {
+      state.skillSuggestions = null;
     },
   },
   
@@ -287,21 +376,36 @@ const shotPlacementSlice = createSlice({
     
     builder.addCase(createShotPlacement.fulfilled, (state, action) => {
       state.isCreatingShot = false;
-      state.currentShot = action.payload;
+      
+      // Handle enhanced payload with skill validation
+      const payload = action.payload as any;
+      const shotData = payload.skillValidation ? 
+        { ...payload, skillValidation: undefined } : payload;
+        
+      state.currentShot = shotData;
       state.serviceState = ServiceShotPlacementState.SHOT_PLACEMENT;
       state.isActive = true;
       
       // Update UI state
-      state.distanceToPin = action.payload.distanceToPin;
-      state.distanceFromCurrentLocation = action.payload.distanceFromCurrentLocation;
-      state.clubRecommendation = action.payload.clubRecommendation || null;
+      state.distanceToPin = shotData.distanceToPin;
+      state.distanceFromCurrentLocation = shotData.distanceFromCurrentLocation;
+      state.clubRecommendation = shotData.clubRecommendation || null;
       
       state.targetLocation = {
-        latitude: action.payload.coordinates.latitude,
-        longitude: action.payload.coordinates.longitude,
-        timestamp: action.payload.coordinates.timestamp,
-        accuracy: action.payload.coordinates.accuracy,
+        latitude: shotData.coordinates.latitude,
+        longitude: shotData.coordinates.longitude,
+        timestamp: shotData.coordinates.timestamp,
+        accuracy: shotData.coordinates.accuracy,
       };
+      
+      // Update skill validation message if available
+      if (payload.skillValidation) {
+        const validation = payload.skillValidation;
+        if (state.skillSuggestions) {
+          state.skillSuggestions.validationMessage = validation.suggestion || null;
+          state.skillSuggestions.isDistanceRealistic = validation.isRealistic;
+        }
+      }
     });
     
     builder.addCase(createShotPlacement.rejected, (state, action) => {
@@ -373,6 +477,8 @@ export const {
   resetShotPlacement,
   setPreviewDistance,
   clearPreview,
+  updateSkillSuggestions,
+  clearSkillSuggestions,
 } = shotPlacementSlice.actions;
 
 // Export reducer
@@ -411,3 +517,24 @@ export const selectServiceState = (state: { shotPlacement: ShotPlacementState })
 
 export const selectShotPlacementConfig = (state: { shotPlacement: ShotPlacementState }) => 
   state.shotPlacement.config;
+
+export const selectSkillSuggestions = (state: { shotPlacement: ShotPlacementState }) => 
+  state.shotPlacement.skillSuggestions;
+
+// Enhanced selector for skill-aware shot placement
+export const selectSkillAwareShotPlacement = createSelector(
+  [
+    (state: RootState) => state.shotPlacement.currentShot,
+    (state: RootState) => state.shotPlacement.skillSuggestions,
+    (state: RootState) => state.shotPlacement.distanceFromCurrentLocation,
+    (state: RootState) => state.aiCaddie.userSkillContext?.skillLevel
+  ],
+  (currentShot, skillSuggestions, distance, skillLevel) => ({
+    currentShot,
+    skillSuggestions,
+    distance,
+    skillLevel,
+    hasSkillValidation: !!skillSuggestions,
+    isDistanceAppropriate: skillSuggestions?.isDistanceRealistic ?? true,
+  })
+);
