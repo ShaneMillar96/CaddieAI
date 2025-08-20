@@ -173,16 +173,16 @@ public class GolfContextService : IGolfContextService
         return $"{basePrompt}\n\n{contextualInfo}";
     }
 
-    public Task<ClubRecommendationResult> GetClubRecommendationAsync(GolfContext context, double distanceToPin, string? conditions = null)
+    public Task<Models.ClubRecommendationResult> GetClubRecommendationAsync(GolfContext context, double distanceToPin, string? conditions = null)
     {
         try
         {
             // This is a simplified club recommendation algorithm
             // In a real implementation, this would be more sophisticated
             
-            var recommendation = new ClubRecommendationResult
+            var recommendation = new Models.ClubRecommendationResult
             {
-                Confidence = 0.8
+                RecommendationConfidence = 0.8m
             };
 
             // Basic distance-based recommendation
@@ -201,14 +201,19 @@ public class GolfContextService : IGolfContextService
                 _ => "Driver or 3 Wood"
             };
 
-            recommendation.Club = club;
-            recommendation.Reasoning = $"Based on {distanceToPin} yards to pin";
+            recommendation.PrimaryClub = club;
+            recommendation.SkillBasedReasoning = $"Based on {distanceToPin} yards to pin";
 
             // Adjust for user skill level
             if (context.User.SkillLevel == "beginner")
             {
-                recommendation.Reasoning += ". Recommend more forgiving clubs for your skill level.";
-                recommendation.Alternatives.Add("Consider using a higher lofted club for better control");
+                recommendation.SkillBasedReasoning += ". Recommend more forgiving clubs for your skill level.";
+                recommendation.AlternativeClubs.Add(new ClubOption 
+                { 
+                    Club = "Consider using a higher lofted club for better control",
+                    Confidence = 0.7m,
+                    WhenToChoose = "For better control and accuracy"
+                });
             }
 
             // Adjust for conditions
@@ -216,24 +221,18 @@ public class GolfContextService : IGolfContextService
             {
                 if (conditions.Contains("wind"))
                 {
-                    recommendation.Reasoning += " Consider wind conditions - may need one club up or down.";
-                    recommendation.Confidence -= 0.1;
+                    recommendation.SkillBasedReasoning += " Consider wind conditions - may need one club up or down.";
+                    recommendation.RecommendationConfidence -= 0.1m;
                 }
             }
 
-            // Add hole-specific strategy
-            if (context.CurrentHole != null)
+            // Add execution tips
+            recommendation.ExecutionTips.Add(new ExecutionTip
             {
-                recommendation.Strategy = $"Hole {context.CurrentHole.HoleNumber} - Par {context.CurrentHole.Par}";
-                if (!string.IsNullOrEmpty(context.CurrentHole.Description))
-                {
-                    recommendation.Strategy += $". {context.CurrentHole.Description}";
-                }
-            }
-
-            recommendation.Factors.Add("distance", distanceToPin);
-            recommendation.Factors.Add("conditions", conditions ?? "normal");
-            recommendation.Factors.Add("skillLevel", context.User.SkillLevel ?? "intermediate");
+                Category = "Distance",
+                Tip = $"Focus on smooth tempo for {distanceToPin} yard shot",
+                Importance = "Consistent distance control"
+            });
 
             return Task.FromResult(recommendation);
         }

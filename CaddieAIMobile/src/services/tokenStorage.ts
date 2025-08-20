@@ -16,6 +16,11 @@ export class TokenStorage {
     }
   }
 
+  // Alias for compatibility with ApiService
+  static async setAccessToken(token: string): Promise<void> {
+    return this.storeAccessToken(token);
+  }
+
   // Retrieve access token
   static async getAccessToken(): Promise<string | null> {
     try {
@@ -34,6 +39,11 @@ export class TokenStorage {
       console.error('Failed to store refresh token:', error);
       throw new Error('Failed to store refresh token');
     }
+  }
+
+  // Alias for compatibility with ApiService
+  static async setRefreshToken(token: string): Promise<void> {
+    return this.storeRefreshToken(token);
   }
 
   // Retrieve refresh token

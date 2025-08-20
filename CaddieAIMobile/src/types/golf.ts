@@ -395,6 +395,7 @@ export interface DashboardState {
   showScoreModal: boolean;      // Full completion modal
   showQuickScoreEditor: boolean; // Quick score editor modal
   showScorecardOverlay: boolean; // Scorecard overlay visibility
+  showHoleSelector: boolean;    // Hole selector visibility
   isLocationTracking: boolean;
   lastLocationUpdate: string | null;
   roundTimer: string | null;
@@ -427,6 +428,7 @@ export interface UserCourse {
   id: number;
   courseId: number;
   name: string;
+  courseName?: string;  // Alias for name for compatibility
   address?: string;
   city?: string;
   state?: string;
@@ -513,6 +515,8 @@ export interface QuickScoreUpdate {
   roundId: number;
   holeNumber: number;
   score: number;
+  putts?: number;
+  notes?: string;
 }
 
 /**

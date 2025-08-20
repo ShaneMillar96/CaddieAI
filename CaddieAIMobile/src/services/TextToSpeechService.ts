@@ -1,5 +1,6 @@
 // TTS functionality replaced by OpenAI real-time audio
 // import Tts from 'react-native-tts'; // Removed dependency
+import { SkillLevel } from '../types';
 
 // Mock TTS object to prevent errors since functionality moved to OpenAI real-time audio
 const Tts = {
@@ -465,7 +466,7 @@ export interface CaddieContext {
   };
   player?: {
     handicapIndex?: number;
-    skillLevel: 'beginner' | 'intermediate' | 'advanced' | 'professional';
+    skillLevel: SkillLevel | 'beginner' | 'intermediate' | 'advanced' | 'professional';
     communicationStyle: 'encouraging' | 'technical' | 'balanced' | 'casual' | 'professional';
     currentRoundStats?: {
       currentScore: number;

@@ -5,7 +5,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { MainTabParamList } from '../types';
 import HomeScreen from '../screens/main/HomeScreen';
 import ActiveRoundScreen from '../screens/main/ActiveRoundScreen';
-import AIChatScreen from '../screens/main/AIChatScreen';
+import AICaddieScreen from '../screens/main/AICaddieScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import CoursesNavigator from './CoursesNavigator';
 import { TestModeIndicator } from '../components/testMode';
@@ -25,8 +25,8 @@ const ActiveRoundIcon = ({ color, size }: { color: string; size: number }) => (
   <Icon name="play-circle-filled" size={size} color={color} />
 );
 
-const AIChatIcon = ({ color, size }: { color: string; size: number }) => (
-  <Icon name="smart-toy" size={size} color={color} />
+const AICaddieIcon = ({ color, size }: { color: string; size: number }) => (
+  <Icon name="mic" size={size} color={color} />
 );
 
 const ProfileIcon = ({ color, size }: { color: string; size: number }) => (
@@ -95,10 +95,10 @@ export const MainTabNavigator: React.FC = () => {
       />
       <Tab.Screen
         name="AIChat"
-        component={AIChatScreen}
+        component={AICaddieScreen}
         options={{
-          title: 'AI Assistant',
-          tabBarIcon: AIChatIcon,
+          title: 'AI Caddie',
+          tabBarIcon: AICaddieIcon,
         }}
       />
       <Tab.Screen

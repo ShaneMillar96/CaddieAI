@@ -174,7 +174,7 @@ export const MyCoursesScreen: React.FC = () => {
       validUserCourses.forEach((course) => {
         try {
           const courseName = course.name || course.courseName;
-          verifyMockLocationProximity(course.latitude, course.longitude, courseName);
+          verifyMockLocationProximity(course.latitude, course.longitude, courseName!);
         } catch (error) {
           const courseName = course.name || course.courseName;
           console.error('❌ Error in proximity verification for course:', courseName, error);
@@ -275,7 +275,7 @@ export const MyCoursesScreen: React.FC = () => {
       try {
         // Pre-flight validation
         const roundApi = (await import('../../services/roundApi')).default;
-        const validation = await roundApi.validateRoundCreation(course.courseId);
+        const validation = await roundApi.validateRoundCreation(course.id);
         
         if (!validation.canCreate) {
           if (validation.activeRound) {
@@ -290,7 +290,7 @@ export const MyCoursesScreen: React.FC = () => {
         }
 
         // Proceed with round creation
-        await roundApi.createAndStartRound(course.courseId);
+        await roundApi.createAndStartRound(course.id);
         
         // Update Redux state
         await dispatch(fetchActiveRound());
@@ -346,7 +346,7 @@ export const MyCoursesScreen: React.FC = () => {
     // Navigate to course detail screen if available
     // For now, just show course info
     Alert.alert(
-      courseName,
+      courseName || 'Course Details',
       `Times Played: ${course.timesPlayed}\n` +
       `Average Score: ${course.averageScore ? course.averageScore.toFixed(1) : 'N/A'}\n` +
       `Last Played: ${course.lastPlayedDate ? new Date(course.lastPlayedDate).toLocaleDateString() : 'Never'}`,

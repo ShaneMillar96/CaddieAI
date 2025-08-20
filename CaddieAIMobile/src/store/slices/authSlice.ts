@@ -468,4 +468,11 @@ const authSlice = createSlice({
 });
 
 export const { clearError, clearAuth, setUser, setError } = authSlice.actions;
+
+// Selectors
+export const selectUser = (state: any) => state.auth.user;
+export const selectIsAuthenticated = (state: any) => state.auth.isAuthenticated;
+export const selectAuthLoading = (state: any) => state.auth.isLoading;
+export const selectAuthError = (state: any) => state.auth.error;
+
 export default authSlice.reducer;

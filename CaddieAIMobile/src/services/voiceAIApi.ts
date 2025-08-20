@@ -597,28 +597,8 @@ class VoiceAIApiService {
         const distance = context?.golfContext?.targetDistanceYards ?? 150;
         return this.getFallbackClubRecommendation(distance);
       
-      case 'ShotPlacementConfirmation':
-        const targetYards = context?.golfContext?.targetDistanceYards ?? 150;
-        return `Target set at ${targetYards} yards. You're ready to go!`;
-      
-      case 'ShotTrackingActivation':
-        return "Shot tracking active. Trust your swing and follow through.";
-      
-      case 'ShotInProgress':
-        return "Looking good! Stay committed to your shot.";
-      
-      case 'ShotCompletion':
-        return "Well played! Ready for your next target.";
-      
-      case 'MovementDetected':
-        return "Shot complete. Nice work out there!";
-      
-      case 'DistanceAnnouncement':
-        const announceDistance = context?.golfContext?.targetDistanceYards ?? 150;
-        return `Distance: ${announceDistance} yards to target.`;
-      
-      case 'HoleCompletion':
-        return "Good hole! Let's keep the momentum going.";
+      case 'GeneralAssistance':
+        return "I'm here to help with your golf game!";
       
       case 'ErrorHandling':
         return "No problem! I'm here to help you get back on track.";
@@ -631,22 +611,13 @@ class VoiceAIApiService {
   private getFallbackCaddieActions(scenario: CaddieScenario): string[] {
     switch (scenario) {
       case 'ShotPlacementWelcome':
-        return ['Tap map to place target', 'Ask for course strategy', 'Get weather conditions'];
+        return ['Tap map to place target', 'Get club recommendation', 'Ask for advice'];
       
       case 'ClubRecommendation':
-        return ['Confirm club selection', 'Ask about conditions', 'Get distance adjustment'];
+        return ['Confirm club selection', 'Ask for advice', 'Adjust target position'];
       
-      case 'ShotPlacementConfirmation':
-        return ['Activate shot tracking', 'Adjust target position', 'Ask for advice'];
-      
-      case 'ShotTrackingActivation':
-        return ['Take your shot', 'Cancel shot tracking', 'Ask for swing tip'];
-      
-      case 'ShotCompletion':
-        return ['Place next target', 'View shot statistics', 'Move to next hole'];
-      
-      case 'HoleCompletion':
-        return ['View scorecard', 'Get strategy for next hole', 'Review hole performance'];
+      case 'GeneralAssistance':
+        return ['Ask for advice', 'Get club recommendation', 'Check course strategy'];
       
       default:
         return ['Ask for advice', 'Get club recommendation', 'Check course strategy'];
@@ -657,17 +628,10 @@ class VoiceAIApiService {
     switch (scenario) {
       case 'ClubRecommendation':
         return 'Club Selection';
-      case 'CourseStrategy':
-        return 'Course Strategy';
       case 'ShotPlacementWelcome':
-      case 'ShotPlacementConfirmation':
-      case 'ShotTrackingActivation':
         return 'Shot Placement';
-      case 'PerformanceEncouragement':
-      case 'HoleCompletion':
-        return 'Performance';
-      case 'WeatherConditions':
-        return 'Course Conditions';
+      case 'GeneralAssistance':
+        return 'General Advice';
       case 'ErrorHandling':
         return 'Support';
       default:

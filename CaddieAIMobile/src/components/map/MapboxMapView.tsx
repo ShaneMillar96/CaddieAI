@@ -417,8 +417,8 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
             {/* Distance label along the line */}
             {showDistanceOverlay && distanceFromCurrent > 0 && (() => {
               // Calculate the angle of the line
-              const deltaX = shotPlacementLocation.longitude - currentLocation.longitude;
-              const deltaY = shotPlacementLocation.latitude - currentLocation.latitude;
+              const deltaX = shotPlacementLocation.longitude - (currentLocation?.longitude ?? 0);
+              const deltaY = shotPlacementLocation.latitude - (currentLocation?.latitude ?? 0);
               const angleRad = Math.atan2(deltaY, deltaX);
               const angleDeg = angleRad * (180 / Math.PI);
               
@@ -432,8 +432,8 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
                 <PointAnnotation
                   id="shotPlacementDistance"
                   coordinate={[
-                    (shotPlacementLocation.longitude + currentLocation.longitude) / 2 + offsetLng,
-                    (shotPlacementLocation.latitude + currentLocation.latitude) / 2 + offsetLat,
+                    (shotPlacementLocation.longitude + (currentLocation?.longitude ?? 0)) / 2 + offsetLng,
+                    (shotPlacementLocation.latitude + (currentLocation?.latitude ?? 0)) / 2 + offsetLat,
                   ]}
                 >
                   <View style={[

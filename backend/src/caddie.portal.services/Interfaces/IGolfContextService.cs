@@ -36,7 +36,7 @@ public interface IGolfContextService
     /// <param name="context">Golf context</param>
     /// <param name="distanceToPin">Distance to pin in yards</param>
     /// <param name="conditions">Weather/course conditions</param>
-    Task<ClubRecommendationResult> GetClubRecommendationAsync(GolfContext context, double distanceToPin, string? conditions = null);
+    Task<Models.ClubRecommendationResult> GetClubRecommendationAsync(GolfContext context, double distanceToPin, string? conditions = null);
 }
 
 public class GolfContext
@@ -129,12 +129,3 @@ public class HolePerformance
     public string? Notes { get; set; }
 }
 
-public class ClubRecommendationResult
-{
-    public string Club { get; set; } = string.Empty;
-    public string Reasoning { get; set; } = string.Empty;
-    public double Confidence { get; set; }
-    public List<string> Alternatives { get; set; } = new();
-    public string? Strategy { get; set; }
-    public Dictionary<string, object> Factors { get; set; } = new();
-}
