@@ -22,8 +22,16 @@ export const SkillLevelDisplay: React.FC<SkillLevelDisplayProps> = ({
   showHandicap = true,
 }) => {
   const getSkillLevelInfo = () => {
-    switch (skillLevel) {
+    console.log('🎯 SkillLevelDisplay: Processing skill level:', skillLevel, 'Type:', typeof skillLevel);
+    
+    // Handle both enum values and numeric values
+    const normalizedSkillLevel = typeof skillLevel === 'number' ? skillLevel : 
+                                typeof skillLevel === 'string' ? parseInt(skillLevel) : 
+                                skillLevel;
+    
+    switch (normalizedSkillLevel) {
       case SkillLevel.Beginner:
+      case 1:
         return {
           label: 'Beginner',
           description: 'Learning the basics',
@@ -32,6 +40,7 @@ export const SkillLevelDisplay: React.FC<SkillLevelDisplayProps> = ({
           backgroundColor: '#e8f5e8',
         };
       case SkillLevel.Intermediate:
+      case 2:
         return {
           label: 'Intermediate',
           description: 'Building consistency',
@@ -40,6 +49,7 @@ export const SkillLevelDisplay: React.FC<SkillLevelDisplayProps> = ({
           backgroundColor: '#e3f2fd',
         };
       case SkillLevel.Advanced:
+      case 3:
         return {
           label: 'Advanced',
           description: 'Skilled player',
@@ -48,6 +58,7 @@ export const SkillLevelDisplay: React.FC<SkillLevelDisplayProps> = ({
           backgroundColor: '#fff3e0',
         };
       case SkillLevel.Professional:
+      case 4:
         return {
           label: 'Professional',
           description: 'Expert level',
@@ -56,6 +67,7 @@ export const SkillLevelDisplay: React.FC<SkillLevelDisplayProps> = ({
           backgroundColor: '#f3e5f5',
         };
       default:
+        console.warn('⚠️ SkillLevelDisplay: Unknown skill level, using default. Value:', skillLevel);
         return {
           label: 'Unknown',
           description: 'Skill level not set',

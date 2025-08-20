@@ -464,19 +464,65 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
   }
 
   /**
-   * Build minimal contextual message for 2 core shot placement scenarios only
+   * Build enhanced contextual message with full shot placement details
    */
   private buildContextualMessage(scenario: CaddieScenario, context: CaddieContext, userInput?: string): string {
     const distance = context.golfContext?.targetDistanceYards || 150;
+    const shotPlacement = context.golfContext?.shotPlacement;
+    const currentLocation = context.golfContext?.currentLocation;
+    const skillLevel = context.playerContext?.skillLevel;
+    const handicap = context.playerContext?.handicap;
 
-    // Only handle the 2 essential shot placement cases
+    console.log('🎯 DynamicCaddieService: Building enhanced contextual message', {
+      scenario,
+      distance,
+      shotPlacement,
+      currentLocation,
+      skillLevel,
+      handicap,
+      userInput
+    });
+
+    // Enhanced contextual messages with full shot placement details
     switch (scenario) {
       case 'ShotPlacementWelcome':
-        return 'Shot placement activated';
+        return `Shot placement mode activated. Ready to help with your shot selection and strategy.`;
+      
       case 'ClubRecommendation':
-        return `${distance} yards club recommendation`;
+        const skillContext = skillLevel ? `for ${this.getSkillLevelName(skillLevel)} player` : '';
+        const handicapContext = handicap ? ` (handicap ${handicap})` : '';
+        const locationContext = shotPlacement && currentLocation 
+          ? ` from current position to target location` 
+          : '';
+        
+        return `Club recommendation: ${distance} yards${locationContext}${skillContext}${handicapContext}. What club and strategy do you recommend?`;
+      
+      case 'GeneralAssistance':
+        if (userInput) {
+          const contextInfo = distance !== 150 ? ` Target distance: ${distance} yards.` : '';
+          return `${userInput}${contextInfo}`;
+        }
+        return 'Provide helpful golf advice and guidance.';
+        
+      case 'ErrorHandling':
+        return 'Something went wrong. Please provide general golf assistance.';
+        
       default:
-        return 'Golf help';
+        console.warn('🎯 DynamicCaddieService: Unknown scenario:', scenario);
+        return userInput || 'Provide helpful golf advice.';
+    }
+  }
+
+  /**
+   * Get human-readable skill level name
+   */
+  private getSkillLevelName(skillLevel: SkillLevel): string {
+    switch (skillLevel) {
+      case 1: return 'Beginner';
+      case 2: return 'Intermediate';
+      case 3: return 'Advanced';
+      case 4: return 'Professional';
+      default: return 'Unknown';
     }
   }
 
@@ -716,13 +762,29 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
   }
 
   /**
-   * Build enhanced context with skill level and shot type information
+   * Build enhanced context with skill level, shot type, and shot placement information
    */
   private buildEnhancedContext(
     baseContext: CaddieContext, 
     userSkillContext: any, 
     currentShotType: any
   ): EnhancedCaddieContext {
+    // Get shot placement data from Redux store
+    const state = store.getState();
+    const shotPlacementTarget = state.shotPlacement.targetLocation;
+    const distanceFromCurrent = state.shotPlacement.distanceFromCurrentLocation;
+    const clubRecommendation = state.shotPlacement.clubRecommendation;
+    const isShotPlacementActive = state.shotPlacement.isActive;
+
+    console.log('🎯 DynamicCaddieService: Building enhanced context with shot placement data', {
+      shotPlacementTarget,
+      distanceFromCurrent,
+      clubRecommendation,
+      isShotPlacementActive,
+      userSkillLevel: userSkillContext?.skillLevel,
+      currentShotType: currentShotType?.type
+    });
+
     return {
       ...baseContext,
       userSkillLevel: userSkillContext?.skillLevel,
@@ -731,7 +793,20 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
         shotType: currentShotType.type,
         confidence: currentShotType.confidence,
         distance: currentShotType.distance,
+        clubRecommendation: clubRecommendation || undefined,
       } : undefined,
+      golfContext: {
+        ...baseContext.golfContext,
+        targetDistanceYards: distanceFromCurrent || baseContext.golfContext?.targetDistanceYards || 150,
+        shotPlacement: shotPlacementTarget,
+        currentLocation: baseContext.golfContext?.currentLocation,
+        shotPlacementActive: isShotPlacementActive,
+        clubRecommendation: clubRecommendation || undefined,
+      },
+      playerContext: {
+        skillLevel: userSkillContext?.skillLevel,
+        handicap: userSkillContext?.handicap,
+      },
       backendContext: {
         sessionId: this.backendSessionId || undefined
       }

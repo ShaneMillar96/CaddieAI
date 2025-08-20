@@ -123,18 +123,81 @@ export const fetchUserContext = createAsyncThunk(
   'aiCaddie/fetchUserContext',
   async (userId: string, { rejectWithValue }) => {
     try {
+      console.log('🔄 fetchUserContext: Requesting user context for userId:', userId);
       const response = await apiService.get(`ai-caddie/user-context/${userId}`);
 
+      console.log('🔄 fetchUserContext: API response:', response);
+
       if (!response.success) {
+        console.warn('⚠️ fetchUserContext: API returned unsuccessful response:', response.message);
         throw new Error(response.message || 'Failed to fetch user context');
       }
 
-      return response.data;
+      // Validate and normalize the response data
+      const userData = response.data;
+      if (!userData) {
+        console.warn('⚠️ fetchUserContext: No data in response, using defaults');
+        return createDefaultUserContext();
+      }
+
+      console.log('🔍 fetchUserContext: Raw API response data structure:', {
+        hasSkillLevel: !!userData.skillLevel,
+        skillLevelType: typeof userData.skillLevel,
+        skillLevelValue: userData.skillLevel,
+        skillLevelId: userData.skillLevel?.id,
+        skillLevelName: userData.skillLevel?.name,
+        handicap: userData.handicap,
+        preferences: userData.preferences
+      });
+
+      // Extract skill level ID - handle both nested object and direct number formats
+      let extractedSkillLevel: number;
+      if (typeof userData.skillLevel === 'object' && userData.skillLevel !== null) {
+        // API returns skillLevel as object with id property (SkillLevelDto)
+        extractedSkillLevel = userData.skillLevel.id;
+        console.log('🎯 fetchUserContext: Extracted skill level from nested object:', extractedSkillLevel);
+      } else if (typeof userData.skillLevel === 'number') {
+        // API returns skillLevel as direct number
+        extractedSkillLevel = userData.skillLevel;
+        console.log('🎯 fetchUserContext: Using direct skill level number:', extractedSkillLevel);
+      } else {
+        // Fallback to default
+        extractedSkillLevel = 2; // Default to Intermediate
+        console.warn('⚠️ fetchUserContext: Unable to extract skill level, using default:', extractedSkillLevel);
+      }
+
+      // Validate skill level
+      const validSkillLevels = [1, 2, 3, 4]; // Beginner, Intermediate, Advanced, Professional
+      const normalizedData: UserSkillContext = {
+        skillLevel: validSkillLevels.includes(extractedSkillLevel) ? extractedSkillLevel : 2, // Default to Intermediate if invalid
+        handicap: typeof userData.handicap === 'number' ? userData.handicap : 15, // Default handicap
+        preferences: userData.preferences || {},
+        playingStyle: userData.playingStyle || {},
+      };
+
+      console.log('✅ fetchUserContext: Normalized user context:', normalizedData);
+      return normalizedData;
+
     } catch (error) {
-      return rejectWithValue(error instanceof Error ? error.message : 'Unknown error');
+      console.error('❌ fetchUserContext: Error fetching user context:', error);
+      
+      // Return default context instead of rejecting to prevent UI from breaking
+      const defaultContext = createDefaultUserContext();
+      console.log('🔄 fetchUserContext: Using default context due to error:', defaultContext);
+      return defaultContext;
     }
   }
 );
+
+// Helper function to create default user context
+function createDefaultUserContext(): UserSkillContext {
+  return {
+    skillLevel: 2, // Intermediate
+    handicap: 15, // Average handicap
+    preferences: {},
+    playingStyle: {},
+  };
+}
 
 const aiCaddieSlice = createSlice({
   name: 'aiCaddie',
@@ -287,10 +350,20 @@ const aiCaddieSlice = createSlice({
       .addCase(fetchUserContext.fulfilled, (state, action) => {
         state.isLoading = false;
         state.userSkillContext = action.payload;
+        state.error = null; // Clear any previous errors
+        console.log('✅ aiCaddieSlice: User context updated:', action.payload);
       })
       .addCase(fetchUserContext.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload as string;
+        // Set fallback context even on rejection to prevent UI breaking
+        state.userSkillContext = {
+          skillLevel: 2, // Intermediate
+          handicap: 15, // Average handicap
+          preferences: {},
+          playingStyle: {},
+        };
+        console.warn('⚠️ aiCaddieSlice: User context fetch rejected, using fallback:', state.userSkillContext);
       });
   },
 });

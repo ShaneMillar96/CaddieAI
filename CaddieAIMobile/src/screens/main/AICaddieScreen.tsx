@@ -76,22 +76,37 @@ export const AICaddieScreen: React.FC = () => {
   const initializeAICaddie = async () => {
     if (!user || isInitializing) return;
 
+    console.log('🔄 AICaddieScreen: Starting AI Caddie initialization', {
+      userId: user.id,
+      roundId: activeRound?.id,
+      isInitialized: aiCaddieState.isInitialized,
+      hasActiveRound: !!activeRound
+    });
+
     setIsInitializing(true);
     dispatch(clearError());
 
     try {
-      // Fetch user skill context
-      await dispatch(fetchUserContext(user.id)).unwrap();
+      // Fetch user skill context with enhanced logging
+      console.log('🔄 AICaddieScreen: Fetching user context for userId:', user.id);
+      const userContext = await dispatch(fetchUserContext(user.id)).unwrap();
+      console.log('✅ AICaddieScreen: User context fetched:', userContext);
 
-      // Initialize voice session
+      // Initialize voice session with enhanced logging
       const sessionParams = {
         userId: user.id,
         roundId: activeRound?.id,
       };
-
+      
+      console.log('🔄 AICaddieScreen: Initializing voice session with params:', sessionParams);
       await dispatch(initializeVoiceSession(sessionParams)).unwrap();
+      console.log('✅ AICaddieScreen: Voice session initialized successfully');
 
-      console.log('✅ AICaddieScreen: AI Caddie initialized successfully');
+      console.log('✅ AICaddieScreen: AI Caddie fully initialized', {
+        userContext,
+        sessionActive: voiceSession.isActive,
+        roundActive: !!activeRound
+      });
     } catch (error) {
       console.error('❌ AICaddieScreen: Failed to initialize AI Caddie:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to initialize AI Caddie';
@@ -156,7 +171,17 @@ export const AICaddieScreen: React.FC = () => {
   );
 
   const renderSkillContext = () => {
-    if (!userSkillContext) return null;
+    console.log('🎯 AICaddieScreen: Rendering skill context', {
+      userSkillContext,
+      hasContext: !!userSkillContext,
+      skillLevel: userSkillContext?.skillLevel,
+      handicap: userSkillContext?.handicap
+    });
+
+    if (!userSkillContext) {
+      console.warn('⚠️ AICaddieScreen: No user skill context available for rendering');
+      return null;
+    }
 
     return (
       <View style={styles.contextSection}>
@@ -179,6 +204,14 @@ export const AICaddieScreen: React.FC = () => {
   };
 
   const renderShotPlacementContext = () => {
+    console.log('🎯 AICaddieScreen: Rendering shot placement context', {
+      shotPlacementTarget,
+      shotDistances,
+      clubRecommendation,
+      isShotPlacementActive,
+      shouldRender: !(!shotPlacementTarget && !isShotPlacementActive)
+    });
+
     if (!shotPlacementTarget && !isShotPlacementActive) return null;
 
     return (
