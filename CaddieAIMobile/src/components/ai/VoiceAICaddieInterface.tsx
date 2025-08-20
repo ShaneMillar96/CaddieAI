@@ -27,6 +27,12 @@ import {
 } from '../../store/slices/aiCaddieSlice';
 import { selectUser } from '../../store/slices/authSlice';
 import { selectActiveRound } from '../../store/slices/roundSlice';
+import {
+  selectTargetLocation,
+  selectDistances,
+  selectClubRecommendation,
+  selectIsActive as selectIsShotPlacementActive,
+} from '../../store/slices/shotPlacementSlice';
 
 import { RealtimeAudioService } from '../../services/RealtimeAudioService';
 import { skillBasedAdviceEngine } from '../../services/SkillBasedAdviceEngine';
@@ -49,6 +55,12 @@ export const VoiceAICaddieInterface: React.FC<VoiceAICaddieInterfaceProps> = ({
   const voiceSession = useSelector(selectVoiceSession);
   const userSkillContext = useSelector(selectUserSkillContext);
   const currentShotType = useSelector(selectCurrentShotType);
+
+  // Shot placement context from ActiveRoundScreen
+  const shotPlacementTarget = useSelector(selectTargetLocation);
+  const shotDistances = useSelector(selectDistances);
+  const clubRecommendationFromPlacement = useSelector(selectClubRecommendation);
+  const isShotPlacementActive = useSelector(selectIsShotPlacementActive);
 
   const [realtimeService] = useState(() => new RealtimeAudioService());
   const [isRecording, setIsRecording] = useState(false);
@@ -216,12 +228,24 @@ export const VoiceAICaddieInterface: React.FC<VoiceAICaddieInterfaceProps> = ({
       await handlePermissionError();
     } else if (errorMessage.includes('timeout')) {
       await handleTimeoutError();
-    } else {
-      // General error handling
+    } else if (errorMessage.includes('buffer too small') || 
+               errorMessage.includes('conversation_already_has_active_response') ||
+               errorMessage.includes('invalid_request_error')) {
+      // These are normal OpenAI API errors, don't trigger service recovery
+      console.log('🔄 Normal OpenAI API error, not triggering recovery:', errorMessage);
       dispatch(setVoiceError(errorMessage));
       
-      // Auto-retry for certain errors
-      if (connectionRetries < 3 && !isRetrying) {
+      // Clear error after 3 seconds for these temporary errors
+      setTimeout(() => {
+        dispatch(setVoiceError(null));
+      }, 3000);
+    } else {
+      // General error handling - only retry for actual connection issues
+      dispatch(setVoiceError(errorMessage));
+      
+      // Auto-retry for certain errors (only connection-related)
+      if (connectionRetries < 3 && !isRetrying && 
+          (errorMessage.includes('WebSocket') || errorMessage.includes('Failed to connect'))) {
         setTimeout(() => {
           attemptServiceRecovery();
         }, 2000);
@@ -352,20 +376,32 @@ export const VoiceAICaddieInterface: React.FC<VoiceAICaddieInterfaceProps> = ({
       await Promise.race([stopPromise, timeoutPromise]);
       console.log('🎤 VoiceAICaddieInterface: Recording stopped successfully');
       
-      // Enhanced shot analysis with fallback
-      if (currentShotType && user && userSkillContext) {
+      // Enhanced shot analysis - only for active rounds with context
+      if (activeRound && user && userSkillContext) {
+        // Active round mode: Use full shot analysis
         dispatch(setVoiceProcessing(true));
         
         try {
+          // Use shot placement data if available, otherwise use current shot type
+          const position = shotPlacementTarget || 
+                          currentShotType?.position || 
+                          { latitude: 0, longitude: 0 };
+          
+          const shotContext = {
+            shotType: currentShotType,
+            skillLevel: userSkillContext.skillLevel,
+            handicap: userSkillContext.handicap,
+            // Include shot placement context
+            targetDistance: shotDistances?.fromCurrent || 0,
+            clubRecommendation: clubRecommendationFromPlacement,
+            shotPlacementActive: isShotPlacementActive,
+          };
+
           const analysisPromise = dispatch(analyzeShot({
             userId: user.id,
-            roundId: activeRound?.id || 0, // Use 0 for general advice mode
-            position: currentShotType.position || { latitude: 0, longitude: 0 },
-            shotContext: {
-              shotType: currentShotType,
-              skillLevel: userSkillContext.skillLevel,
-              handicap: userSkillContext.handicap,
-            },
+            roundId: activeRound.id,
+            position: position,
+            shotContext: shotContext,
           })).unwrap();
           
           const analysisTimeout = new Promise((_, reject) => 
@@ -378,7 +414,7 @@ export const VoiceAICaddieInterface: React.FC<VoiceAICaddieInterfaceProps> = ({
         } catch (error) {
           console.error('VoiceAICaddieInterface: Shot analysis failed:', error);
           
-          // Provide fallback advice
+          // Provide fallback advice for active rounds
           try {
             const fallbackAdvice: AICaddieAdvice = {
               id: `fallback_advice_${Date.now()}`,
@@ -396,6 +432,11 @@ export const VoiceAICaddieInterface: React.FC<VoiceAICaddieInterfaceProps> = ({
         } finally {
           dispatch(setVoiceProcessing(false));
         }
+      } else {
+        // General advice mode: WebSocket already handles the conversation
+        console.log('🎙️ VoiceAICaddieInterface: General advice mode - using WebSocket conversation');
+        // The audio response will be handled by the WebSocket connection
+        // No need for shot analysis in general advice mode
       }
 
     } catch (error) {
@@ -439,6 +480,12 @@ export const VoiceAICaddieInterface: React.FC<VoiceAICaddieInterfaceProps> = ({
   const attemptServiceRecovery = async () => {
     if (isRetrying || connectionRetries >= 3) {
       dispatch(setVoiceError('Unable to connect to voice service. Please check your connection.'));
+      return;
+    }
+    
+    // Prevent multiple simultaneous recovery attempts
+    if (isRetrying) {
+      console.log('🔄 Recovery already in progress, skipping...');
       return;
     }
     

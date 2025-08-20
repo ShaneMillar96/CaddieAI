@@ -2,6 +2,7 @@ import { ReactNativeEventEmitter } from '../utils/ReactNativeEventEmitter';
 import { Platform, PermissionsAndroid, Alert } from 'react-native';
 import { AudioRecorderService, AudioData as RecorderAudioData } from './AudioRecorderService';
 import Sound from 'react-native-sound';
+import * as RNFS from 'react-native-fs';
 
 export interface RealtimeAudioConfig {
   model?: string;
@@ -74,8 +75,7 @@ export class RealtimeAudioService extends ReactNativeEventEmitter {
       this.audioRecorder = new AudioRecorderService({
         sampleRate: 16000,
         channels: 1,
-        bitsPerSample: 16,
-        format: 'pcm16',
+        encoding: 'pcm_16bit',
         enableRealTimeStreaming: true
       });
       
@@ -505,7 +505,7 @@ export class RealtimeAudioService extends ReactNativeEventEmitter {
       console.log(`🎵 Combined ${chunksToProcess.length} chunks into ${combinedBuffer.byteLength} bytes`);
       
       // Convert PCM16 to WAV format for playback
-      const wavBuffer = this.pcm16ToWav(combinedBuffer, 24000, 1); // 24kHz, mono
+      const wavBuffer = this.pcm16ToWav(combinedBuffer, 24000, 1); // 24kHz, mono (OpenAI Real-time API standard)
       
       // Create temporary file path for audio playback
       const tempFilePath = await this.createTempAudioFile(wavBuffer);
@@ -577,7 +577,6 @@ export class RealtimeAudioService extends ReactNativeEventEmitter {
    */
   private async createTempAudioFile(audioData: Uint8Array): Promise<string | null> {
     try {
-      const RNFS = require('react-native-fs');
       const tempPath = `${RNFS.CachesDirectoryPath}/temp_audio_${Date.now()}.wav`;
       
       // Convert Uint8Array to base64 string using chunked approach to avoid stack overflow
@@ -661,7 +660,6 @@ export class RealtimeAudioService extends ReactNativeEventEmitter {
    */
   private async cleanupTempFile(filePath: string): Promise<void> {
     try {
-      const RNFS = require('react-native-fs');
       const exists = await RNFS.exists(filePath);
       if (exists) {
         await RNFS.unlink(filePath);
@@ -706,6 +704,10 @@ export class RealtimeAudioService extends ReactNativeEventEmitter {
       this.isRecording = false;
       this.emit('listeningStateChanged', false);
       console.log('Stopped recording');
+
+      // Note: Audio buffer commit and response generation happens in sendAudioData()
+      // when AudioRecorderService emits the final audio chunk
+      console.log('🎤 Audio recording stopped, waiting for final audio data emission');
     } catch (error) {
       console.error('Failed to stop recording:', error);
       throw error;
@@ -714,15 +716,100 @@ export class RealtimeAudioService extends ReactNativeEventEmitter {
 
   private sendAudioData(audioData: RecorderAudioData) {
     if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+      console.warn('RealtimeAudioService: Cannot send audio - WebSocket not connected');
       return;
+    }
+
+    // Convert audio data if needed
+    let processedAudio = audioData.audio;
+    
+    // If the audio is in WAV format, we need to convert to PCM16 for OpenAI
+    if (audioData.format === 'wav') {
+      console.log('🎤 Converting WAV to PCM16 for OpenAI');
+      processedAudio = this.convertWavToPCM16Base64(audioData.audio);
     }
 
     const message = {
       type: 'input_audio_buffer.append',
-      audio: audioData.audio
+      audio: processedAudio
     };
 
     this.websocket.send(JSON.stringify(message));
+    
+    // Log audio chunk size for debugging (not the actual audio data)
+    const audioLength = typeof processedAudio === 'string' ? processedAudio.length : 0;
+    console.log(`🎤 Sent audio chunk: ${audioLength} chars, format: PCM16, rate: ${audioData.sampleRate}Hz`);
+    
+    // OpenAI Real-time API with VAD automatically creates response when speech ends
+    // No manual commit or response creation needed - this prevents duplicate response errors
+    if (audioLength > 50000) {
+      console.log('🎛️ Large audio chunk detected - OpenAI VAD will handle response generation');
+    }
+  }
+
+  /**
+   * Convert WAV base64 to PCM16 base64 for OpenAI Real-time API
+   */
+  private convertWavToPCM16Base64(wavBase64: string): string {
+    try {
+      // Decode the base64 WAV data
+      const wavBinary = atob(wavBase64);
+      const wavBytes = new Uint8Array(wavBinary.length);
+      for (let i = 0; i < wavBinary.length; i++) {
+        wavBytes[i] = wavBinary.charCodeAt(i);
+      }
+
+      // WAV header is typically 44 bytes, PCM data starts after header
+      const dataStartOffset = this.findDataChunk(wavBytes);
+      if (dataStartOffset === -1) {
+        console.error('Could not find data chunk in WAV file');
+        return wavBase64; // Return original if conversion fails
+      }
+
+      // Extract PCM data (skip WAV header)
+      const pcmData = wavBytes.slice(dataStartOffset);
+      
+      // Convert to base64
+      const pcmBase64 = this.uint8ArrayToBase64(pcmData);
+      
+      console.log(`🔧 WAV conversion: ${wavBase64.length} chars -> ${pcmBase64.length} chars (PCM16)`);
+      return pcmBase64;
+      
+    } catch (error) {
+      console.error('Error converting WAV to PCM16:', error);
+      return wavBase64; // Return original if conversion fails
+    }
+  }
+
+  /**
+   * Find the data chunk offset in a WAV file
+   */
+  private findDataChunk(wavBytes: Uint8Array): number {
+    // Look for "data" chunk identifier
+    for (let i = 0; i < wavBytes.length - 8; i++) {
+      if (wavBytes[i] === 0x64 && wavBytes[i + 1] === 0x61 && 
+          wavBytes[i + 2] === 0x74 && wavBytes[i + 3] === 0x61) {
+        // Found "data", return offset after chunk size (4 bytes)
+        return i + 8;
+      }
+    }
+    return -1;
+  }
+
+  /**
+   * Convert Uint8Array to base64 using chunked approach
+   */
+  private uint8ArrayToBase64(buffer: Uint8Array): string {
+    const chunkSize = 8192;
+    let result = '';
+    
+    for (let i = 0; i < buffer.length; i += chunkSize) {
+      const chunk = buffer.slice(i, i + chunkSize);
+      const chunkStr = String.fromCharCode.apply(null, Array.from(chunk));
+      result += chunkStr;
+    }
+    
+    return btoa(result);
   }
 
   async interrupt(): Promise<void> {
@@ -797,8 +884,12 @@ export class RealtimeAudioService extends ReactNativeEventEmitter {
       await this.audioRecorder.cleanup();
     }
 
-    // Clear audio buffer and reset state
-    this.audioBuffer = [];
+    // Clear audio buffer and reset state only if not in the middle of playback
+    if (!this.isPlayingAudio && this.audioBuffer.length === 0) {
+      this.audioBuffer = [];
+    }
+    
+    // Always reset these states
     this.isPlayingAudio = false;
     this.isAudioResponseComplete = false;
     this.pendingPlayback = false;

@@ -1,11 +1,8 @@
 import { Platform, PermissionsAndroid } from 'react-native';
-import { ReactNativeEventEmitter } from '../utils/ReactNativeEventEmitter';
-import { AUDIO_CONFIG, ERROR_MESSAGES } from '../utils/constants';
-import { devLog, formatError } from '../utils/helpers';
-
-// Import audio recording libraries
 import AudioRecord from 'react-native-audio-record';
-import Sound from 'react-native-sound';
+import RNFS from 'react-native-fs';
+import { ReactNativeEventEmitter } from '../utils/ReactNativeEventEmitter';
+import { devLog, formatError } from '../utils/helpers';
 
 export interface AudioData {
   audio: string; // base64 encoded audio
@@ -17,41 +14,32 @@ export interface AudioRecorderConfig {
   sampleRate?: number;
   channels?: number;
   bitsPerSample?: number;
-  format?: 'pcm16' | 'wav';
+  audioSource?: number;
+  bufferSize?: number;
   enableRealTimeStreaming?: boolean;
 }
 
 /**
- * Unified Audio Recorder Service for React Native
- * Combines WebRTC and native audio recording capabilities
- * Automatically selects best available method based on platform and browser support
+ * Audio Recorder Service using react-native-audio-record
+ * Provides real-time audio recording capabilities for OpenAI Real-time API
  */
 export class AudioRecorderService extends ReactNativeEventEmitter {
   private isInitialized = false;
   private isRecording = false;
-  private recordingTimer: NodeJS.Timeout | null = null;
-  private audioLevelTimer: NodeJS.Timeout | null = null;
+  private currentRecordingPath: string | null = null;
   private currentAudioLevel = 0;
+  private streamingInterval: NodeJS.Timeout | null = null;
+  private lastStreamedPosition = 0;
   
-  // WebRTC specific properties
-  private mediaRecorder: any = null;
-  private audioContext: any = null;
-  private mediaStream: any = null;
-  private audioWorklet: any = null;
-  
-  // Native recording specific properties
-  private nativeRecorderInitialized = false;
-  
-  // Configuration
+  // Configuration optimized for OpenAI Real-time API
   private config: AudioRecorderConfig = {
-    sampleRate: AUDIO_CONFIG.SAMPLE_RATE,
-    channels: AUDIO_CONFIG.CHANNELS,
-    bitsPerSample: AUDIO_CONFIG.BITS_PER_SAMPLE,
-    format: AUDIO_CONFIG.FORMAT,
+    sampleRate: 16000,        // OpenAI recommended sample rate for speech
+    channels: 1,              // Mono
+    bitsPerSample: 16,        // 16-bit PCM
+    audioSource: 6,           // VOICE_RECOGNITION - optimized for speech
+    bufferSize: 4096,         // Buffer size
     enableRealTimeStreaming: true,
   };
-  
-  private recordingMethod: 'webrtc' | 'native' | null = null;
 
   constructor(config?: Partial<AudioRecorderConfig>) {
     super();
@@ -62,38 +50,10 @@ export class AudioRecorderService extends ReactNativeEventEmitter {
 
   async initialize(): Promise<void> {
     try {
-      // Request permissions first
-      await this.requestAudioPermissions();
+      console.log('AudioRecorderService: Initializing with react-native-audio-record');
       
-      // Try WebRTC first (better for real-time streaming), fall back to native
-      if (this.isWebRTCSupported()) {
-        try {
-          await this.initializeWebRTC();
-          this.recordingMethod = 'webrtc';
-          console.log('AudioRecorderService: Using WebRTC audio recording');
-        } catch (error) {
-          console.warn('AudioRecorderService: WebRTC failed, falling back to native:', error);
-          await this.initializeNative();
-          this.recordingMethod = 'native';
-          console.log('AudioRecorderService: Using native audio recording');
-        }
-      } else {
-        await this.initializeNative();
-        this.recordingMethod = 'native';
-        console.log('AudioRecorderService: Using native audio recording (WebRTC not supported)');
-      }
-
-      this.isInitialized = true;
-      console.log('AudioRecorderService: Initialization complete');
-    } catch (error) {
-      console.error('AudioRecorderService: Failed to initialize:', error);
-      throw error;
-    }
-  }
-
-  private async requestAudioPermissions(): Promise<boolean> {
-    if (Platform.OS === 'android') {
-      try {
+      // Request permissions first
+      if (Platform.OS === 'android') {
         const granted = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
           {
@@ -104,80 +64,29 @@ export class AudioRecorderService extends ReactNativeEventEmitter {
             buttonPositive: 'OK',
           }
         );
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
-      } catch (err) {
-        console.warn('AudioRecorderService: Permission request error:', err);
-        return false;
+
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          throw new Error('Audio recording permission not granted');
+        }
       }
-    }
-    return true; // iOS permissions handled in Info.plist
-  }
 
-  private isWebRTCSupported(): boolean {
-    // WebRTC is not natively supported in React Native environment
-    // Return false to use native recording instead
-    return false;
-  }
+      // Initialize audio recording with optimized settings
+      const options = {
+        sampleRate: this.config.sampleRate,
+        channels: this.config.channels,
+        bitsPerSample: this.config.bitsPerSample,
+        audioSource: this.config.audioSource,
+        bufferSize: this.config.bufferSize,
+      };
 
-  private async initializeWebRTC(): Promise<void> {
-    // WebRTC is not supported in React Native environment
-    // This method is kept for potential future web compatibility
-    throw new Error('WebRTC not available in React Native environment');
-  }
-
-  private async initializeNative(): Promise<void> {
-    // Configure native audio recording
-    const options = {
-      sampleRate: this.config.sampleRate || 16000,
-      channels: this.config.channels || 1,
-      bitsPerSample: this.config.bitsPerSample || 16,
-      audioSource: 6, // VOICE_RECOGNITION on Android
-      wavFile: 'temp_audio.wav',
-    };
-
-    // Initialize react-native-audio-record
-    // Suppress NativeEventEmitter warnings in development for react-native-audio-record
-    const originalConsoleWarn = console.warn;
-    console.warn = (message, ...args) => {
-      // Suppress specific NativeEventEmitter warnings for AudioRecord
-      if (typeof message === 'string' && 
-          (message.includes('NativeEventEmitter') && message.includes('AudioRecord')) ||
-          message.includes('new NativeEventEmitter')) {
-        return;
-      }
-      originalConsoleWarn(message, ...args);
-    };
-
-    try {
       AudioRecord.init(options);
-      console.log('AudioRecorderService: Native audio recorder initialized');
+      
+      this.isInitialized = true;
+      console.log('AudioRecorderService: react-native-audio-record initialized with config:', options);
     } catch (error) {
-      console.error('AudioRecorderService: Failed to initialize AudioRecord:', error);
+      console.error('AudioRecorderService: Failed to initialize:', error);
       throw error;
-    } finally {
-      // Restore original console.warn after initialization
-      console.warn = originalConsoleWarn;
     }
-    
-    // Initialize Sound for playback if needed
-    Sound.setCategory('PlayAndRecord');
-    
-    this.nativeRecorderInitialized = true;
-  }
-
-  private async setupAudioWorklet(source: any): Promise<void> {
-    // AudioWorklet is not available in React Native
-    throw new Error('AudioWorklet not supported in React Native environment');
-  }
-
-  private setupScriptProcessor(source: any): void {
-    // ScriptProcessor is not available in React Native
-    throw new Error('ScriptProcessor not supported in React Native environment');
-  }
-
-  private getAudioWorkletCode(): string {
-    // Not used in React Native environment
-    throw new Error('AudioWorklet code not available in React Native');
   }
 
   async startRecording(): Promise<void> {
@@ -186,150 +95,141 @@ export class AudioRecorderService extends ReactNativeEventEmitter {
     }
 
     if (this.isRecording) {
+      console.warn('AudioRecorderService: Already recording');
       return;
     }
 
     try {
       this.isRecording = true;
+      this.lastStreamedPosition = 0;
 
-      if (this.recordingMethod === 'webrtc') {
-        // Resume audio context if suspended
-        if (this.audioContext.state === 'suspended') {
-          await this.audioContext.resume();
-        }
-      } else if (this.recordingMethod === 'native') {
-        AudioRecord.start();
-        this.startNativeAudioCapture();
+      // Start recording
+      AudioRecord.start();
+      console.log('AudioRecorderService: Recording started successfully');
+
+      // Set up real-time streaming for OpenAI
+      if (this.config.enableRealTimeStreaming) {
+        this.startRealTimeStreaming();
       }
 
-      // Start audio level monitoring for both methods
-      this.startAudioLevelMonitoring();
-
-      console.log(`AudioRecorderService: Recording started (${this.recordingMethod})`);
+      this.emit('listeningStateChanged', true);
     } catch (error) {
       this.isRecording = false;
       console.error('AudioRecorderService: Failed to start recording:', error);
+      this.emit('error', `Failed to start recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
       throw error;
     }
   }
 
-  async stopRecording(): Promise<void> {
+  async stopRecording(): Promise<string | null> {
     if (!this.isRecording) {
-      return;
+      console.warn('AudioRecorderService: Not currently recording');
+      return null;
     }
 
     try {
       this.isRecording = false;
 
-      if (this.recordingMethod === 'native') {
-        AudioRecord.stop();
+      // Stop streaming
+      if (this.streamingInterval) {
+        clearInterval(this.streamingInterval);
+        this.streamingInterval = null;
       }
 
-      // Clear timers
-      if (this.recordingTimer) {
-        clearInterval(this.recordingTimer);
-        this.recordingTimer = null;
+      // Stop recording and get the file path
+      const audioFile = await AudioRecord.stop();
+      this.currentRecordingPath = audioFile;
+
+      console.log('AudioRecorderService: Recording stopped successfully', {
+        audioFile: audioFile
+      });
+
+      this.emit('listeningStateChanged', false);
+      
+      // Send final audio chunk if streaming was enabled
+      if (this.config.enableRealTimeStreaming && audioFile) {
+        await this.sendFinalAudioChunk(audioFile);
       }
 
-      if (this.audioLevelTimer) {
-        clearInterval(this.audioLevelTimer);
-        this.audioLevelTimer = null;
-      }
-
-      console.log(`AudioRecorderService: Recording stopped (${this.recordingMethod})`);
+      return audioFile;
     } catch (error) {
       console.error('AudioRecorderService: Failed to stop recording:', error);
+      this.emit('error', `Failed to stop recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
       throw error;
     }
   }
 
-  private startNativeAudioCapture(): void {
-    // For native recording, we need periodic audio data capture
-    this.recordingTimer = setInterval(async () => {
+  private startRealTimeStreaming(): void {
+    // Check for new audio data every 100ms for real-time streaming
+    this.streamingInterval = setInterval(async () => {
       if (!this.isRecording) return;
 
       try {
-        // Note: react-native-audio-record doesn't provide real-time buffer access
-        // This is a placeholder - actual implementation would need custom native modules
-        const audioData = await this.getCapturedAudioData();
-        if (audioData && audioData.length > 0) {
-          this.emit('audioData', {
-            audio: audioData,
-            format: this.config.format,
-            sampleRate: this.config.sampleRate,
-          });
-        }
+        // For react-native-audio-record, we'll send chunks when recording stops
+        // This library doesn't support live streaming, so we simulate it
+        // by updating audio levels and preparing for final send
+        const mockLevel = Math.random() * 0.5 + 0.1; // Simulate audio level
+        this.currentAudioLevel = mockLevel;
+        this.emit('audioLevel', mockLevel);
+        
       } catch (error) {
-        console.error('AudioRecorderService: Error capturing native audio:', error);
+        console.error('AudioRecorderService: Streaming error:', error);
       }
     }, 100);
   }
 
-  private async getCapturedAudioData(): Promise<string> {
-    // Placeholder for native audio buffer capture
-    // In production, this would require custom native modules
-    return '';
-  }
+  private async sendFinalAudioChunk(audioFilePath: string): Promise<void> {
+    try {
+      // Read the recorded audio file and convert to base64
+      const audioBase64 = await RNFS.readFile(audioFilePath, 'base64');
+      
+      // Create audio data object for RealtimeAudioService
+      const audioData: AudioData = {
+        audio: audioBase64,
+        format: 'wav', // react-native-audio-record outputs WAV format
+        sampleRate: this.config.sampleRate || 16000,
+      };
 
-  private startAudioLevelMonitoring(): void {
-    if (this.recordingMethod === 'native') {
-      // For native recording, simulate audio level
-      this.audioLevelTimer = setInterval(() => {
-        if (!this.isRecording) return;
+      console.log(`AudioRecorderService: Sending complete audio file (${audioBase64.length} chars)`);
+      
+      // Emit the complete audio data
+      this.emit('audioData', audioData);
 
-        const level = Math.random() * 0.5 + 0.1;
-        this.currentAudioLevel = level;
-        this.emit('audioLevel', level);
-      }, 50);
+    } catch (error) {
+      console.error('AudioRecorderService: Error processing final audio:', error);
+      this.emit('error', `Audio processing error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-    // WebRTC audio level is handled by the audio worklet/processor
   }
 
   async cleanup(): Promise<void> {
-    if (this.isRecording) {
-      await this.stopRecording();
-    }
-
-    // Clean up timers
-    if (this.recordingTimer) {
-      clearInterval(this.recordingTimer);
-      this.recordingTimer = null;
-    }
-
-    if (this.audioLevelTimer) {
-      clearInterval(this.audioLevelTimer);
-      this.audioLevelTimer = null;
-    }
-
-    // Clean up WebRTC resources
-    if (this.audioWorklet) {
-      try {
-        this.audioWorklet.disconnect();
-      } catch (error) {
-        console.warn('AudioRecorderService: Error disconnecting worklet:', error);
+    try {
+      if (this.isRecording) {
+        await this.stopRecording();
       }
-      this.audioWorklet = null;
-    }
 
-    if (this.audioContext) {
-      try {
-        await this.audioContext.close();
-      } catch (error) {
-        console.warn('AudioRecorderService: Error closing audio context:', error);
+      if (this.streamingInterval) {
+        clearInterval(this.streamingInterval);
+        this.streamingInterval = null;
       }
-      this.audioContext = null;
-    }
 
-    if (this.mediaStream) {
-      this.mediaStream.getTracks().forEach((track: any) => {
-        track.stop();
-      });
-      this.mediaStream = null;
-    }
+      // Clean up temporary audio files
+      if (this.currentRecordingPath) {
+        try {
+          const exists = await RNFS.exists(this.currentRecordingPath);
+          if (exists) {
+            await RNFS.unlink(this.currentRecordingPath);
+          }
+        } catch (cleanupError) {
+          console.warn('AudioRecorderService: Failed to cleanup audio file:', cleanupError);
+        }
+      }
 
-    this.isInitialized = false;
-    this.recordingMethod = null;
-    console.log('AudioRecorderService: Cleanup complete');
+      this.currentRecordingPath = null;
+      this.isInitialized = false;
+      console.log('AudioRecorderService: Cleanup complete');
+    } catch (error) {
+      console.warn('AudioRecorderService: Error during cleanup:', error);
+    }
   }
 
   // Utility methods
@@ -341,50 +241,40 @@ export class AudioRecorderService extends ReactNativeEventEmitter {
     return this.currentAudioLevel;
   }
 
-  getRecordingMethod(): 'webrtc' | 'native' | null {
-    return this.recordingMethod;
+  getCurrentRecording(): string | null {
+    return this.currentRecordingPath;
+  }
+
+  getRecordingMethod(): string {
+    return 'react-native-audio-record';
   }
 
   isSupported(): boolean {
-    return this.isWebRTCSupported() || this.isNativeRecordingAvailable();
-  }
-
-  private isNativeRecordingAvailable(): boolean {
     try {
-      return !!(AudioRecord && Sound);
+      return !!AudioRecord;
     } catch (error) {
       return false;
     }
   }
 
-  // Helper methods for audio processing
-  private convertFloat32ToPCM16(float32Array: Float32Array): ArrayBuffer {
-    const buffer = new ArrayBuffer(float32Array.length * 2);
-    const view = new DataView(buffer);
-    
-    for (let i = 0; i < float32Array.length; i++) {
-      const sample = Math.max(-1, Math.min(1, float32Array[i]));
-      view.setInt16(i * 2, sample * 0x7FFF, true);
+  /**
+   * Get captured audio data as base64 string for immediate use
+   * This is called by RealtimeAudioService after recording stops
+   */
+  async getCapturedAudioData(): Promise<string> {
+    if (!this.currentRecordingPath) {
+      console.warn('AudioRecorderService: No recorded audio available');
+      return '';
     }
-    
-    return buffer;
-  }
 
-  private arrayBufferToBase64(buffer: ArrayBuffer): string {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
+    try {
+      const audioBase64 = await RNFS.readFile(this.currentRecordingPath, 'base64');
+      console.log(`AudioRecorderService: Retrieved audio data (${audioBase64.length} chars)`);
+      return audioBase64;
+    } catch (error) {
+      console.error('AudioRecorderService: Error reading audio data:', error);
+      return '';
     }
-    return btoa(binary);
-  }
-
-  private calculateAudioLevel(audioData: Float32Array): number {
-    let sum = 0;
-    for (let i = 0; i < audioData.length; i++) {
-      sum += audioData[i] * audioData[i];
-    }
-    return Math.sqrt(sum / audioData.length);
   }
 }
 

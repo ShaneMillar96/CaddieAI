@@ -26,6 +26,13 @@ import {
 } from '../../store/slices/aiCaddieSlice';
 import { selectUser } from '../../store/slices/authSlice';
 import { selectActiveRound } from '../../store/slices/roundSlice';
+import {
+  selectTargetLocation,
+  selectDistances,
+  selectClubRecommendation,
+  selectIsActive as selectIsShotPlacementActive,
+  selectCurrentShot,
+} from '../../store/slices/shotPlacementSlice';
 
 // Components
 import { VoiceAICaddieInterface } from '../../components/ai/VoiceAICaddieInterface';
@@ -42,6 +49,13 @@ export const AICaddieScreen: React.FC = () => {
   const voiceSession = useSelector(selectVoiceSession);
   const userSkillContext = useSelector(selectUserSkillContext);
   const adviceHistory = useSelector(selectAdviceHistory);
+
+  // Shot placement context from ActiveRoundScreen
+  const shotPlacementTarget = useSelector(selectTargetLocation);
+  const shotDistances = useSelector(selectDistances);
+  const clubRecommendation = useSelector(selectClubRecommendation);
+  const isShotPlacementActive = useSelector(selectIsShotPlacementActive);
+  const currentShot = useSelector(selectCurrentShot);
 
   const [isInitializing, setIsInitializing] = useState(false);
 
@@ -164,6 +178,39 @@ export const AICaddieScreen: React.FC = () => {
     );
   };
 
+  const renderShotPlacementContext = () => {
+    if (!shotPlacementTarget && !isShotPlacementActive) return null;
+
+    return (
+      <View style={styles.contextSection}>
+        <Text style={styles.sectionTitle}>Current Shot Context</Text>
+        
+        {shotPlacementTarget && (
+          <View style={styles.shotContextCard}>
+            <Icon name="place" size={20} color="#2c5530" />
+            <View style={styles.shotContextDetails}>
+              <Text style={styles.shotContextText}>
+                Target Location: {shotDistances.fromCurrent}yd
+              </Text>
+              {clubRecommendation && (
+                <Text style={styles.clubContextText}>
+                  Recommended: {clubRecommendation}
+                </Text>
+              )}
+            </View>
+          </View>
+        )}
+
+        {isShotPlacementActive && (
+          <View style={styles.activeIndicator}>
+            <Icon name="gps-fixed" size={16} color="#2c5530" />
+            <Text style={styles.activeText}>Shot placement mode active</Text>
+          </View>
+        )}
+      </View>
+    );
+  };
+
   const renderVoiceInterface = () => (
     <View style={styles.voiceSection}>
       <VoiceAICaddieInterface />
@@ -261,6 +308,7 @@ export const AICaddieScreen: React.FC = () => {
       >
         {renderHeader()}
         {renderSkillContext()}
+        {renderShotPlacementContext()}
         {renderShotTypeRecognition()}
         {renderVoiceInterface()}
         {renderAdviceHistory()}
@@ -408,6 +456,36 @@ const styles = StyleSheet.create({
     color: '#4a7c59',
     fontWeight: '500',
     fontStyle: 'italic',
+  },
+  shotContextCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+  },
+  shotContextDetails: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  shotContextText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2c5530',
+    marginBottom: 4,
+  },
+  clubContextText: {
+    fontSize: 13,
+    color: '#4a7c59',
+    fontStyle: 'italic',
+  },
+  activeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e8f5e8',
+    borderRadius: 6,
+    padding: 8,
   },
   instructionsSection: {
     backgroundColor: '#ffffff',

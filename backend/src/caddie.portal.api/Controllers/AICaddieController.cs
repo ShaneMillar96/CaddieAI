@@ -140,7 +140,7 @@ public class AICaddieController : ControllerBase
             {
                 CurrentLocation = currentLocation,
                 TargetLocation = targetLocation,
-                CurrentHole = request.CurrentHole,
+                CurrentHole = request.CurrentHole ?? 1, // Default to hole 1 for general advice
                 GolfContext = golfContext,
                 ShotContext = request.ShotContext != null 
                     ? _mapper.Map<ShotContext>(request.ShotContext) 
