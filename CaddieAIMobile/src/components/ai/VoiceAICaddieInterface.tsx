@@ -287,6 +287,18 @@ export const VoiceAICaddieInterface: React.FC<VoiceAICaddieInterfaceProps> = ({
 
   const startVoiceInteraction = async () => {
     try {
+      console.log('🎯 VoiceAICaddieInterface: Starting voice interaction', {
+        userId: user?.id,
+        roundId: activeRound?.id,
+        hasPermissions,
+        sessionActive: voiceSession.isActive,
+        shotPlacementActive: isShotPlacementActive,
+        shotPlacementTarget: !!shotPlacementTarget,
+        distances: shotDistances,
+        clubRec: clubRecommendationFromPlacement,
+        skillContext: userSkillContext
+      });
+
       // Enhanced permission checking
       if (!hasPermissions) {
         await checkAudioPermissions();
@@ -385,10 +397,31 @@ export const VoiceAICaddieInterface: React.FC<VoiceAICaddieInterfaceProps> = ({
           // Use shot placement data if available, otherwise use current shot type
           const position = shotPlacementTarget || 
                           currentShotType?.position || 
-                          { latitude: 0, longitude: 0 };
+                          { latitude: 55.020906, longitude: -7.247879 }; // Faughan Valley default
+          
+          // Auto-create a shot type if none exists but shot placement is active
+          let effectiveShotType = currentShotType;
+          if (!effectiveShotType && isShotPlacementActive && shotDistances?.fromCurrent) {
+            const distance = shotDistances.fromCurrent;
+            let shotTypeGuess: 'tee_shot' | 'approach' | 'chip' | 'putt' = 'approach';
+            
+            if (distance > 200) shotTypeGuess = 'tee_shot';
+            else if (distance < 50) shotTypeGuess = 'chip';
+            else if (distance < 10) shotTypeGuess = 'putt';
+            
+            effectiveShotType = {
+              type: shotTypeGuess,
+              confidence: 0.7,
+              distance: distance,
+              position: position,
+              conditions: { wind: 'Light' }
+            };
+            
+            console.log('🎯 VoiceAICaddieInterface: Auto-created shot type for analysis:', effectiveShotType);
+          }
           
           const shotContext = {
-            shotType: currentShotType,
+            shotType: effectiveShotType,
             skillLevel: userSkillContext.skillLevel,
             handicap: userSkillContext.handicap,
             // Include shot placement context

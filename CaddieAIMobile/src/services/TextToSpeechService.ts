@@ -454,6 +454,9 @@ export interface CaddieContext {
     shotPlacementActive?: boolean;
     currentScore?: number;
     holePar?: number;
+    shotPlacement?: any; // Shot placement target location
+    currentLocation?: any; // Current GPS location
+    clubRecommendation?: string; // Club recommendation from shot placement
     shotHistory?: Array<{
       shotNumber: number;
       club?: string;
@@ -497,6 +500,10 @@ export interface CaddieContext {
     greenSpeed?: number;
     timeOfDay?: string;
     weatherDescription?: string;
+  };
+  playerContext?: {
+    skillLevel?: number;
+    handicap?: number;
   };
   metadata?: Record<string, any>;
 }

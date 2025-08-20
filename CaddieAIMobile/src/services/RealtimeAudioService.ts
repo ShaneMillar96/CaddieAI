@@ -75,7 +75,7 @@ export class RealtimeAudioService extends ReactNativeEventEmitter {
       this.audioRecorder = new AudioRecorderService({
         sampleRate: 16000,
         channels: 1,
-        encoding: 'pcm_16bit',
+        bitsPerSample: 16, // 16-bit PCM
         enableRealTimeStreaming: true
       });
       
@@ -359,15 +359,25 @@ export class RealtimeAudioService extends ReactNativeEventEmitter {
           break;
           
         case 'response.audio.done':
-          console.log('🎵 Audio response completed - triggering final playback');
+          console.log(`🎵 Audio response completed - triggering final playback. Buffer size: ${this.audioBuffer.length} chunks`);
           this.isAudioResponseComplete = true;
           this.emit('speakingStateChanged', false);
           
-          // Trigger playback of all buffered audio now that response is complete
-          if (this.audioBuffer.length > 0 && !this.isPlayingAudio && !this.pendingPlayback) {
+          // Always trigger playback when response is complete, regardless of previous state
+          if (this.audioBuffer.length > 0) {
+            console.log('🎵 Final playback: Force processing all buffered audio');
             this.pendingPlayback = true;
-            setTimeout(() => this.processAudioBuffer(), 100);
+            // Give a bit more time for any final chunks to arrive
+            setTimeout(() => this.processAudioBuffer(), 200);
+          } else {
+            console.warn('⚠️ Audio response completed but no audio chunks in buffer');
           }
+          
+          // Emit response completion for queue management
+          this.emit('responseCompleted', {
+            bufferSize: this.audioBuffer.length,
+            timestamp: Date.now()
+          });
           break;
           
         // Function calling
@@ -452,17 +462,23 @@ export class RealtimeAudioService extends ReactNativeEventEmitter {
       
       // Always add to buffer, but don't start playback immediately
       this.audioBuffer.push(buffer);
-      console.log(`🎵 Audio chunk added to buffer. Buffer size: ${this.audioBuffer.length} chunks`);
+      console.log(`🎵 Audio chunk added to buffer. Buffer size: ${this.audioBuffer.length} chunks, Bytes: ${buffer.byteLength}`);
       
-      // Only trigger playback if audio response is complete and we're not already playing
-      if (this.isAudioResponseComplete && !this.isPlayingAudio && !this.pendingPlayback) {
+      // Enhanced triggering logic: Consider both completion and buffer size
+      const shouldTriggerPlayback = (this.isAudioResponseComplete || this.audioBuffer.length >= 15) 
+                                  && !this.isPlayingAudio 
+                                  && !this.pendingPlayback;
+      
+      if (shouldTriggerPlayback) {
         this.pendingPlayback = true;
+        console.log(`🎵 Triggering playback: Complete=${this.isAudioResponseComplete}, BufferSize=${this.audioBuffer.length}`);
         // Small delay to ensure all chunks are buffered
-        setTimeout(() => this.processAudioBuffer(), 100);
+        setTimeout(() => this.processAudioBuffer(), 150); // Slightly longer delay
       }
       
     } catch (error) {
-      console.error('Error processing audio delta:', error);
+      console.error('❌ Error processing audio delta:', error);
+      // Don't let individual chunk errors break the entire audio stream
     }
   }
 
@@ -474,10 +490,23 @@ export class RealtimeAudioService extends ReactNativeEventEmitter {
       return;
     }
 
-    // Only process if audio response is complete or if we have a significant buffer
-    if (!this.isAudioResponseComplete && this.audioBuffer.length < 10) {
-      console.log(`🎵 Waiting for more audio chunks or completion signal. Buffer: ${this.audioBuffer.length} chunks, Complete: ${this.isAudioResponseComplete}`);
+    // Enhanced logic: Process audio if response is complete OR if we have a substantial buffer
+    // This prevents cutoffs while ensuring responsiveness
+    const hasSubstantialBuffer = this.audioBuffer.length >= 15; // Increased threshold
+    const shouldWaitForCompletion = !this.isAudioResponseComplete && this.audioBuffer.length < 20; // Higher threshold for waiting
+    
+    if (shouldWaitForCompletion && !hasSubstantialBuffer) {
+      console.log(`🎵 Enhanced buffering: Waiting for more audio chunks or completion signal. Buffer: ${this.audioBuffer.length} chunks, Complete: ${this.isAudioResponseComplete}, Substantial: ${hasSubstantialBuffer}`);
       this.pendingPlayback = false;
+      
+      // Set a failsafe timeout to process buffer even if completion signal doesn't arrive
+      setTimeout(() => {
+        if (!this.isPlayingAudio && this.audioBuffer.length > 0 && this.pendingPlayback === false) {
+          console.log(`🎵 Failsafe: Processing buffer after timeout. Buffer: ${this.audioBuffer.length} chunks`);
+          this.processAudioBuffer();
+        }
+      }, 2000); // 2 second failsafe
+      
       return;
     }
 
