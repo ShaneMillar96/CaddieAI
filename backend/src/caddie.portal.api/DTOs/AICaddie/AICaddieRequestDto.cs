@@ -94,10 +94,10 @@ public class ShotAnalysisRequest
     public LocationContextDto? TargetLocation { get; set; }
 
     /// <summary>
-    /// Current hole number
+    /// Current hole number (optional for general advice mode)
     /// </summary>
-    [Range(1, 18)]
-    public int CurrentHole { get; set; }
+    [Range(1, 18, ErrorMessage = "When provided, hole must be between 1-18")]
+    public int? CurrentHole { get; set; }
 
     /// <summary>
     /// Additional shot context

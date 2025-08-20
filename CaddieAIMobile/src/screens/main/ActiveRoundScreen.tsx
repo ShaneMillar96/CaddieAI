@@ -78,8 +78,6 @@ import {
   ShotPlacementState as ServiceShotPlacementState 
 } from '../../services/ShotPlacementService';
 import { HoleCompletionRequest } from '../../types/golf';
-import { CaddieContext } from '../../services/TextToSpeechService';
-import { dynamicCaddieService } from '../../services/DynamicCaddieService';
 import voiceAIApiService from '../../services/voiceAIApi';
 import { pinDistanceCalculator, PinDistances, Coordinate } from '../../utils/PinDistanceCalculator';
 // RealtimeAudioServiceV2 is now managed by VoiceChatModalV2 component
@@ -222,12 +220,12 @@ export const ActiveRoundScreen: React.FC = () => {
     }
   }, [shotPlacementModeEnabled, dispatch]);
 
-  // Handle shot placement service state changes for voice feedback
+  // Handle shot placement service state changes for UI feedback
   useEffect(() => {
     if (shotPlacementModeEnabled && serviceState) {
       handleShotPlacementStateChange(serviceState);
     }
-  }, [serviceState, distances.fromCurrent, clubRecommendation, shotPlacementModeEnabled]);
+  }, [serviceState, shotPlacementModeEnabled]);
 
   // Initialize Mapbox service
   useEffect(() => {
@@ -400,109 +398,28 @@ export const ActiveRoundScreen: React.FC = () => {
     console.log('GPS tracking stopped');
   }, [dispatch]);
 
-  // Handle shot placement service state changes
+  // Handle shot placement service state changes (UI feedback only)
   const handleShotPlacementStateChange = useCallback(async (state: ServiceShotPlacementState) => {
-    if (!user?.id || !activeRound?.id) {
-      console.warn('Missing user or round context for caddie response');
-      return;
+    // Only handle UI state updates - no AI responses
+    // All context is preserved in Redux for AI Caddie page to consume
+    console.log('🎯 Shot placement state changed:', state);
+    
+    switch (state) {
+      case ServiceShotPlacementState.SHOT_PLACEMENT:
+        console.log('📍 Shot placed - context available for AI Caddie');
+        break;
+      case ServiceShotPlacementState.SHOT_IN_PROGRESS:
+        console.log('🏌️ Shot in progress');
+        break;
+      case ServiceShotPlacementState.MOVEMENT_DETECTED:
+        console.log('🚶 Movement detected');
+        break;
+      case ServiceShotPlacementState.SHOT_COMPLETED:
+        console.log('✅ Shot completed');
+        break;
     }
-
-    // Build enhanced context for dynamic caddie responses
-    const buildCaddieContext = (): CaddieContext => ({
-      location: currentLocation ? {
-        currentHole: currentLocation.currentHole || activeRound.currentHole,
-        distanceToPinMeters: currentLocation.distanceToPin,
-        distanceToTeeMeters: currentLocation.distanceToTee,
-        positionOnHole: currentLocation.positionOnHole,
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude,
-        accuracyMeters: currentLocation.accuracy || 10,
-        withinCourseBoundaries: true,
-        timestamp: new Date().toISOString(),
-      } : undefined,
-      golfContext: {
-        currentHole: activeRound.currentHole,
-        targetDistanceYards: distances.fromCurrent,
-        recommendedClub: clubRecommendation || getRecommendedClub(distances.fromCurrent),
-        shotType: determineShotType(distances.fromCurrent),
-        shotPlacementActive: true,
-        positionOnHole: currentLocation?.positionOnHole || 'unknown',
-        currentScore: activeRound.totalScore || 0,
-        holePar: 4, // Default par - could be enhanced with hole data
-        strategicNotes: `${distances.fromCurrent}yd ${determineShotType(distances.fromCurrent)} on hole ${activeRound.currentHole}`,
-      },
-      player: {
-        skillLevel: 'intermediate', // Could be enhanced with user profile data
-        communicationStyle: 'encouraging',
-        currentRoundStats: {
-          currentScore: activeRound.totalScore || 0,
-          relativeToPar: (activeRound.totalScore || 0) - (((activeRound.currentHole || 1) - 1) * 4), // Rough calculation
-          holesCompleted: Math.max(0, (activeRound.currentHole || 1) - 1),
-        },
-        clubDistances: {
-          'Driver': 250,
-          '3 Wood': 220,
-          '5 Iron': 180,
-          '7 Iron': 150,
-          '9 Iron': 120,
-          'Wedge': 80,
-          // Could be enhanced with user's actual club distances
-        }
-      },
-      conditions: {
-        temperatureFahrenheit: 72, // Could be enhanced with weather API
-        courseCondition: 'good',
-        timeOfDay: new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening',
-        weatherDescription: 'Pleasant golfing conditions',
-      },
-      metadata: {
-        roundId: activeRound.id,
-        courseName: activeRound.course?.name,
-        serviceState: state,
-        shotPlacementMode: true,
-        timestamp: new Date().toISOString(),
-      }
-    });
-
-    try {
-      switch (state) {
-        case ServiceShotPlacementState.SHOT_PLACEMENT:
-          // Only send club recommendation when shot location is selected
-          if (distances.fromCurrent > 0) {
-            await dynamicCaddieService.generateResponse(
-              'ClubRecommendation',
-              buildCaddieContext(),
-              Number(user.id),
-              activeRound.id,
-              undefined,
-              8 // High priority for club recommendation
-            );
-          }
-          break;
-          
-        // Remove AI responses for intermediate states - no audio feedback needed
-        case ServiceShotPlacementState.SHOT_IN_PROGRESS:
-        case ServiceShotPlacementState.MOVEMENT_DETECTED:
-        case ServiceShotPlacementState.SHOT_COMPLETED:
-          // These states are handled by the UI/visual feedback only
-          break;
-      }
-    } catch (error) {
-      console.error('Error generating dynamic caddie response:', error);
-      // Error is already handled within DynamicCaddieService with fallback messages
-      // No need for additional TTS fallbacks here
-    }
-  }, [distances.fromCurrent, user?.id, activeRound?.id, currentLocation, clubRecommendation]);
-
-  // Helper function to get recommended club based on distance
-  const getRecommendedClub = useCallback((distanceYards: number): string => {
-    if (distanceYards < 80) return 'Wedge';
-    if (distanceYards < 120) return '9 Iron';
-    if (distanceYards < 150) return '7 Iron';
-    if (distanceYards < 170) return '5 Iron';
-    if (distanceYards < 200) return 'Hybrid';
-    return 'Driver';
   }, []);
+
 
   // Calculate pin distances when location, shot location, or pin location changes
   useEffect(() => {
@@ -529,18 +446,8 @@ export const ActiveRoundScreen: React.FC = () => {
     }
   }, [pinLocation, simpleLocationData, targetLocation]);
 
-  // Helper function to determine shot type based on distance
-  const determineShotType = useCallback((distanceYards: number): string => {
-    if (distanceYards < 50) return 'short-game';
-    if (distanceYards < 100) return 'wedge-shot';
-    if (distanceYards < 150) return 'approach-shot';
-    if (distanceYards < 200) return 'mid-iron';
-    if (distanceYards < 250) return 'long-iron';
-    return 'driver-shot';
-  }, []);
 
-  // Note: Club recommendation is now handled directly in handleShotPlacementStateChange
-  // to ensure sequential processing and prevent simultaneous API calls
+  // Note: AI functionality moved to AI Caddie page - context preserved in Redux
 
   // Toggle shot placement mode
   const handleShotPlacementToggle = useCallback(async () => {
@@ -569,70 +476,14 @@ export const ActiveRoundScreen: React.FC = () => {
     if (newMode) {
       // Enable shot placement mode
       dispatch(setPlacingShot(true));
-      
-      // Use dynamic caddie service for welcome message
-      if (user?.id && activeRound?.id) {
-        const context: CaddieContext = {
-          golfContext: {
-            currentHole: activeRound.currentHole,
-            shotPlacementActive: true,
-            shotType: 'general',
-          },
-          player: {
-            skillLevel: 'intermediate',
-            communicationStyle: 'encouraging',
-          }
-        };
-        
-        await dynamicCaddieService.generateResponse(
-          'ShotPlacementWelcome',
-          context,
-          Number(user.id),
-          activeRound.id,
-          undefined,
-          10 // High priority for welcome
-        );
-      } else {
-        // Fallback handled by DynamicCaddieService
-        console.log('⚠️ ActiveRoundScreen: No user/round context for welcome message');
-      }
-      
       console.log('🎯 ActiveRoundScreen: Shot placement mode enabled');
     } else {
       // Disable shot placement mode
       dispatch(cancelShotPlacement());
       dispatch(setPlacingShot(false));
-      
-      // Use dynamic caddie service for disabled message
-      if (user?.id && activeRound?.id) {
-        const context: CaddieContext = {
-          golfContext: {
-            currentHole: activeRound.currentHole,
-            shotPlacementActive: false,
-            shotType: 'general',
-          },
-          player: {
-            skillLevel: 'intermediate',
-            communicationStyle: 'encouraging',
-          }
-        };
-        
-        await dynamicCaddieService.generateResponse(
-          'GeneralAssistance',
-          context,
-          Number(user.id),
-          activeRound.id,
-          'Shot placement mode disabled',
-          5
-        );
-      } else {
-        // Fallback handled by DynamicCaddieService
-        console.log('⚠️ ActiveRoundScreen: No user/round context for disable message');
-      }
-      
       console.log('🎯 ActiveRoundScreen: Shot placement mode disabled');
     }
-  }, [shotPlacementModeEnabled, dispatch, user?.id, activeRound?.id]);
+  }, [shotPlacementModeEnabled, dispatch]);
 
   // Activate shot placement (user ready to take shot)
   const handleActivateShot = useCallback(async () => {
@@ -648,37 +499,11 @@ export const ActiveRoundScreen: React.FC = () => {
   const handleCancelShotPlacement = useCallback(async () => {
     try {
       await dispatch(cancelShotPlacement());
-      
-      // Use dynamic caddie service for cancellation message
-      if (user?.id && activeRound?.id) {
-        const context: CaddieContext = {
-          golfContext: {
-            currentHole: activeRound.currentHole,
-            shotPlacementActive: false,
-            shotType: 'general',
-          },
-          player: {
-            skillLevel: 'intermediate',
-            communicationStyle: 'encouraging',
-          }
-        };
-        
-        await dynamicCaddieService.generateResponse(
-          'GeneralAssistance',
-          context,
-          Number(user.id),
-          activeRound.id,
-          'Shot placement cancelled',
-          5
-        );
-      } else {
-        // Fallback handled by DynamicCaddieService
-        console.log('⚠️ ActiveRoundScreen: No user/round context for cancellation message');
-      }
+      console.log('🎯 ActiveRoundScreen: Shot placement cancelled');
     } catch (error) {
       console.error('❌ ActiveRoundScreen: Cancel shot error:', error);
     }
-  }, [dispatch, user?.id, activeRound?.id]);
+  }, [dispatch]);
 
   // Handle voice toggle
   const handleVoiceToggle = useCallback(() => {
