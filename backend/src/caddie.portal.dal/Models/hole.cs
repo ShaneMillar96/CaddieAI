@@ -40,4 +40,7 @@ public partial class Hole
     public virtual Course Course { get; set; } = null!;
 
     public virtual ICollection<HoleScore> HoleScores { get; set; } = new List<HoleScore>();
+
+    [InverseProperty("Hole")]
+    public virtual ICollection<SwingAnalysis> SwingAnalyses { get; set; } = new List<SwingAnalysis>();
 }

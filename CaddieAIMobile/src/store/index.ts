@@ -9,6 +9,7 @@ import shotPlacementReducer from './slices/shotPlacementSlice';
 import userCoursesReducer from './slices/userCoursesSlice';
 import testModeReducer from './slices/testModeSlice';
 import aiCaddieReducer from './slices/aiCaddieSlice';
+import garminReducer from './slices/garminSlice';
 
 // Root reducer combining all slices
 const rootReducer = combineReducers({
@@ -20,12 +21,13 @@ const rootReducer = combineReducers({
   userCourses: userCoursesReducer,
   testMode: testModeReducer,
   aiCaddie: aiCaddieReducer,
+  garmin: garminReducer,
 });
 
 const persistConfig = {
   key: 'root',
   storage: AsyncStorage,
-  whitelist: ['auth', 'rounds', 'userCourses', 'testMode'], // Persist auth, rounds, user courses, and test mode
+  whitelist: ['auth', 'rounds', 'userCourses', 'testMode', 'garmin'], // Persist auth, rounds, user courses, test mode, and garmin preferences
   blacklist: ['courses', 'voice', 'aiCaddie'], // Don't persist course data, voice state, or AI caddie state (real-time data)
 };
 

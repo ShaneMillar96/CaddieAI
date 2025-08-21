@@ -73,4 +73,7 @@ public partial class Round
 
     [ForeignKey("UserId")]
     public virtual User User { get; set; } = null!;
+
+    [InverseProperty("Round")]
+    public virtual ICollection<SwingAnalysis> SwingAnalyses { get; set; } = new List<SwingAnalysis>();
 }

@@ -129,4 +129,10 @@ public partial class User
 
     [InverseProperty("User")]
     public virtual ICollection<UserCourse> UserCourses { get; set; } = new List<UserCourse>();
+
+    [InverseProperty("User")]
+    public virtual ICollection<SwingAnalysis> SwingAnalyses { get; set; } = new List<SwingAnalysis>();
+
+    [InverseProperty("User")]
+    public virtual ICollection<GarminDevice> GarminDevices { get; set; } = new List<GarminDevice>();
 }

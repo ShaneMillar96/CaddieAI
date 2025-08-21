@@ -43,6 +43,10 @@ public partial class CaddieAIDbContext : DbContext
 
     public virtual DbSet<UserCourse> UserCourses { get; set; }
 
+    public virtual DbSet<SwingAnalysis> SwingAnalyses { get; set; }
+
+    public virtual DbSet<GarminDevice> GarminDevices { get; set; }
+
 
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)

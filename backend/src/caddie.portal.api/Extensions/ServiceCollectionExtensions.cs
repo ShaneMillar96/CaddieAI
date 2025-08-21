@@ -61,6 +61,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ILocationRepository, LocationRepository>();
         services.AddScoped<IHoleRepository, HoleRepository>();
         
+        // Swing analysis and Garmin device repositories
+        services.AddScoped<ISwingAnalysisRepository, SwingAnalysisRepository>();
+        services.AddScoped<IGarminDeviceRepository, GarminDeviceRepository>();
+        
         // AI and chat repositories - removed unused implementations
         
         // Shot tracking repositories - removed unused implementations
@@ -84,6 +88,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserCourseService, UserCourseService>();
         services.AddScoped<IRoundService, RoundService>();
         // Removed IHoleService and IShotService - unused implementations
+        
+        // Swing analysis and Garmin device services
+        services.AddScoped<ISwingAnalysisService, SwingAnalysisService>();
+        services.AddScoped<IGarminDeviceService, GarminDeviceService>();
         
         // AI services
         services.AddScoped<IOpenAIService, OpenAIService>();
@@ -220,7 +228,9 @@ public static class ServiceCollectionExtensions
             typeof(UserCourseMappingProfile),
             typeof(RoundMappingProfile),
             typeof(HoleScoreMappingProfile),
-            typeof(AICaddieMappingProfile)
+            typeof(AICaddieMappingProfile),
+            typeof(SwingAnalysisMappingProfile),
+            typeof(GarminDeviceMappingProfile)
             // Removed unused mapping profiles
         );
 

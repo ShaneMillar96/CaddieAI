@@ -14,6 +14,8 @@ Start by understanding the feature at a high level:
 1. **Feature Purpose**: What problem does this feature solve for golfers?
 2. **User Context**: When and how would users interact with this feature during a golf round?
 
+**Begin Technical Research Early**: As soon as you understand the basic feature concept, start using Context7 MCP to research relevant technologies and patterns that might be needed.
+
 ### Phase 2: Deep Requirements Gathering (5-8 Questions)
 Ask targeted questions based on the feature type. Choose relevant questions from these categories:
 
@@ -47,8 +49,29 @@ Ask targeted questions based on the feature type. Choose relevant questions from
 - Are there golf rule implications or considerations?
 - How does this enhance the solo golf experience (CaddieAI's focus)?
 
-### Phase 3: Feature Documentation Creation
-After gathering requirements, create a comprehensive feature document at `.claude/features/{feature-name}.md` with this exact structure:
+### Phase 3: Technical Research & Analysis
+Before creating the feature documentation, conduct comprehensive technical research using available tools:
+
+**Library & Framework Research**:
+- Use Context7 MCP to gather up-to-date documentation for relevant libraries and frameworks
+- Research React Native components, .NET packages, or database technologies needed
+- Analyze integration patterns and best practices for the tech stack
+
+**Codebase Analysis**:
+- Search existing codebase for similar implementations or patterns
+- Review current architecture to understand integration points
+- Identify existing services, components, or utilities that can be leveraged
+
+**Example Research Process**:
+```
+1. Use Context7 to research React Native navigation patterns
+2. Search codebase for existing navigation implementations
+3. Review Redux state management patterns in current code
+4. Research .NET Entity Framework best practices for the feature's data needs
+```
+
+### Phase 4: Feature Documentation Creation
+After gathering requirements and completing technical research, create a comprehensive feature document at `.claude/features/{feature-name}.md` with this exact structure:
 
 ```markdown
 # {Feature Name}
@@ -88,6 +111,17 @@ List any secondary or edge case user stories.
 - Error handling and user feedback
 
 ## Technical Specifications
+
+### Research Summary
+**Libraries & Technologies Researched:**
+- List Context7 MCP research conducted (e.g., "React Native Navigation v6", ".NET Entity Framework Core")
+- Key findings from documentation research
+- Best practices identified from official documentation
+
+**Codebase Analysis:**
+- Existing patterns found that can be reused
+- Similar implementations discovered
+- Integration points with current architecture
 
 ### Database Changes Required
 **New Tables:**
@@ -220,7 +254,7 @@ List any secondary or edge case user stories.
 Any additional context, assumptions, or special considerations for implementers.
 ```
 
-### Phase 4: Agent Recommendations
+### Phase 5: Agent Recommendations
 After creating the document, provide specific guidance:
 
 **Recommended Implementation Sequence:**
@@ -245,9 +279,11 @@ After creating the document, provide specific guidance:
 ## Important Notes
 
 - Always use **Opus Plan Mode** for complex feature analysis
+- **Use Context7 MCP extensively** for researching libraries, frameworks, and best practices
 - Reference CLAUDE.md for project architecture and standards
 - Consider the existing CaddieAI features and how new features integrate
 - Focus on solo golf experience enhancement
 - Ensure all recommendations align with the tech stack (React Native, .NET, PostgreSQL)
+- Leverage Context7 to get the most current documentation for all technologies used
 
 Start every interaction by asking 1-2 high-level questions to understand the feature context, then dive deeper with targeted follow-up questions.

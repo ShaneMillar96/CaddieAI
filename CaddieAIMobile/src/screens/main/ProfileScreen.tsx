@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { TestModeSettings } from '../../components/testMode';
+import { GarminConnectionSection } from '../../components/garmin';
 
 export const ProfileScreen: React.FC = () => {
   return (
@@ -15,6 +16,11 @@ export const ProfileScreen: React.FC = () => {
           Manage your golf profile, preferences, handicap information, and 
           customize your CaddieAI settings for the best experience.
         </Text>
+        
+        {/* Garmin Device Connection */}
+        <View style={styles.section}>
+          <GarminConnectionSection />
+        </View>
         
         {/* Test Mode Settings - Only visible in development */}
         {__DEV__ && (
