@@ -28,6 +28,11 @@ public class SwingAnalysisResponseDto
     public int? HoleId { get; set; }
 
     /// <summary>
+    /// Optional Garmin device ID - only populated when detection source is garmin
+    /// </summary>
+    public int? GarminDeviceId { get; set; }
+
+    /// <summary>
     /// Club head speed in miles per hour measured at impact
     /// </summary>
     public decimal? SwingSpeedMph { get; set; }

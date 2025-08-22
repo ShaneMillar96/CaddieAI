@@ -27,19 +27,22 @@ public class SwingAnalysisMappingProfile : Profile
             .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
             .ForMember(dest => dest.User, opt => opt.Ignore())
             .ForMember(dest => dest.Round, opt => opt.Ignore())
-            .ForMember(dest => dest.Hole, opt => opt.Ignore());
+            .ForMember(dest => dest.Hole, opt => opt.Ignore())
+            .ForMember(dest => dest.GarminDevice, opt => opt.Ignore());
 
         CreateMap<UpdateSwingAnalysisModel, SwingAnalysis>()
             .ForMember(dest => dest.Id, opt => opt.Ignore())
             .ForMember(dest => dest.UserId, opt => opt.Ignore())
             .ForMember(dest => dest.RoundId, opt => opt.Ignore())
             .ForMember(dest => dest.HoleId, opt => opt.Ignore())
+            .ForMember(dest => dest.GarminDeviceId, opt => opt.Ignore())
             .ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
             .ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
             .ForMember(dest => dest.DetectedAt, opt => opt.Ignore())
             .ForMember(dest => dest.User, opt => opt.Ignore())
             .ForMember(dest => dest.Round, opt => opt.Ignore())
-            .ForMember(dest => dest.Hole, opt => opt.Ignore());
+            .ForMember(dest => dest.Hole, opt => opt.Ignore())
+            .ForMember(dest => dest.GarminDevice, opt => opt.Ignore());
 
         // DAL Entities to Service Models
         CreateMap<SwingAnalysis, SwingAnalysisModel>();
@@ -62,11 +65,26 @@ public class SwingAnalysisMappingProfile : Profile
     /// <returns>Point geometry or null if coordinates are not provided</returns>
     private static Point? CreatePointFromCoordinates(decimal? latitude, decimal? longitude)
     {
-        if (!latitude.HasValue || !longitude.HasValue)
-            return null;
+        try
+        {
+            if (!latitude.HasValue || !longitude.HasValue)
+                return null;
 
-        var geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
-        return geometryFactory.CreatePoint(new Coordinate((double)longitude.Value, (double)latitude.Value));
+            // Validate coordinate ranges
+            if (latitude < -90 || latitude > 90)
+                return null;
+            
+            if (longitude < -180 || longitude > 180)
+                return null;
+
+            var geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
+            return geometryFactory.CreatePoint(new Coordinate((double)longitude.Value, (double)latitude.Value));
+        }
+        catch (Exception)
+        {
+            // Return null if coordinates are invalid
+            return null;
+        }
     }
 
     /// <summary>
@@ -76,10 +94,22 @@ public class SwingAnalysisMappingProfile : Profile
     /// <returns>JSON string or null</returns>
     private static string? ConvertToJsonString(object? rawSensorData)
     {
-        if (rawSensorData == null)
-            return null;
+        try
+        {
+            if (rawSensorData == null)
+                return null;
 
-        return System.Text.Json.JsonSerializer.Serialize(rawSensorData);
+            // Handle if it's already a string
+            if (rawSensorData is string stringData)
+                return stringData;
+
+            return System.Text.Json.JsonSerializer.Serialize(rawSensorData);
+        }
+        catch (Exception)
+        {
+            // Return null if serialization fails
+            return null;
+        }
     }
 }
 

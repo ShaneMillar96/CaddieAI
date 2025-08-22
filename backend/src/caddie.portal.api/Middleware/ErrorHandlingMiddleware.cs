@@ -24,7 +24,16 @@ public class ErrorHandlingMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An unhandled exception occurred");
+            // Enhanced logging for swing analysis debugging
+            _logger.LogError(ex, "🚫 ErrorHandlingMiddleware: Unhandled exception on {Method} {Path}: {Message}", 
+                context.Request.Method, context.Request.Path, ex.Message);
+            
+            if (context.Request.Path.StartsWithSegments("/api/swing-analysis"))
+            {
+                _logger.LogError("🏌️ ErrorHandlingMiddleware: Swing analysis request failed - Path: {Path}, Method: {Method}, Exception: {ExceptionType}", 
+                    context.Request.Path, context.Request.Method, ex.GetType().Name);
+            }
+            
             await HandleExceptionAsync(context, ex);
         }
     }
@@ -32,15 +41,25 @@ public class ErrorHandlingMiddleware
     private static async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
         context.Response.ContentType = "application/json";
+        
+        // Enhanced logging for validation errors
+        if (exception is ValidationException validationEx)
+        {
+            var logger = context.RequestServices.GetRequiredService<ILogger<ErrorHandlingMiddleware>>();
+            logger.LogWarning("🚫 ErrorHandlingMiddleware: FluentValidation failed for {Path} with {ErrorCount} errors: {Errors}", 
+                context.Request.Path, 
+                validationEx.Errors.Count(),
+                string.Join(", ", validationEx.Errors.Select(e => $"{e.PropertyName}: {e.ErrorMessage}")));
+        }
 
         var response = exception switch
         {
-            ValidationException validationEx => new ApiResponse
+            ValidationException valEx => new ApiResponse
             {
                 Success = false,
                 Message = "Validation failed",
                 ErrorCode = "VALIDATION_ERROR",
-                Errors = validationEx.Errors.Select(e => e.ErrorMessage).ToList()
+                Errors = valEx.Errors.Select(e => e.ErrorMessage).ToList()
             },
             UnauthorizedAccessException => new ApiResponse
             {

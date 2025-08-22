@@ -7,14 +7,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
-import Mapbox, { 
-  MapView, 
-  Camera, 
-  PointAnnotation, 
-  CircleLayer,
-  LineLayer,
-  ShapeSource,
-} from '@rnmapbox/maps';
+import { safeMapbox, getMapboxComponents } from '../../utils/mapboxWrapper';
 
 import { LocationData } from '../../services/LocationService';
 import { validateMapboxToken } from '../../utils/mapboxConfig';
@@ -74,8 +67,30 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
   // distanceToPin = 0, // Unused prop
   distanceFromCurrent = 0,
 }) => {
-  const mapRef = useRef<MapView>(null);
-  const cameraRef = useRef<Camera>(null);
+  // Get Mapbox components safely
+  const mapboxComponents = React.useMemo(() => {
+    try {
+      return getMapboxComponents();
+    } catch (error) {
+      console.error('Failed to get Mapbox components:', error);
+      return null;
+    }
+  }, []);
+
+  if (!mapboxComponents) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Map not available</Text>
+          <Text style={styles.errorDescription}>Mapbox module could not be loaded</Text>
+        </View>
+      </View>
+    );
+  }
+
+  const { MapView, Camera, PointAnnotation, CircleLayer, LineLayer, ShapeSource } = mapboxComponents;
+  const mapRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
   const [isMapReady, setIsMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [styleUrl, setStyleUrl] = useState<string>(
@@ -95,7 +110,7 @@ const MapboxMapView: React.FC<MapboxMapViewProps> = ({
     if (validateMapboxToken(accessToken)) {
       console.log('🗺️ MapboxMapView: Setting access token');
       // Note: setWellKnownTileServer is deprecated in newer Mapbox SDK versions
-      Mapbox.setAccessToken(accessToken);
+      safeMapbox.setAccessToken(accessToken);
       setMapError(null);
       // Preflight style access to avoid 403 logs; fallback if unauthorized
       (async () => {
@@ -505,6 +520,12 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     marginBottom: 20,
+  },
+  errorDescription: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    marginBottom: 8,
   },
   retryButton: {
     backgroundColor: '#4a7c59',

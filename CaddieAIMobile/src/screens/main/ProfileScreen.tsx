@@ -2,6 +2,8 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { TestModeSettings } from '../../components/testMode';
 import { GarminConnectionSection } from '../../components/garmin';
+import { E2ETestAccess } from '../../components/e2e';
+import { OptimizationAccess } from '../../components/optimization';
 
 export const ProfileScreen: React.FC = () => {
   return (
@@ -22,11 +24,21 @@ export const ProfileScreen: React.FC = () => {
           <GarminConnectionSection />
         </View>
         
-        {/* Test Mode Settings - Only visible in development */}
+        {/* Performance & Battery Optimization */}
+        <View style={styles.section}>
+          <OptimizationAccess />
+        </View>
+        
+        {/* Development Settings - Only visible in development */}
         {__DEV__ && (
           <View style={styles.developmentSection}>
             <Text style={styles.sectionTitle}>Development Settings</Text>
             <TestModeSettings />
+            
+            {/* E2E Test Suite Access */}
+            <View style={styles.testSection}>
+              <E2ETestAccess />
+            </View>
           </View>
         )}
         
@@ -91,6 +103,9 @@ const styles = StyleSheet.create({
   },
   developmentSection: {
     marginBottom: 24,
+  },
+  testSection: {
+    marginTop: 16,
   },
   section: {
     marginBottom: 24,

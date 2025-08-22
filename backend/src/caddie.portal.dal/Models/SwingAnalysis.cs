@@ -28,6 +28,12 @@ public partial class SwingAnalysis
     public int? HoleId { get; set; }
 
     /// <summary>
+    /// Foreign key to garmin_devices table, only populated when detection_source is garmin, NULL for mobile detections
+    /// </summary>
+    [Column("garmin_device_id")]
+    public int? GarminDeviceId { get; set; }
+
+    /// <summary>
     /// Club head speed in miles per hour measured at impact
     /// </summary>
     [Column("swing_speed_mph", TypeName = "decimal(5,2)")]
@@ -137,4 +143,7 @@ public partial class SwingAnalysis
 
     [ForeignKey("HoleId")]
     public virtual Hole? Hole { get; set; }
+
+    [ForeignKey("GarminDeviceId")]
+    public virtual GarminDevice? GarminDevice { get; set; }
 }

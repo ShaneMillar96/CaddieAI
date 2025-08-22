@@ -277,10 +277,13 @@ export class GarminBluetoothService {
       this.discoveredDevices.clear();
       this.isScanning = true;
 
-      // Start scanning with filters for fitness devices
+      // Start scanning for ALL devices (no service filtering) to catch all Garmin devices
       this.bleManager.startDeviceScan(
-        [BLE_SERVICES.HEART_RATE, BLE_SERVICES.BATTERY_SERVICE], // Look for common fitness device services
-        { allowDuplicates: false },
+        null, // Scan for ALL devices - no service filtering
+        { 
+          allowDuplicates: true,  // Allow duplicates to catch devices that might be missed
+          scanMode: 'LowLatency'  // Use low latency for better detection
+        },
         (error, device) => {
           if (error) {
             console.error('🔴 GarminBluetoothService: Scan error:', error);
@@ -289,9 +292,22 @@ export class GarminBluetoothService {
             return;
           }
 
-          if (device && this.isGarminDevice(device)) {
-            console.log(`📱 GarminBluetoothService: Found potential Garmin device: ${device.name || 'Unknown'}`);
-            this.handleDeviceDiscovered(device);
+          if (device) {
+            // Log ALL discovered devices for debugging
+            console.log(`🔍 GarminBluetoothService: Discovered device - Name: "${device.name || 'null'}", LocalName: "${device.localName || 'null'}", ID: ${device.id}, RSSI: ${device.rssi}`);
+            if (device.serviceUUIDs && device.serviceUUIDs.length > 0) {
+              console.log(`  📋 Services: [${device.serviceUUIDs.join(', ')}]`);
+            }
+            if (device.manufacturerData) {
+              console.log(`  🏭 Manufacturer Data: ${device.manufacturerData}`);
+            }
+            
+            if (this.isGarminDevice(device)) {
+              console.log(`✅ GarminBluetoothService: Found potential Garmin device: ${device.name || device.localName || 'Unknown'}`);
+              this.handleDeviceDiscovered(device);
+            } else {
+              console.log(`❌ GarminBluetoothService: Device "${device.name || device.localName || 'Unknown'}" filtered out (not recognized as Garmin)`);
+            }
           }
         }
       );
@@ -318,14 +334,17 @@ export class GarminBluetoothService {
   }
 
   /**
-   * Intelligent filtering to identify Garmin devices
-   * Based on device name patterns and manufacturer data
+   * Enhanced intelligent filtering to identify Garmin devices
+   * Based on device name patterns, manufacturer data, and partial matching
    */
   private isGarminDevice(device: Device): boolean {
     const deviceName = device.name?.toLowerCase() || '';
     const localName = device.localName?.toLowerCase() || '';
+    const allNames = `${deviceName} ${localName}`.trim();
 
-    // Known Garmin device name patterns
+    console.log(`🔍 GarminBluetoothService: Checking device - Name: "${device.name}", LocalName: "${device.localName}"`);
+
+    // Known Garmin device name patterns (expanded list)
     const garminPatterns = [
       'garmin',
       'forerunner',
@@ -338,25 +357,139 @@ export class GarminBluetoothService {
       'edge',
       'fr55',     // Forerunner 55 short name
       'fr45',     // Other Forerunner models
+      'fr235',
       'fr245',
+      'fr645',
+      'fr745',
       'fr945',
+      'fr955',
+      'fr965',
+      'epix',
+      'tactix',
+      'marq',
+      'enduro',
+      'descent',
     ];
 
-    // Check device name against known patterns
-    const matchesPattern = garminPatterns.some(pattern => 
-      deviceName.includes(pattern) || localName.includes(pattern)
-    );
+    // Check exact pattern matches first
+    const exactMatch = garminPatterns.some(pattern => {
+      const matches = deviceName.includes(pattern) || localName.includes(pattern);
+      if (matches) {
+        console.log(`✅ GarminBluetoothService: Device matches exact pattern "${pattern}"`);
+      }
+      return matches;
+    });
 
-    if (matchesPattern) {
-      console.log(`✅ GarminBluetoothService: Device ${device.name} matches Garmin pattern`);
+    if (exactMatch) {
       return true;
     }
 
-    // Additional filtering could be added here based on:
-    // - Manufacturer data (if available)
-    // - Service UUIDs (if device advertises specific services)
-    // - RSSI strength (prefer closer devices)
+    // Check for numeric patterns that might indicate Forerunner models
+    // Many Garmin devices may advertise with just numbers (e.g., "55" for Forerunner 55)
+    const numericPatterns = [
+      /^\d{2,3}$/,        // 2-3 digit numbers (55, 245, 945, etc.)
+      /^fr\d{2,3}$/,      // fr + numbers
+      /forerunner.*\d+/,   // forerunner with numbers
+      /garmin.*\d+/,       // garmin with numbers
+    ];
 
+    const numericMatch = numericPatterns.some(pattern => {
+      const matches = pattern.test(deviceName) || pattern.test(localName);
+      if (matches) {
+        console.log(`✅ GarminBluetoothService: Device matches numeric pattern "${pattern}"`);
+      }
+      return matches;
+    });
+
+    if (numericMatch) {
+      return true;
+    }
+
+    // Check manufacturer data for Garmin identifier
+    if (device.manufacturerData) {
+      try {
+        // Garmin's company identifier is 0x008D (141 decimal)
+        const manufacturerBase64 = device.manufacturerData;
+        console.log(`🏭 GarminBluetoothService: Checking manufacturer data: ${manufacturerBase64}`);
+        
+        // Decode Base64 to binary data
+        const manufacturerBuffer = Buffer.from(manufacturerBase64, 'base64');
+        console.log(`🔍 GarminBluetoothService: Decoded manufacturer buffer length: ${manufacturerBuffer.length}`);
+        
+        if (manufacturerBuffer.length >= 2) {
+          // Read first 2 bytes as company ID (little endian)
+          const companyId = manufacturerBuffer.readUInt16LE(0);
+          console.log(`🏢 GarminBluetoothService: Company ID: 0x${companyId.toString(16).toUpperCase()} (${companyId})`);
+          
+          // Garmin's official Bluetooth company identifier is 0x008D (141 decimal)
+          if (companyId === 0x008D || companyId === 141) {
+            console.log(`✅ GarminBluetoothService: Device matches Garmin company ID!`);
+            return true;
+          }
+          
+          // Also check for other potential Garmin-related IDs or common values
+          // Some devices might use different encodings or have additional data
+          const potentialGarminIds = [0x008D, 141, 0x8D00]; // Different endianness possibilities
+          if (potentialGarminIds.includes(companyId)) {
+            console.log(`✅ GarminBluetoothService: Device matches potential Garmin company ID variant!`);
+            return true;
+          }
+          
+          // Log the raw bytes for debugging
+          const hexBytes = Array.from(manufacturerBuffer.slice(0, Math.min(8, manufacturerBuffer.length)))
+            .map(b => `0x${b.toString(16).padStart(2, '0')}`)
+            .join(' ');
+          console.log(`🔍 GarminBluetoothService: First bytes: ${hexBytes}`);
+        }
+        
+        // Fallback: Check if manufacturer data contains 'Garmin' string
+        const manufacturerString = manufacturerBuffer.toString('utf8');
+        if (manufacturerString.toLowerCase().includes('garmin')) {
+          console.log(`✅ GarminBluetoothService: Device contains 'Garmin' in manufacturer data!`);
+          return true;
+        }
+        
+      } catch (error) {
+        console.warn('⚠️ GarminBluetoothService: Error parsing manufacturer data:', error);
+      }
+    }
+
+    // Special handling for unnamed devices with strong signal (could be Garmin in non-discoverable mode)
+    if (!device.name && !device.localName && device.manufacturerData) {
+      const rssi = device.rssi || -100;
+      if (rssi > -70) { // Strong signal, close device
+        console.log(`⚠️ GarminBluetoothService: Strong unnamed device (RSSI: ${rssi}) - might be Garmin in non-discoverable mode`);
+        console.log(`   Consider putting your Garmin device in pairing mode`);
+        console.log(`   Manufacturer data present but not recognized as Garmin`);
+        
+        // For debugging: Try to identify the manufacturer by common patterns
+        try {
+          const manufacturerBuffer = Buffer.from(device.manufacturerData, 'base64');
+          if (manufacturerBuffer.length >= 2) {
+            const companyId = manufacturerBuffer.readUInt16LE(0);
+            // Log known company IDs for reference
+            const knownCompanies: { [key: number]: string } = {
+              0x004C: 'Apple',
+              0x0006: 'Microsoft',
+              0x00E0: 'Google',
+              0x008D: 'Garmin',
+              0x0087: 'Garmin (alt)',
+            };
+            const companyName = knownCompanies[companyId] || 'Unknown';
+            console.log(`   Manufacturer: ${companyName} (0x${companyId.toString(16).toUpperCase()})`);
+          }
+        } catch (error) {
+          console.warn('   Could not identify manufacturer');
+        }
+      }
+    }
+    
+    // Log why device was filtered out
+    console.log(`❌ GarminBluetoothService: Device "${device.name || device.localName || 'Unknown'}" does not match Garmin patterns`);
+    console.log(`   Checked names: "${allNames}"`);
+    console.log(`   Has manufacturer data: ${!!device.manufacturerData}`);
+    console.log(`   RSSI: ${device.rssi || 'unknown'}`);
+    
     return false;
   }
 

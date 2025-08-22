@@ -8,7 +8,12 @@ import {
 } from 'react-native-sensors';
 import { Subscription } from 'rxjs';
 
-// Import motion data interface from GarminBluetoothService
+// Import motion data interface from SwingDetectionService for consistency
+import { MotionData as SwingMotionData, SwingCalibration } from './SwingDetectionService';
+import SwingDetectionService from './SwingDetectionService';
+import SwingValidationService, { ValidationContext, ActivityLevel, DeviceStability, EnvironmentalFactors } from './SwingValidationService';
+
+// Mobile-specific motion data interface
 export interface MotionData {
   timestamp: number;
   accelerometer: {
@@ -32,6 +37,14 @@ export interface MotionData {
     cadence?: number;
     power?: number;
   };
+}
+
+export interface MobileSwingDetectionResult {
+  detected: boolean;
+  confidence: number;
+  swingMetrics?: any;
+  source: 'mobile_sensors';
+  sensorQuality: SensorQuality;
 }
 
 export enum SensorStatus {
@@ -69,6 +82,15 @@ export interface SensorConfig {
   calibrationEnabled: boolean;
   swingDetectionEnabled: boolean;
   dataBufferSize: number;  // Number of samples to keep in buffer
+}
+
+export interface SensorQuality {
+  accelerometerQuality: number;   // 0-100 quality score
+  gyroscopeQuality: number;       // 0-100 quality score
+  magnetometerQuality: number;    // 0-100 quality score
+  overallQuality: number;         // Combined quality score
+  noiseLevel: number;             // Current noise level
+  calibrationAccuracy: number;    // Calibration accuracy estimate
 }
 
 /**
@@ -118,21 +140,29 @@ export class MobileSensorService {
   // Callbacks for motion data and events
   private motionDataCallbacks: Array<(data: MotionData) => void> = [];
   private statusChangeCallbacks: Array<(status: SensorStatus) => void> = [];
-  private swingDetectionCallbacks: Array<(swingData: any) => void> = [];
+  private swingDetectionCallbacks: Array<(swingData: MobileSwingDetectionResult) => void> = [];
   private errorCallbacks: Array<(error: string) => void> = [];
+  
+  // Advanced swing detection integration
+  private swingDetectionService: SwingDetectionService;
+  private swingValidationService: SwingValidationService;
+  private currentCalibration: SwingCalibration | null = null;
+  private isRoundActive: boolean = false;
   
   // Swing detection state
   private swingInProgress: boolean = false;
   private swingStartTime: number = 0;
   private swingData: MotionData[] = [];
   private swingThreshold = {
-    acceleration: 2.0, // G-forces above resting
-    gyroscope: 3.0,    // Rad/s rotational velocity
-    duration: { min: 200, max: 2000 } // ms
+    acceleration: 15.0, // G-forces above resting (significantly increased for much less sensitivity)
+    gyroscope: 8.0,     // Rad/s rotational velocity (increased for less sensitivity)
+    duration: { min: 400, max: 2000 } // ms (increased minimum duration)
   };
 
   constructor() {
     console.log('🔵 MobileSensorService: Initializing mobile sensor service');
+    this.swingDetectionService = SwingDetectionService.getInstance();
+    this.swingValidationService = SwingValidationService.getInstance();
     this.setupSensorConfiguration();
   }
 
@@ -499,9 +529,89 @@ export class MobileSensorService {
   }
 
   /**
-   * Simple swing detection algorithm
+   * Advanced swing detection using SwingDetectionService
    */
-  private analyzeForSwing(motionData: MotionData): void {
+  private async analyzeForSwing(motionData: MotionData): Promise<void> {
+    try {
+      // Convert mobile sensor data to swing detection format
+      const swingMotionData: SwingMotionData = {
+        acceleration: motionData.accelerometer,
+        gyroscope: motionData.gyroscope || { x: 0, y: 0, z: 0 },
+        timestamp: motionData.timestamp
+      };
+      
+      // Add data to swing detection service
+      if (this.currentCalibration) {
+        this.swingDetectionService.addMotionData(swingMotionData);
+        
+        // Check if we have enough data for analysis
+        if (this.swingData.length >= 50) { // Minimum 1 second of data at 50Hz
+          await this.performAdvancedSwingDetection();
+        }
+      } else {
+        // Use simple threshold-based detection as fallback
+        await this.analyzeForSwingFallback(motionData);
+      }
+      
+    } catch (error) {
+      console.error('🔴 MobileSensorService: Error in advanced swing analysis:', error);
+      // Fallback to simple detection
+      await this.analyzeForSwingFallback(motionData);
+    }
+  }
+
+  /**
+   * Perform advanced swing detection using machine learning algorithms
+   */
+  private async performAdvancedSwingDetection(): Promise<void> {
+    try {
+      // Convert accumulated motion data for swing detection
+      const swingMotionData: SwingMotionData[] = this.swingData.map(data => ({
+        acceleration: data.accelerometer,
+        gyroscope: data.gyroscope || { x: 0, y: 0, z: 0 },
+        timestamp: data.timestamp
+      }));
+
+      // Run swing detection
+      const detectionResult = await this.swingDetectionService.detectSwing(swingMotionData);
+      
+      if (detectionResult.isSwing) {
+        // Create validation context
+        const validationContext = this.createValidationContext();
+        
+        // Validate the swing detection
+        const validationResult = await this.swingValidationService.validateSwing(
+          detectionResult,
+          validationContext
+        );
+
+        if (validationResult.isValid) {
+          console.log('🎯 MobileSensorService: Advanced swing detection successful', {
+            confidence: validationResult.adjustedConfidence,
+            falsePositiveRisk: validationResult.falsePositiveRisk
+          });
+          
+          await this.processAdvancedSwingDetection(detectionResult, validationResult.adjustedConfidence);
+        } else {
+          console.log('⚠️ MobileSensorService: Swing detection failed validation', {
+            confidence: validationResult.adjustedConfidence,
+            risk: validationResult.falsePositiveRisk
+          });
+        }
+      }
+
+      // Reset swing data collection
+      this.swingData = this.swingData.slice(-25); // Keep last 0.5 seconds
+      
+    } catch (error) {
+      console.error('🔴 MobileSensorService: Error in advanced swing detection:', error);
+    }
+  }
+
+  /**
+   * Fallback swing detection algorithm
+   */
+  private async analyzeForSwingFallback(motionData: MotionData): Promise<void> {
     try {
       // Calculate total acceleration magnitude
       const accel = motionData.accelerometer;
@@ -521,7 +631,7 @@ export class MobileSensorService {
         if (totalAcceleration > (9.81 + this.swingThreshold.acceleration) || // Above gravity + threshold
             totalRotation > this.swingThreshold.gyroscope) {
           
-          console.log('🏌️ MobileSensorService: Swing detected - starting capture');
+          console.log('🏌️ MobileSensorService: Fallback swing detected - starting capture');
           this.swingInProgress = true;
           this.swingStartTime = now;
           this.swingData = [motionData];
@@ -537,8 +647,8 @@ export class MobileSensorService {
             (swingDuration > this.swingThreshold.duration.min && 
              totalAcceleration < (9.81 + this.swingThreshold.acceleration * 0.3))) {
           
-          console.log(`🏌️ MobileSensorService: Swing completed - duration: ${swingDuration}ms, samples: ${this.swingData.length}`);
-          this.processCompletedSwing();
+          console.log(`🏌️ MobileSensorService: Fallback swing completed - duration: ${swingDuration}ms, samples: ${this.swingData.length}`);
+          await this.processFallbackSwing();
           
           // Reset swing detection
           this.swingInProgress = false;
@@ -548,15 +658,50 @@ export class MobileSensorService {
       }
       
     } catch (error) {
-      console.error('🔴 MobileSensorService: Error in swing analysis:', error);
+      console.error('🔴 MobileSensorService: Error in fallback swing analysis:', error);
     }
   }
 
-  private processCompletedSwing(): void {
+  /**
+   * Process advanced swing detection result
+   */
+  private async processAdvancedSwingDetection(detectionResult: any, confidence: number): Promise<void> {
+    try {
+      const sensorQuality = this.calculateSensorQuality();
+      
+      const mobileSwingResult: MobileSwingDetectionResult = {
+        detected: true,
+        confidence,
+        swingMetrics: detectionResult.metrics,
+        source: 'mobile_sensors',
+        sensorQuality
+      };
+      
+      console.log('📊 MobileSensorService: Advanced swing analysis completed', {
+        confidence,
+        maxSpeed: detectionResult.metrics?.maxSpeed,
+        backswingAngle: detectionResult.metrics?.backswingAngle,
+        sensorQuality: sensorQuality.overallQuality
+      });
+      
+      // Notify callbacks with mobile swing result
+      this.notifySwingDetection(mobileSwingResult);
+      
+    } catch (error) {
+      console.error('🔴 MobileSensorService: Error processing advanced swing detection:', error);
+    }
+  }
+
+  /**
+   * Process fallback swing detection
+   */
+  private async processFallbackSwing(): Promise<void> {
     if (this.swingData.length === 0) return;
     
     try {
-      // Analyze swing characteristics
+      const sensorQuality = this.calculateSensorQuality();
+      
+      // Create basic swing metrics from fallback analysis
       const swingAnalysis = {
         duration: Date.now() - this.swingStartTime,
         sampleCount: this.swingData.length,
@@ -566,25 +711,92 @@ export class MobileSensorService {
         timestamp: Date.now(),
       };
       
-      console.log('📊 MobileSensorService: Swing analysis:', {
+      // Estimate confidence based on swing characteristics
+      const confidence = this.estimateSwingConfidence(swingAnalysis);
+      
+      const mobileSwingResult: MobileSwingDetectionResult = {
+        detected: true,
+        confidence,
+        swingMetrics: swingAnalysis,
+        source: 'mobile_sensors',
+        sensorQuality
+      };
+      
+      console.log('📊 MobileSensorService: Fallback swing analysis:', {
         duration: swingAnalysis.duration,
         samples: swingAnalysis.sampleCount,
         peakAccel: swingAnalysis.peakAcceleration?.toFixed(2),
         peakRotation: swingAnalysis.peakRotation?.toFixed(2),
+        confidence
       });
       
-      // Notify swing detection callbacks
-      this.swingDetectionCallbacks.forEach(callback => {
-        try {
-          callback(swingAnalysis);
-        } catch (error) {
-          console.error('🔴 MobileSensorService: Error in swing detection callback:', error);
-        }
-      });
+      // Notify callbacks
+      this.notifySwingDetection(mobileSwingResult);
       
     } catch (error) {
-      console.error('🔴 MobileSensorService: Error processing completed swing:', error);
+      console.error('🔴 MobileSensorService: Error processing fallback swing:', error);
     }
+  }
+
+  /**
+   * Create validation context for swing detection
+   */
+  private createValidationContext(): ValidationContext {
+    const now = new Date();
+    const currentTime = now.getHours();
+    
+    // Calculate recent activity level
+    const activityLevel: ActivityLevel = {
+      walkingDetected: this.detectWalkingActivity(),
+      drivingDetected: this.detectDrivingActivity(),
+      staticPeriod: this.calculateStaticPeriod(),
+      averageMotion: this.calculateAverageMotionLevel()
+    };
+    
+    // Calculate device stability
+    const deviceStability: DeviceStability = {
+      accelerometerVariance: this.calculateAccelerometerVariance(),
+      gyroscopeVariance: this.calculateGyroscopeVariance(),
+      temperatureDrift: 0, // Not available from mobile sensors
+      signalQuality: 100 // Mobile sensors are always connected
+    };
+    
+    // Environmental factors (simplified for mobile)
+    const environmentalFactors: EnvironmentalFactors = {
+      windLevel: 0, // Not detectable from mobile sensors
+      groundStability: 85, // Assume reasonable stability
+      courseType: this.isRoundActive ? 'course' : 'practice'
+    };
+    
+    return {
+      isRoundActive: this.isRoundActive,
+      timeOfDay: currentTime,
+      recentActivity: activityLevel,
+      deviceStability: deviceStability,
+      environmentalFactors: environmentalFactors
+    };
+  }
+
+  /**
+   * Calculate current sensor quality metrics
+   */
+  private calculateSensorQuality(): SensorQuality {
+    const accelerometerQuality = this.calculateAccelerometerQuality();
+    const gyroscopeQuality = this.calculateGyroscopeQuality();
+    const magnetometerQuality = this.calculateMagnetometerQuality();
+    
+    const overallQuality = (accelerometerQuality * 0.5 + gyroscopeQuality * 0.4 + magnetometerQuality * 0.1);
+    const noiseLevel = this.calculateCurrentNoiseLevel();
+    const calibrationAccuracy = this.estimateCalibrationAccuracy();
+    
+    return {
+      accelerometerQuality,
+      gyroscopeQuality,
+      magnetometerQuality,
+      overallQuality,
+      noiseLevel,
+      calibrationAccuracy
+    };
   }
 
   private calculatePeakAcceleration(): number {
@@ -688,7 +900,7 @@ export class MobileSensorService {
     };
   }
 
-  onSwingDetection(callback: (swingData: any) => void): () => void {
+  onSwingDetection(callback: (swingData: MobileSwingDetectionResult) => void): () => void {
     this.swingDetectionCallbacks.push(callback);
     return () => {
       const index = this.swingDetectionCallbacks.indexOf(callback);
@@ -733,6 +945,266 @@ export class MobileSensorService {
         console.error('🔴 MobileSensorService: Error in error callback:', err);
       }
     });
+  }
+
+  // Helper methods for validation context
+
+  private detectWalkingActivity(): boolean {
+    // Simple walking detection based on regular motion patterns
+    if (this.accelerometerBuffer.length < 20) return false;
+    
+    const recentData = this.accelerometerBuffer.slice(-20);
+    let stepCount = 0;
+    
+    for (let i = 1; i < recentData.length; i++) {
+      const magnitude = Math.sqrt(
+        recentData[i].x ** 2 + recentData[i].y ** 2 + recentData[i].z ** 2
+      );
+      if (magnitude > 11 && magnitude < 13) { // Typical walking acceleration
+        stepCount++;
+      }
+    }
+    
+    return stepCount > 5; // At least 5 step-like motions in recent data
+  }
+
+  private detectDrivingActivity(): boolean {
+    // Driving detection based on consistent horizontal motion
+    if (this.accelerometerBuffer.length < 30) return false;
+    
+    const recentData = this.accelerometerBuffer.slice(-30);
+    let consistentMotion = 0;
+    
+    for (const data of recentData) {
+      const horizontalMagnitude = Math.sqrt(data.x ** 2 + data.y ** 2);
+      if (horizontalMagnitude > 1 && horizontalMagnitude < 3) {
+        consistentMotion++;
+      }
+    }
+    
+    return consistentMotion > 20; // Consistent low-level horizontal motion
+  }
+
+  private calculateStaticPeriod(): number {
+    // Calculate how long device has been relatively static
+    if (this.accelerometerBuffer.length < 10) return 0;
+    
+    const recentData = this.accelerometerBuffer.slice(-50); // Last 1 second
+    let staticSamples = 0;
+    
+    for (const data of recentData) {
+      const magnitude = Math.sqrt(data.x ** 2 + data.y ** 2 + data.z ** 2);
+      if (Math.abs(magnitude - 9.81) < 0.5) { // Close to gravity only
+        staticSamples++;
+      }
+    }
+    
+    return (staticSamples / recentData.length) * (recentData.length / this.config.sampleRate);
+  }
+
+  private calculateAverageMotionLevel(): number {
+    if (this.accelerometerBuffer.length === 0) return 0;
+    
+    const recentData = this.accelerometerBuffer.slice(-100); // Last 2 seconds
+    let totalMotion = 0;
+    
+    for (const data of recentData) {
+      const magnitude = Math.sqrt(data.x ** 2 + data.y ** 2 + data.z ** 2);
+      totalMotion += Math.abs(magnitude - 9.81); // Remove gravity component
+    }
+    
+    return totalMotion / recentData.length;
+  }
+
+  // Sensor quality calculations
+
+  private calculateAccelerometerQuality(): number {
+    if (this.accelerometerBuffer.length < 10) return 50;
+    
+    const variance = this.calculateAccelerometerVariance();
+    const quality = Math.max(0, 100 - (variance * 10));
+    return Math.min(100, quality);
+  }
+
+  private calculateGyroscopeQuality(): number {
+    if (this.gyroscopeBuffer.length < 10) return 50;
+    
+    const variance = this.calculateGyroscopeVariance();
+    const quality = Math.max(0, 100 - (variance * 5));
+    return Math.min(100, quality);
+  }
+
+  private calculateMagnetometerQuality(): number {
+    if (this.magnetometerBuffer.length < 10) return 0; // Often not available
+    
+    // Simple quality based on data availability
+    return 75;
+  }
+
+  private calculateAccelerometerVariance(): number {
+    if (this.accelerometerBuffer.length < 2) return 0;
+    
+    const data = this.accelerometerBuffer.slice(-20);
+    const magnitudes = data.map(d => Math.sqrt(d.x ** 2 + d.y ** 2 + d.z ** 2));
+    const mean = magnitudes.reduce((sum, m) => sum + m, 0) / magnitudes.length;
+    
+    let variance = 0;
+    for (const magnitude of magnitudes) {
+      variance += Math.pow(magnitude - mean, 2);
+    }
+    
+    return variance / magnitudes.length;
+  }
+
+  private calculateGyroscopeVariance(): number {
+    if (this.gyroscopeBuffer.length < 2) return 0;
+    
+    const data = this.gyroscopeBuffer.slice(-20);
+    const magnitudes = data.map(d => Math.sqrt(d.x ** 2 + d.y ** 2 + d.z ** 2));
+    const mean = magnitudes.reduce((sum, m) => sum + m, 0) / magnitudes.length;
+    
+    let variance = 0;
+    for (const magnitude of magnitudes) {
+      variance += Math.pow(magnitude - mean, 2);
+    }
+    
+    return variance / magnitudes.length;
+  }
+
+  private calculateCurrentNoiseLevel(): number {
+    const accelVariance = this.calculateAccelerometerVariance();
+    const gyroVariance = this.calculateGyroscopeVariance();
+    
+    return (accelVariance + gyroVariance) / 2;
+  }
+
+  private estimateCalibrationAccuracy(): number {
+    // Estimate how accurate the current calibration is
+    // This is simplified - in production would compare against known reference
+    const noiseLevel = this.calculateCurrentNoiseLevel();
+    const accuracy = Math.max(0, 100 - (noiseLevel * 20));
+    return Math.min(100, accuracy);
+  }
+
+  private estimateSwingConfidence(swingAnalysis: any): number {
+    let confidence = 40; // Lower base confidence
+    
+    // Duration check - golf swings are typically 600ms to 1800ms
+    const duration = swingAnalysis.duration;
+    if (duration >= 600 && duration <= 1800) {
+      // Optimal duration range
+      confidence += 25;
+    } else if (duration >= 400 && duration < 600) {
+      // Quick swing - still valid but lower confidence
+      confidence += 15;
+    } else if (duration > 1800 && duration <= 2500) {
+      // Slower swing - possible but lower confidence
+      confidence += 10;
+    }
+    
+    // Sample count check - more samples = better data
+    const sampleCount = swingAnalysis.sampleCount;
+    if (sampleCount >= 30) {
+      confidence += 15;
+    } else if (sampleCount >= 20) {
+      confidence += 10;
+    } else if (sampleCount >= 15) {
+      confidence += 5;
+    }
+    
+    // Peak acceleration check - golf swings should have significant acceleration
+    const peakAccel = swingAnalysis.peakAcceleration || 0;
+    if (peakAccel > 50) {
+      // Very strong swing
+      confidence += 20;
+    } else if (peakAccel > 30) {
+      // Strong swing
+      confidence += 15;
+    } else if (peakAccel > 20) {
+      // Moderate swing
+      confidence += 10;
+    } else if (peakAccel > this.swingThreshold.acceleration) {
+      // Meets threshold but weak
+      confidence += 5;
+    }
+    
+    // Peak rotation check - golf swings involve significant rotation
+    const peakRotation = swingAnalysis.peakRotation || 0;
+    if (peakRotation > 15) {
+      confidence += 10;
+    } else if (peakRotation > 10) {
+      confidence += 7;
+    } else if (peakRotation > this.swingThreshold.gyroscope) {
+      confidence += 3;
+    }
+    
+    // Consistency penalty - if acceleration is way too high, it might be false positive
+    if (peakAccel > 100) {
+      confidence -= 20; // Probably dropped the phone or similar
+    } else if (peakAccel > 80) {
+      confidence -= 10; // Very suspicious
+    }
+    
+    return Math.max(30, Math.min(95, confidence)); // Keep between 30-95%
+  }
+
+  private notifySwingDetection(result: MobileSwingDetectionResult): void {
+    this.swingDetectionCallbacks.forEach(callback => {
+      try {
+        callback(result);
+      } catch (error) {
+        console.error('🔴 MobileSensorService: Error in swing detection callback:', error);
+      }
+    });
+  }
+
+  // Public methods for integration
+
+  /**
+   * Set swing detection calibration
+   */
+  public setSwingCalibration(calibration: SwingCalibration): void {
+    this.currentCalibration = calibration;
+    
+    // Initialize swing detection service with calibration
+    this.swingDetectionService.initialize(calibration);
+    
+    console.log('🎯 MobileSensorService: Swing calibration applied', {
+      userId: calibration.userId,
+      handedness: calibration.handedness
+    });
+  }
+
+  /**
+   * Set round active status for context validation
+   */
+  public setRoundActive(isActive: boolean): void {
+    this.isRoundActive = isActive;
+    console.log('⛳ MobileSensorService: Round active status updated:', isActive);
+  }
+
+  /**
+   * Get current sensor quality assessment
+   */
+  public getCurrentSensorQuality(): SensorQuality {
+    return this.calculateSensorQuality();
+  }
+
+  /**
+   * Get detection statistics
+   */
+  public getDetectionStats(): {
+    sessionsActive: boolean,
+    dataBufferSize: number,
+    sensorQuality: SensorQuality,
+    calibrationStatus: string
+  } {
+    return {
+      sessionsActive: this.isMonitoring,
+      dataBufferSize: this.accelerometerBuffer.length,
+      sensorQuality: this.calculateSensorQuality(),
+      calibrationStatus: this.currentCalibration ? 'calibrated' : 'not_calibrated'
+    };
   }
 
   /**

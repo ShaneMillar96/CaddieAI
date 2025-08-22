@@ -100,5 +100,6 @@ public partial class GarminDevice
     /// <summary>
     /// Collection of swing analyses captured from this device
     /// </summary>
+    [InverseProperty("GarminDevice")]
     public virtual ICollection<SwingAnalysis> SwingAnalyses { get; set; } = new List<SwingAnalysis>();
 }

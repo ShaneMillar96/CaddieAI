@@ -10,6 +10,7 @@ public class CreateSwingAnalysisModel
     public int UserId { get; set; }
     public int RoundId { get; set; }
     public int? HoleId { get; set; }
+    public int? GarminDeviceId { get; set; }
     public decimal? SwingSpeedMph { get; set; }
     public decimal? SwingAngleDegrees { get; set; }
     public decimal? BackswingAngleDegrees { get; set; }
@@ -53,6 +54,7 @@ public class SwingAnalysisModel
     public int UserId { get; set; }
     public int RoundId { get; set; }
     public int? HoleId { get; set; }
+    public int? GarminDeviceId { get; set; }
     public decimal? SwingSpeedMph { get; set; }
     public decimal? SwingAngleDegrees { get; set; }
     public decimal? BackswingAngleDegrees { get; set; }

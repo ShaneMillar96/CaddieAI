@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import type { RootState } from '../index';
 import { apiService } from '../../services/ApiService';
+import { SwingFeedbackService, SwingFeedbackRequest, SwingFeedbackResponse } from '../../services/SwingFeedbackService';
 
 // AI Caddie related types
 export interface ShotType {
@@ -34,6 +35,34 @@ export interface UserSkillContext {
   playingStyle?: Record<string, any>;
 }
 
+export interface SwingAnalysisContext {
+  recentSwings: SwingAnalysisSummary[];
+  averageMetrics: SwingMetricsSummary;
+  improvementAreas: string[];
+  strengths: string[];
+  lastAnalysisTimestamp?: string;
+}
+
+export interface SwingAnalysisSummary {
+  timestamp: string;
+  clubType: 'driver' | 'iron' | 'wedge' | 'putter';
+  confidence: number;
+  clubheadSpeed: number;
+  swingTempo: number;
+  balanceScore: number;
+  patternMatch: number;
+  source: 'garmin' | 'mobile_sensors';
+}
+
+export interface SwingMetricsSummary {
+  avgClubheadSpeed: number;
+  avgSwingTempo: number;
+  avgBalanceScore: number;
+  avgPatternMatch: number;
+  swingCount: number;
+  consistency: number;
+}
+
 export interface AICaddieAdvice {
   id: string;
   message: string;
@@ -42,6 +71,7 @@ export interface AICaddieAdvice {
   clubRecommendation?: string;
   confidence: number;
   audioUrl?: string;
+  swingAnalysis?: SwingAnalysisContext;
 }
 
 export interface AICaddieState {
@@ -52,6 +82,7 @@ export interface AICaddieState {
     history: ShotType[];
   };
   userSkillContext: UserSkillContext | null;
+  swingAnalysisContext: SwingAnalysisContext | null;
   adviceHistory: AICaddieAdvice[];
   isInitialized: boolean;
   isLoading: boolean;
@@ -73,6 +104,7 @@ const initialState: AICaddieState = {
     history: [],
   },
   userSkillContext: null,
+  swingAnalysisContext: null,
   adviceHistory: [],
   isInitialized: false,
   isLoading: false,
@@ -189,6 +221,56 @@ export const fetchUserContext = createAsyncThunk(
   }
 );
 
+export const processSwingAnalysis = createAsyncThunk(
+  'aiCaddie/processSwingAnalysis',
+  async (params: {
+    swingAnalysis: SwingAnalysisSummary;
+    userId: number;
+    roundId?: number;
+    userSkillLevel: number;
+    courseContext?: {
+      holePar: number;
+      holeDistance: number;
+      weatherConditions?: string;
+    };
+  }, { getState, rejectWithValue }) => {
+    try {
+      console.log('🔄 processSwingAnalysis: Processing swing analysis:', {
+        clubType: params.swingAnalysis.clubType,
+        confidence: params.swingAnalysis.confidence,
+        userId: params.userId
+      });
+
+      const state = getState() as RootState;
+      const recentSwings = state.aiCaddie.swingAnalysisContext?.recentSwings || [];
+
+      // Create swing feedback request
+      const feedbackRequest: SwingFeedbackRequest = {
+        userId: params.userId,
+        roundId: params.roundId,
+        swingAnalysis: params.swingAnalysis,
+        userSkillLevel: params.userSkillLevel,
+        recentSwings,
+        courseContext: params.courseContext,
+      };
+
+      // Note: SwingFeedbackService will be initialized in the component
+      // For now, we'll just return the swing data and let the UI handle feedback generation
+      console.log('✅ processSwingAnalysis: Swing analysis processed successfully');
+      
+      return {
+        swingAnalysis: params.swingAnalysis,
+        feedbackRequest,
+        timestamp: new Date().toISOString(),
+      };
+
+    } catch (error) {
+      console.error('❌ processSwingAnalysis: Error processing swing analysis:', error);
+      return rejectWithValue(error instanceof Error ? error.message : 'Unknown error');
+    }
+  }
+);
+
 // Helper function to create default user context
 function createDefaultUserContext(): UserSkillContext {
   return {
@@ -279,6 +361,71 @@ const aiCaddieSlice = createSlice({
       state.adviceHistory = [];
     },
 
+    // Swing analysis actions
+    setSwingAnalysisContext: (state, action: PayloadAction<SwingAnalysisContext>) => {
+      state.swingAnalysisContext = action.payload;
+    },
+    addSwingAnalysis: (state, action: PayloadAction<SwingAnalysisSummary>) => {
+      if (!state.swingAnalysisContext) {
+        state.swingAnalysisContext = {
+          recentSwings: [],
+          averageMetrics: {
+            avgClubheadSpeed: 0,
+            avgSwingTempo: 0,
+            avgBalanceScore: 0,
+            avgPatternMatch: 0,
+            swingCount: 0,
+            consistency: 0,
+          },
+          improvementAreas: [],
+          strengths: [],
+        };
+      }
+      
+      // Add new swing to the beginning of the array
+      state.swingAnalysisContext.recentSwings.unshift(action.payload);
+      
+      // Keep only last 20 swings
+      if (state.swingAnalysisContext.recentSwings.length > 20) {
+        state.swingAnalysisContext.recentSwings = state.swingAnalysisContext.recentSwings.slice(0, 20);
+      }
+      
+      // Update average metrics
+      const swings = state.swingAnalysisContext.recentSwings;
+      const count = swings.length;
+      
+      if (count > 0) {
+        state.swingAnalysisContext.averageMetrics = {
+          avgClubheadSpeed: swings.reduce((sum, s) => sum + s.clubheadSpeed, 0) / count,
+          avgSwingTempo: swings.reduce((sum, s) => sum + s.swingTempo, 0) / count,
+          avgBalanceScore: swings.reduce((sum, s) => sum + s.balanceScore, 0) / count,
+          avgPatternMatch: swings.reduce((sum, s) => sum + s.patternMatch, 0) / count,
+          swingCount: count,
+          consistency: Math.min(95, action.payload.confidence), // Simplified consistency calculation
+        };
+      }
+      
+      // Update timestamp
+      state.swingAnalysisContext.lastAnalysisTimestamp = action.payload.timestamp;
+    },
+    updateSwingAnalysisMetrics: (state, action: PayloadAction<{
+      improvementAreas: string[];
+      strengths: string[];
+      averageMetrics?: SwingMetricsSummary;
+    }>) => {
+      if (state.swingAnalysisContext) {
+        state.swingAnalysisContext.improvementAreas = action.payload.improvementAreas;
+        state.swingAnalysisContext.strengths = action.payload.strengths;
+        if (action.payload.averageMetrics) {
+          state.swingAnalysisContext.averageMetrics = action.payload.averageMetrics;
+        }
+        state.swingAnalysisContext.lastAnalysisTimestamp = new Date().toISOString();
+      }
+    },
+    clearSwingAnalysisContext: (state) => {
+      state.swingAnalysisContext = null;
+    },
+
     // General actions
     setError: (state, action: PayloadAction<string | null>) => {
       state.error = action.payload;
@@ -365,6 +512,71 @@ const aiCaddieSlice = createSlice({
         };
         console.warn('⚠️ aiCaddieSlice: User context fetch rejected, using fallback:', state.userSkillContext);
       });
+
+    // Process swing analysis
+    builder
+      .addCase(processSwingAnalysis.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(processSwingAnalysis.fulfilled, (state, action) => {
+        state.isLoading = false;
+        
+        // Add the swing analysis to context
+        const swingAnalysis = action.payload.swingAnalysis;
+        
+        if (!state.swingAnalysisContext) {
+          state.swingAnalysisContext = {
+            recentSwings: [],
+            averageMetrics: {
+              avgClubheadSpeed: 0,
+              avgSwingTempo: 0,
+              avgBalanceScore: 0,
+              avgPatternMatch: 0,
+              swingCount: 0,
+              consistency: 0,
+            },
+            improvementAreas: [],
+            strengths: [],
+          };
+        }
+        
+        // Add new swing (using the existing addSwingAnalysis logic)
+        state.swingAnalysisContext.recentSwings.unshift(swingAnalysis);
+        
+        // Keep only last 20 swings
+        if (state.swingAnalysisContext.recentSwings.length > 20) {
+          state.swingAnalysisContext.recentSwings = state.swingAnalysisContext.recentSwings.slice(0, 20);
+        }
+        
+        // Update average metrics
+        const swings = state.swingAnalysisContext.recentSwings;
+        const count = swings.length;
+        
+        if (count > 0) {
+          state.swingAnalysisContext.averageMetrics = {
+            avgClubheadSpeed: swings.reduce((sum, s) => sum + s.clubheadSpeed, 0) / count,
+            avgSwingTempo: swings.reduce((sum, s) => sum + s.swingTempo, 0) / count,
+            avgBalanceScore: swings.reduce((sum, s) => sum + s.balanceScore, 0) / count,
+            avgPatternMatch: swings.reduce((sum, s) => sum + s.patternMatch, 0) / count,
+            swingCount: count,
+            consistency: Math.min(95, swingAnalysis.confidence),
+          };
+        }
+        
+        state.swingAnalysisContext.lastAnalysisTimestamp = action.payload.timestamp;
+        
+        console.log('✅ aiCaddieSlice: Swing analysis processed and added to context:', {
+          totalSwings: count,
+          clubType: swingAnalysis.clubType,
+          confidence: swingAnalysis.confidence
+        });
+      })
+      .addCase(processSwingAnalysis.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload as string;
+        console.error('❌ aiCaddieSlice: Swing analysis processing failed:', action.payload);
+      });
   },
 });
 
@@ -382,6 +594,10 @@ export const {
   setUserSkillContext,
   addAdvice,
   clearAdviceHistory,
+  setSwingAnalysisContext,
+  addSwingAnalysis,
+  updateSwingAnalysisMetrics,
+  clearSwingAnalysisContext,
   setError,
   setInitialized,
   clearError,
@@ -395,5 +611,10 @@ export const selectUserSkillContext = (state: RootState) => state.aiCaddie.userS
 export const selectAdviceHistory = (state: RootState) => state.aiCaddie.adviceHistory;
 export const selectIsVoiceActive = (state: RootState) => state.aiCaddie.voiceSession.isActive;
 export const selectCurrentShotType = (state: RootState) => state.aiCaddie.shotTypeRecognition.currentShot;
+export const selectSwingAnalysisContext = (state: RootState) => state.aiCaddie.swingAnalysisContext;
+export const selectRecentSwings = (state: RootState) => state.aiCaddie.swingAnalysisContext?.recentSwings || [];
+export const selectAverageSwingMetrics = (state: RootState) => state.aiCaddie.swingAnalysisContext?.averageMetrics;
+export const selectSwingImprovementAreas = (state: RootState) => state.aiCaddie.swingAnalysisContext?.improvementAreas || [];
+export const selectSwingStrengths = (state: RootState) => state.aiCaddie.swingAnalysisContext?.strengths || [];
 
 export default aiCaddieSlice.reducer;

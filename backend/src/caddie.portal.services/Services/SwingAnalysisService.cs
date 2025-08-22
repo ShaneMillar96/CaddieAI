@@ -16,6 +16,7 @@ public class SwingAnalysisService : ISwingAnalysisService
     private readonly ISwingAnalysisRepository _swingAnalysisRepository;
     private readonly IRoundRepository _roundRepository;
     private readonly IHoleRepository _holeRepository;
+    private readonly IGarminDeviceRepository _garminDeviceRepository;
     private readonly IMapper _mapper;
     private readonly ILogger<SwingAnalysisService> _logger;
 
@@ -23,12 +24,14 @@ public class SwingAnalysisService : ISwingAnalysisService
         ISwingAnalysisRepository swingAnalysisRepository,
         IRoundRepository roundRepository,
         IHoleRepository holeRepository,
+        IGarminDeviceRepository garminDeviceRepository,
         IMapper mapper,
         ILogger<SwingAnalysisService> logger)
     {
         _swingAnalysisRepository = swingAnalysisRepository;
         _roundRepository = roundRepository;
         _holeRepository = holeRepository;
+        _garminDeviceRepository = garminDeviceRepository;
         _mapper = mapper;
         _logger = logger;
     }
@@ -108,18 +111,35 @@ public class SwingAnalysisService : ISwingAnalysisService
     {
         try
         {
+            // Log the incoming model for debugging
+            _logger.LogInformation("Creating swing analysis with data: {@SwingAnalysisModel}", new {
+                model.UserId,
+                model.RoundId,
+                model.HoleId,
+                model.DetectionSource,
+                model.DetectionConfidence,
+                model.SwingSpeedMph,
+                model.DeviceModel,
+                model.GarminDeviceId
+            });
+
             // Validate the model
             var validation = await ValidateSwingAnalysisAsync(model);
             if (!validation.IsValid)
             {
+                _logger.LogError("Swing analysis validation failed for user {UserId}, round {RoundId}: {ValidationErrors}", 
+                    model.UserId, model.RoundId, string.Join(", ", validation.ValidationErrors));
                 throw new ArgumentException($"Invalid swing analysis data: {string.Join(", ", validation.ValidationErrors)}");
             }
+
+            // Handle GarminDeviceId based on detection source
+            await HandleGarminDeviceIdAsync(model);
 
             var swingAnalysis = _mapper.Map<SwingAnalysis>(model);
             var createdSwingAnalysis = await _swingAnalysisRepository.CreateAsync(swingAnalysis);
 
-            _logger.LogInformation("Created swing analysis {SwingAnalysisId} for user {UserId} in round {RoundId}", 
-                createdSwingAnalysis.Id, model.UserId, model.RoundId);
+            _logger.LogInformation("Created swing analysis {SwingAnalysisId} for user {UserId} in round {RoundId} with GarminDeviceId {GarminDeviceId}", 
+                createdSwingAnalysis.Id, model.UserId, model.RoundId, createdSwingAnalysis.GarminDeviceId);
 
             return _mapper.Map<SwingAnalysisModel>(createdSwingAnalysis);
         }
@@ -269,6 +289,9 @@ public class SwingAnalysisService : ISwingAnalysisService
         {
             // Check if round exists and belongs to user
             var round = await _roundRepository.GetByIdAsync(model.RoundId);
+            _logger.LogInformation("Validating round {RoundId}: Found={Found}, UserId={RoundUserId}, StatusId={StatusId}", 
+                model.RoundId, round != null, round?.UserId, round?.StatusId);
+            
             if (round == null)
             {
                 errors.Add("Round not found");
@@ -277,9 +300,15 @@ public class SwingAnalysisService : ISwingAnalysisService
             {
                 errors.Add("Round does not belong to the specified user");
             }
-            else if (round.StatusId != (int)caddie.portal.dal.Enums.RoundStatus.InProgress)
+            else
             {
-                errors.Add("Swing analysis can only be created during active rounds");
+                // Allow swing analysis creation regardless of round status for now
+                // This provides flexibility for the mobile app to create historical swing data
+                if (round.StatusId != (int)caddie.portal.dal.Enums.RoundStatus.InProgress)
+                {
+                    _logger.LogInformation("Creating swing analysis for round {RoundId} with status {StatusId} (not InProgress)", 
+                        model.RoundId, round.StatusId);
+                }
             }
 
             // Check if hole exists (if specified)
@@ -474,5 +503,80 @@ public class SwingAnalysisService : ISwingAnalysisService
         }
 
         return feedback.Any() ? string.Join(" ", feedback) : "Swing recorded successfully.";
+    }
+
+    /// <summary>
+    /// Handle GarminDeviceId assignment based on detection source
+    /// </summary>
+    /// <param name="model">Create swing analysis model</param>
+    private async Task HandleGarminDeviceIdAsync(CreateSwingAnalysisModel model)
+    {
+        try
+        {
+            // If detection source is mobile, ensure GarminDeviceId is null
+            if (model.DetectionSource?.ToLower() == "mobile")
+            {
+                model.GarminDeviceId = null;
+                _logger.LogDebug("Mobile detection source - GarminDeviceId set to null for user {UserId}", model.UserId);
+                return;
+            }
+
+            // If detection source is garmin, try to set GarminDeviceId
+            if (model.DetectionSource?.ToLower() == "garmin")
+            {
+                // If GarminDeviceId is already provided, validate it exists and belongs to user
+                if (model.GarminDeviceId.HasValue)
+                {
+                    var existingDevice = await _garminDeviceRepository.GetByIdAsync(model.GarminDeviceId.Value);
+                    if (existingDevice == null || existingDevice.UserId != model.UserId)
+                    {
+                        _logger.LogWarning("Invalid GarminDeviceId {GarminDeviceId} provided for user {UserId} - resetting to null", 
+                            model.GarminDeviceId.Value, model.UserId);
+                        model.GarminDeviceId = null;
+                    }
+                    else
+                    {
+                        _logger.LogDebug("Using provided GarminDeviceId {GarminDeviceId} for user {UserId}", 
+                            model.GarminDeviceId.Value, model.UserId);
+                    }
+                }
+                else
+                {
+                    // Try to find user's preferred Garmin device
+                    var preferredDevice = await _garminDeviceRepository.GetPreferredDeviceAsync(model.UserId);
+                    if (preferredDevice != null)
+                    {
+                        model.GarminDeviceId = preferredDevice.Id;
+                        _logger.LogDebug("Using preferred GarminDeviceId {GarminDeviceId} for user {UserId}", 
+                            preferredDevice.Id, model.UserId);
+                    }
+                    else
+                    {
+                        // Try to find any connected Garmin device for the user
+                        var connectedDevices = await _garminDeviceRepository.GetConnectedDevicesAsync(model.UserId);
+                        var firstConnectedDevice = connectedDevices.FirstOrDefault();
+                        if (firstConnectedDevice != null)
+                        {
+                            model.GarminDeviceId = firstConnectedDevice.Id;
+                            _logger.LogDebug("Using first connected GarminDeviceId {GarminDeviceId} for user {UserId}", 
+                                firstConnectedDevice.Id, model.UserId);
+                        }
+                        else
+                        {
+                            // No Garmin devices found, but we don't fail the swing creation
+                            model.GarminDeviceId = null;
+                            _logger.LogDebug("No connected Garmin devices found for user {UserId} - GarminDeviceId set to null", model.UserId);
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // If there's any error with Garmin device lookup, don't fail the swing analysis creation
+            // Just log the error and continue with null GarminDeviceId
+            _logger.LogWarning(ex, "Error handling GarminDeviceId for user {UserId} - continuing with null GarminDeviceId", model.UserId);
+            model.GarminDeviceId = null;
+        }
     }
 }

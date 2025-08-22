@@ -511,6 +511,7 @@ export interface CaddieContext {
 export type CaddieScenario = 
   | 'ShotPlacementWelcome'
   | 'ClubRecommendation'
+  | 'SwingAnalysis'
   | 'ErrorHandling'
   | 'GeneralAssistance';
 

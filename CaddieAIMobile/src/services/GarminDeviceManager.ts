@@ -12,7 +12,7 @@ import {
   SensorStatus,
   getMobileSensorService 
 } from './MobileSensorService';
-import ApiService from './ApiService';
+import { ApiService } from './ApiService';
 import TokenStorage from './tokenStorage';
 
 // Device preference types
@@ -924,4 +924,5 @@ export const getGarminDeviceManager = (): GarminDeviceManager => {
   return _garminDeviceManager;
 };
 
-export const garminDeviceManager = getGarminDeviceManager();
+// Remove eager initialization to prevent errors during module loading
+// Use getGarminDeviceManager() when needed instead

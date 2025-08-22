@@ -255,6 +255,21 @@ export const GarminConnectionSection: React.FC = () => {
       <Text style={styles.sectionDescription}>
         Connect your Garmin Forerunner 55 or other compatible device for automatic swing detection and analysis during rounds.
       </Text>
+      
+      {/* Pairing Mode Instructions */}
+      {isScanning && (
+        <View style={styles.pairingInstructionsCard}>
+          <Icon name="info" size={20} color="#3498db" />
+          <View style={styles.pairingInstructions}>
+            <Text style={styles.pairingTitle}>Having trouble finding your Garmin device?</Text>
+            <Text style={styles.pairingStep}>1. Put your Forerunner 55 in pairing mode:</Text>
+            <Text style={styles.pairingSubStep}>   • Hold LIGHT/BLUETOOTH button for 2-3 seconds</Text>
+            <Text style={styles.pairingSubStep}>   • Look for "Bluetooth" on screen</Text>
+            <Text style={styles.pairingStep}>2. Make sure your device is close to your phone</Text>
+            <Text style={styles.pairingStep}>3. Try scanning again if no devices appear</Text>
+          </View>
+        </View>
+      )}
 
       {/* Current Device Status */}
       {deviceStatusSummary.type ? (
@@ -396,6 +411,40 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 16,
     lineHeight: 20,
+  },
+  
+  // Pairing Instructions Card
+  pairingInstructionsCard: {
+    backgroundColor: '#e8f4f8',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: '#3498db',
+    alignItems: 'flex-start',
+  },
+  pairingInstructions: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  pairingTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 8,
+  },
+  pairingStep: {
+    fontSize: 13,
+    color: '#34495e',
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  pairingSubStep: {
+    fontSize: 12,
+    color: '#7f8c8d',
+    marginBottom: 2,
+    marginLeft: 8,
   },
   
   // Status Card

@@ -38,6 +38,7 @@ import {
 import { VoiceAICaddieInterface } from '../../components/ai/VoiceAICaddieInterface';
 import { SkillLevelDisplay } from '../../components/ai/SkillLevelDisplay';
 import { ShotTypeRecognition } from '../../components/ai/ShotTypeRecognition';
+import { SwingAnalysisSection } from '../../components/swing';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -203,6 +204,27 @@ export const AICaddieScreen: React.FC = () => {
     );
   };
 
+  const renderSwingAnalysis = () => {
+    // Only show swing analysis during active rounds
+    if (!activeRound) return null;
+
+    return (
+      <View style={styles.contextSection}>
+        <SwingAnalysisSection 
+          showDetailedMetrics={true}
+          enableAutoDetection={true}
+          onSwingDetected={(analysis) => {
+            console.log('🏌️ AICaddieScreen: Swing detected:', {
+              confidence: analysis.confidence,
+              clubType: analysis.clubType,
+              source: analysis.source
+            });
+          }}
+        />
+      </View>
+    );
+  };
+
   const renderShotPlacementContext = () => {
     console.log('🎯 AICaddieScreen: Rendering shot placement context', {
       shotPlacementTarget,
@@ -343,6 +365,7 @@ export const AICaddieScreen: React.FC = () => {
         {renderSkillContext()}
         {renderShotPlacementContext()}
         {renderShotTypeRecognition()}
+        {renderSwingAnalysis()}
         {renderVoiceInterface()}
         {renderAdviceHistory()}
         {renderInstructions()}

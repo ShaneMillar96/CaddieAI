@@ -130,6 +130,12 @@ export const scanForGarminDevices = createAsyncThunk(
   async (timeoutMs: number = 10000, { rejectWithValue }) => {
     try {
       const manager = getGarminDeviceManager();
+      
+      // Initialize manager if not already initialized
+      if (!manager.isInitialized) {
+        await manager.initialize();
+      }
+      
       const devices = await manager.scanForGarminDevices(timeoutMs);
       return devices;
     } catch (error: any) {
@@ -143,6 +149,12 @@ export const connectToGarminDevice = createAsyncThunk(
   async (deviceId: string, { rejectWithValue }) => {
     try {
       const manager = getGarminDeviceManager();
+      
+      // Initialize manager if not already initialized
+      if (!manager.isInitialized) {
+        await manager.initialize();
+      }
+      
       const success = await manager.connectToGarminDevice(deviceId);
       
       if (success) {
@@ -182,6 +194,12 @@ export const activateMobileSensors = createAsyncThunk(
   async (_, { rejectWithValue }) => {
     try {
       const manager = getGarminDeviceManager();
+      
+      // Initialize manager if not already initialized
+      if (!manager.isInitialized) {
+        await manager.initialize();
+      }
+      
       const success = await manager.activateMobileSensors();
       
       if (success) {

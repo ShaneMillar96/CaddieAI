@@ -4,6 +4,7 @@ using Microsoft.OpenApi.Models;
 using Serilog;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using caddie.portal.api.Extensions;
 using caddie.portal.api.Middleware;
 using caddie.portal.dal.Context;
@@ -28,7 +29,13 @@ Log.Logger = new LoggerConfiguration()
 builder.Host.UseSerilog();
 
 // Add services to the container
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Configure camelCase JSON serialization for frontend compatibility
+        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.WriteIndented = true; // Pretty print for debugging
+    });
 
 // Configure database and Entity Framework
 builder.Services.AddDatabase(builder.Configuration);

@@ -9,7 +9,8 @@ import {
   Platform,
   Dimensions,
 } from 'react-native';
-import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-voice/voice';
+import { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-voice/voice';
+import { safeVoice } from '../../utils/voiceWrapper';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { check, request, PERMISSIONS, RESULTS } from 'react-native-permissions';
 import { voiceAIApiService, VoiceAIRequest } from '../../services/voiceAIApi';
@@ -157,14 +158,14 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
 
       setHasPermissions(true);
 
-      // Initialize Voice with error handling
-      if (Voice) {
-        Voice.onSpeechStart = onSpeechStart;
-        Voice.onSpeechRecognized = onSpeechRecognized;
-        Voice.onSpeechEnd = onSpeechEnd;
-        Voice.onSpeechError = onSpeechError;
-        Voice.onSpeechResults = onSpeechResults;
-        Voice.onSpeechPartialResults = onSpeechPartialResults;
+      // Initialize Voice with error handling using safe wrapper
+      if (safeVoice.isAvailable()) {
+        safeVoice.setOnSpeechStart(onSpeechStart);
+        safeVoice.setOnSpeechRecognized(onSpeechRecognized);
+        safeVoice.setOnSpeechEnd(onSpeechEnd);
+        safeVoice.setOnSpeechError(onSpeechError);
+        safeVoice.setOnSpeechResults(onSpeechResults);
+        safeVoice.setOnSpeechPartialResults(onSpeechPartialResults);
       } else {
         console.warn('Voice module not available');
       }
@@ -243,8 +244,8 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
 
   const cleanupVoiceServices = async () => {
     try {
-      if (Voice && typeof Voice.destroy === 'function') {
-        await Voice.destroy();
+      if (safeVoice.isAvailable()) {
+        await safeVoice.destroy();
       }
       
       // TTS cleanup no longer needed - using OpenAI real-time audio
@@ -496,7 +497,7 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
         return;
       }
 
-      if (!Voice || typeof Voice.start !== 'function') {
+      if (!safeVoice.isAvailable()) {
         Alert.alert('Voice Recognition Unavailable', 'Voice recognition module is not available. Please restart the app.');
         return;
       }
@@ -504,7 +505,7 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
       setRecognizedText('');
       setVoiceState('listening');
       
-      await Voice.start('en-US');
+      await safeVoice.start('en-US');
     } catch (error) {
       console.error('Error starting voice recognition:', error);
       setVoiceState('error');
@@ -520,8 +521,8 @@ export const VoiceAIInterface: React.FC<VoiceAIInterfaceProps> = React.memo(({
   // Stop voice recognition
   const stopListening = async () => {
     try {
-      if (Voice && typeof Voice.stop === 'function') {
-        await Voice.stop();
+      if (safeVoice.isAvailable()) {
+        await safeVoice.stop();
       }
       setIsListening(false);
     } catch (error) {

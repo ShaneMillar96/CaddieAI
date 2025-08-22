@@ -80,27 +80,93 @@ public class SwingAnalysisController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse), StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> CreateSwingAnalysis([FromBody] CreateSwingAnalysisRequestDto request)
     {
+        // Enhanced logging for debugging model binding issues
+        _logger.LogInformation("🎯 SwingAnalysisController: CreateSwingAnalysis endpoint triggered");
+        
+        if (request != null)
+        {
+            _logger.LogInformation("📊 SwingAnalysisController: Request received - UserId: {UserId}, RoundId: {RoundId}, DetectionSource: {DetectionSource}, DetectionConfidence: {DetectionConfidence}", 
+                request.UserId, request.RoundId, request.DetectionSource, request.DetectionConfidence);
+        }
+        else
+        {
+            _logger.LogWarning("⚠️ SwingAnalysisController: Request is null - possible model binding failure");
+        }
+
         try
         {
             if (!ModelState.IsValid)
             {
-                var errors = ModelState.Values
-                    .SelectMany(v => v.Errors)
-                    .Select(e => e.ErrorMessage)
-                    .ToList();
+                var errorMessages = new List<string>();
+                var detailedErrors = new List<object>();
                 
-                return BadRequest(ApiResponse.ErrorResponse("Validation failed", "VALIDATION_ERROR", errors));
+                foreach (var kvp in ModelState)
+                {
+                    if (kvp.Value?.Errors.Count > 0)
+                    {
+                        foreach (var error in kvp.Value.Errors)
+                        {
+                            errorMessages.Add($"{kvp.Key}: {error.ErrorMessage}");
+                        }
+                        
+                        detailedErrors.Add(new 
+                        {
+                            Field = kvp.Key,
+                            Errors = kvp.Value.Errors.Select(e => new {
+                                ErrorMessage = e.ErrorMessage,
+                                AttemptedValue = kvp.Value.AttemptedValue
+                            }).ToList()
+                        });
+                    }
+                }
+                
+                _logger.LogWarning("Swing analysis validation failed for user {UserId}: {ValidationErrors}", 
+                    request?.UserId, 
+                    System.Text.Json.JsonSerializer.Serialize(detailedErrors));
+                
+                return BadRequest(ApiResponse.ErrorResponse("Validation failed", "VALIDATION_ERROR", errorMessages));
             }
 
             var currentUserId = GetCurrentUserId();
             if (currentUserId == null)
                 return Unauthorized(ApiResponse.ErrorResponse("User not authenticated", "UNAUTHORIZED"));
 
+            // Check for null request after model binding
+            if (request == null)
+            {
+                _logger.LogWarning("⚠️ SwingAnalysisController: Request is null after model binding");
+                return BadRequest(ApiResponse.ErrorResponse("Invalid request data", "NULL_REQUEST"));
+            }
+
             // Verify user can only create swing analyses for themselves
             if (currentUserId.Value != request.UserId)
                 return Forbid();
 
-            var model = _mapper.Map<CreateSwingAnalysisModel>(request);
+            // Log the request data for debugging
+            _logger.LogInformation("Processing swing analysis creation request: {@SwingAnalysisRequest}", new {
+                request.UserId,
+                request.RoundId,
+                request.HoleId,
+                request.DetectionSource,
+                request.DetectionConfidence,
+                request.SwingSpeedMph,
+                request.DeviceModel,
+                HasLatitude = request.Latitude.HasValue,
+                HasLongitude = request.Longitude.HasValue,
+                HasRawSensorData = request.RawSensorData != null
+            });
+
+            CreateSwingAnalysisModel model;
+            try
+            {
+                model = _mapper.Map<CreateSwingAnalysisModel>(request);
+            }
+            catch (Exception mappingEx)
+            {
+                _logger.LogError(mappingEx, "Error mapping CreateSwingAnalysisRequestDto to CreateSwingAnalysisModel for user {UserId}", request.UserId);
+                return BadRequest(ApiResponse.ErrorResponse("Invalid request data format", "MAPPING_ERROR"));
+            }
+
             var createdSwingAnalysis = await _swingAnalysisService.CreateAsync(model);
             var responseDto = _mapper.Map<SwingAnalysisResponseDto>(createdSwingAnalysis);
 
@@ -113,7 +179,7 @@ public class SwingAnalysisController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating swing analysis for user {UserId}", request.UserId);
+            _logger.LogError(ex, "Error creating swing analysis for user {UserId}", request?.UserId ?? 0);
             return StatusCode(500, ApiResponse.ErrorResponse("Failed to create swing analysis", "INTERNAL_ERROR"));
         }
     }
