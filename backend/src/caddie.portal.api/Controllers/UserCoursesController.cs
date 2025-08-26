@@ -4,6 +4,7 @@ using AutoMapper;
 using caddie.portal.services.Interfaces;
 using caddie.portal.services.Models;
 using caddie.portal.api.DTOs.UserCourse;
+using caddie.portal.api.DTOs.Course;
 using caddie.portal.api.DTOs.Common;
 using System.Security.Claims;
 
@@ -15,15 +16,18 @@ namespace caddie.portal.api.Controllers;
 public class UserCoursesController : ControllerBase
 {
     private readonly IUserCourseService _userCourseService;
+    private readonly ICourseService _courseService;
     private readonly IMapper _mapper;
     private readonly ILogger<UserCoursesController> _logger;
 
     public UserCoursesController(
         IUserCourseService userCourseService,
+        ICourseService courseService,
         IMapper mapper,
         ILogger<UserCoursesController> logger)
     {
         _userCourseService = userCourseService;
+        _courseService = courseService;
         _mapper = mapper;
         _logger = logger;
     }
@@ -229,6 +233,56 @@ public class UserCoursesController : ControllerBase
         {
             _logger.LogError(ex, "Error deleting course {CourseId} for user {UserId}", id, GetCurrentUserId());
             return StatusCode(500, ApiResponse<bool>.ErrorResponse("An error occurred while deleting the course"));
+        }
+    }
+
+    /// <summary>
+    /// Get course suggestions based on user preferences and location
+    /// </summary>
+    [HttpGet("suggestions")]
+    public async Task<ActionResult<ApiResponse<IEnumerable<CourseListResponseDto>>>> GetCourseSuggestions([FromQuery] int limit = 5)
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            
+            // Get user courses to exclude them from suggestions
+            var userCourses = await _userCourseService.GetUserCoursesAsync(userId);
+            var excludeIds = userCourses.Select(uc => uc.CourseId).ToList();
+            
+            // Get suggested courses (simplified algorithm for now)
+            var allCourses = await _courseService.GetAllCoursesAsync();
+            var suggestions = allCourses
+                .Where(course => !excludeIds.Contains(course.Id) && course.IsActive == true)
+                .OrderBy(course => course.Name)
+                .Take(limit)
+                .ToList();
+            
+            var response = suggestions.Select(course => new CourseListResponseDto
+            {
+                Id = course.Id,
+                Name = course.Name,
+                Description = course.Description,
+                City = course.City,
+                State = course.State,
+                Country = course.Country,
+                TotalHoles = course.TotalHoles,
+                ParTotal = course.ParTotal,
+                GreenFeeRange = course.GreenFeeRange,
+                IsActive = course.IsActive,
+                Latitude = (double?)course.Latitude,
+                Longitude = (double?)course.Longitude
+            });
+
+            _logger.LogInformation("Retrieved {Count} course suggestions for user {UserId}", suggestions.Count, userId);
+            return Ok(ApiResponse<IEnumerable<CourseListResponseDto>>.SuccessResponse(response));
+        }
+        catch (Exception ex)
+        {
+            var userId = 0;
+            try { userId = GetCurrentUserId(); } catch { /* Ignore if user ID extraction fails */ }
+            _logger.LogError(ex, "Error getting course suggestions for user {UserId}", userId);
+            return StatusCode(500, ApiResponse<IEnumerable<CourseListResponseDto>>.ErrorResponse("An error occurred while retrieving course suggestions"));
         }
     }
 

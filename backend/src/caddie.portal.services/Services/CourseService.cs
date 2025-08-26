@@ -143,8 +143,11 @@ public class CourseService : ICourseService
             var course = new Course
             {
                 Name = model.Name.Trim(),
+                Address = model.Address?.Trim(),
+                City = model.City?.Trim(),
+                State = model.State?.Trim(),
+                Country = model.Country.Trim(),
                 Location = _geometryFactory.CreatePoint(new Coordinate(model.Longitude, model.Latitude)),
-                // TODO: Set Address, City, State, Country, Latitude, Longitude from model
                 Latitude = (decimal)model.Latitude,
                 Longitude = (decimal)model.Longitude,
                 Holes = model.Holes.Select(h => new Hole

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using OpenAI;
 using OpenAI.Chat;
 using System.Text.Json;
+using System.Collections.Concurrent;
 using caddie.portal.services.Configuration;
 using caddie.portal.services.Interfaces;
 using caddie.portal.services.Exceptions;
@@ -11,12 +12,19 @@ using OpenAIChatMessage = OpenAI.Chat.ChatMessage;
 
 namespace caddie.portal.services.Services;
 
+public class RateLimitEntry
+{
+    public int UserId { get; set; }
+    public DateTime Timestamp { get; set; }
+}
+
 public class OpenAIService : IOpenAIService
 {
     private readonly IGolfContextService _golfContextService;
     private readonly OpenAISettings _openAISettings;
     private readonly ILogger<OpenAIService> _logger;
     private readonly OpenAIClient _openAIClient;
+    private static readonly ConcurrentDictionary<string, RateLimitEntry> _rateLimitCache = new();
 
     public OpenAIService(
         IGolfContextService golfContextService,
@@ -49,18 +57,54 @@ public class OpenAIService : IOpenAIService
     {
         try
         {
-            // Simple rate limiting implementation for voice AI
-            // Since chat messages are removed, we'll do a basic time-based check
-            await Task.CompletedTask; // Placeholder for async signature
+            var key = $"openai_rate_limit:{userId}";
+            var now = DateTime.UtcNow;
+            var oneHourAgo = now.AddHours(-1);
             
-            // TODO: Implement rate limiting based on actual voice AI usage
-            // For now, allow all requests
+            // Clean up old entries and count current requests
+            var userRequests = _rateLimitCache.Values
+                .Where(entry => entry.UserId == userId && entry.Timestamp > oneHourAgo)
+                .Count();
+            
+            // Check if limit exceeded (50 requests per hour for voice AI)
+            const int REQUESTS_PER_HOUR = 50;
+            if (userRequests >= REQUESTS_PER_HOUR)
+            {
+                _logger.LogWarning("Rate limit exceeded for user {UserId}: {RequestCount}/{MaxRequests}", 
+                    userId, userRequests, REQUESTS_PER_HOUR);
+                return true;
+            }
+            
+            // Add current request to cache
+            var requestId = $"{userId}:{now:yyyyMMddHHmmssfff}";
+            _rateLimitCache.TryAdd(requestId, new RateLimitEntry 
+            { 
+                UserId = userId, 
+                Timestamp = now 
+            });
+            
+            // Cleanup old entries periodically
+            if (_rateLimitCache.Count > 1000)
+            {
+                var keysToRemove = _rateLimitCache
+                    .Where(kvp => kvp.Value.Timestamp < oneHourAgo)
+                    .Select(kvp => kvp.Key)
+                    .Take(100)
+                    .ToList();
+                
+                foreach (var keyToRemove in keysToRemove)
+                {
+                    _rateLimitCache.TryRemove(keyToRemove, out _);
+                }
+            }
+            
+            await Task.CompletedTask;
             return false;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error checking rate limit for user {UserId}", userId);
-            return false; // Allow on error
+            return false; // Allow on error to prevent service disruption
         }
     }
 
@@ -68,11 +112,27 @@ public class OpenAIService : IOpenAIService
     {
         try
         {
-            await Task.CompletedTask; // Placeholder for async signature
+            var fromDateTime = fromDate ?? DateTime.UtcNow.AddDays(-30); // Default to last 30 days
             
-            // TODO: Implement usage statistics for voice AI
-            // Since chat message repository is removed, return empty stats
-            return (0, 0, 0m);
+            // Count requests from rate limit cache for basic statistics
+            var userRequests = _rateLimitCache.Values
+                .Where(entry => entry.UserId == userId && entry.Timestamp >= fromDateTime)
+                .Count();
+            
+            // Estimate token usage based on voice AI patterns
+            // Voice AI requests typically use 500-1500 tokens per conversation
+            const int AVERAGE_TOKENS_PER_REQUEST = 800;
+            var estimatedTokens = userRequests * AVERAGE_TOKENS_PER_REQUEST;
+            
+            // Estimate cost based on OpenAI pricing (GPT-4 voice: ~$0.03 per 1K tokens)
+            const decimal COST_PER_1K_TOKENS = 0.03m;
+            var estimatedCost = (estimatedTokens / 1000m) * COST_PER_1K_TOKENS;
+            
+            _logger.LogInformation("Usage statistics for user {UserId}: {Requests} requests, ~{Tokens} tokens, ~${Cost:F2}", 
+                userId, userRequests, estimatedTokens, estimatedCost);
+            
+            await Task.CompletedTask;
+            return (estimatedTokens, userRequests, estimatedCost);
         }
         catch (Exception ex)
         {

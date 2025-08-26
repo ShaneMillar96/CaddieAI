@@ -3,8 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using caddie.portal.services.Interfaces;
 using caddie.portal.services.Models;
 using caddie.portal.services.Exceptions;
-using caddie.portal.dal.Models;
-using caddie.portal.dal.Repositories.Interfaces;
 using System.Security.Claims;
 
 namespace caddie.portal.api.Controllers;

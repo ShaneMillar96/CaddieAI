@@ -117,11 +117,22 @@ class CourseApiService {
   }
 
   // Get course suggestions based on user preferences
-  // TODO: Backend implementation needed
-  async getSuggestions(_limit = 5): Promise<CourseListItem[]> {
-    // For now, return empty array until backend implements this endpoint
-    console.warn('Course suggestions endpoint not implemented in backend yet');
-    return [];
+  async getSuggestions(limit = 5): Promise<CourseListItem[]> {
+    try {
+      const response: AxiosResponse<ApiResponse<CourseListItem[]>> = await this.api.get(
+        `/user/courses/suggestions?limit=${limit}`
+      );
+
+      if (response.data.success && response.data.data) {
+        return response.data.data;
+      }
+
+      throw new Error(response.data.message || 'Failed to fetch course suggestions');
+    } catch (error) {
+      console.error('Error fetching course suggestions:', error);
+      // Return empty array as fallback for non-critical feature
+      return [];
+    }
   }
 
   // Get course weather information  

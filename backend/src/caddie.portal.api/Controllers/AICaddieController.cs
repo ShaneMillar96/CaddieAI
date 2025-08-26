@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using AutoMapper;
-using FluentValidation;
 using caddie.portal.api.DTOs.AICaddie;
 using caddie.portal.api.DTOs.Common;
 using caddie.portal.services.Interfaces;
