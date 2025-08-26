@@ -9,6 +9,7 @@ import shotPlacementReducer from './slices/shotPlacementSlice';
 import userCoursesReducer from './slices/userCoursesSlice';
 import testModeReducer from './slices/testModeSlice';
 import aiCaddieReducer from './slices/aiCaddieSlice';
+import { apiOptimizationMiddleware } from './middleware/apiOptimizationMiddleware';
 
 // Root reducer combining all slices
 const rootReducer = combineReducers({
@@ -45,7 +46,7 @@ export const store = configureStore({
           'persist/PURGE',
         ],
       },
-    }),
+    }).concat(apiOptimizationMiddleware),
 });
 
 export const persistor = persistStore(store);

@@ -100,6 +100,13 @@ public static class ServiceCollectionExtensions
         
         // Analytics services - removed unused implementations
 
+        // Caching services
+        services.AddScoped<ICacheService, CacheService>();
+
+        // Weather services
+        services.AddScoped<IWeatherService, WeatherService>();
+        services.AddHttpClient<WeatherService>();
+
         return services;
     }
 
@@ -199,6 +206,19 @@ public static class ServiceCollectionExtensions
             if (!string.IsNullOrEmpty(envFromEmail))
             {
                 options.FromEmail = envFromEmail;
+            }
+        });
+
+        // Weather settings with environment variable support
+        services.Configure<WeatherSettings>(options =>
+        {
+            configuration.GetSection(WeatherSettings.SectionName).Bind(options);
+            
+            var envWeatherApiKey = Environment.GetEnvironmentVariable("CADDIEAI_WEATHER_API_KEY") 
+                                  ?? Environment.GetEnvironmentVariable("WeatherSettings__ApiKey");
+            if (!string.IsNullOrEmpty(envWeatherApiKey))
+            {
+                options.ApiKey = envWeatherApiKey;
             }
         });
 

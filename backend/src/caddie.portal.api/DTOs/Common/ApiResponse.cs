@@ -7,6 +7,7 @@ public class ApiResponse<T>
     public string? Message { get; set; }
     public string? ErrorCode { get; set; }
     public List<string>? Errors { get; set; }
+    public string? CorrelationId { get; set; }
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 
     public static ApiResponse<T> SuccessResponse(T data, string? message = null)
@@ -19,14 +20,27 @@ public class ApiResponse<T>
         };
     }
 
-    public static ApiResponse<T> ErrorResponse(string message, string? errorCode = null, List<string>? errors = null)
+    public static ApiResponse<T> ErrorResponse(string message, string? errorCode = null, List<string>? errors = null, string? correlationId = null)
     {
         return new ApiResponse<T>
         {
             Success = false,
             Message = message,
             ErrorCode = errorCode,
-            Errors = errors
+            Errors = errors,
+            CorrelationId = correlationId
+        };
+    }
+
+    public static ApiResponse<T> ValidationErrorResponse(List<string> errors, string? correlationId = null)
+    {
+        return new ApiResponse<T>
+        {
+            Success = false,
+            Message = "Validation failed",
+            ErrorCode = "VALIDATION_ERROR",
+            Errors = errors,
+            CorrelationId = correlationId
         };
     }
 }
@@ -42,7 +56,7 @@ public class ApiResponse : ApiResponse<object>
         };
     }
 
-    public static new ApiResponse ErrorResponse(string message, string? errorCode = null, List<string>? errors = null)
+    public static ApiResponse ErrorResponse(string message, string? errorCode = null, List<string>? errors = null)
     {
         return new ApiResponse
         {

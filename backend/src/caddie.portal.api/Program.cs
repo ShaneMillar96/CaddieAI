@@ -105,6 +105,9 @@ builder.Services.AddAuthorization();
 builder.Services.AddRepositories();
 builder.Services.AddBusinessServices();
 
+// Add caching services
+builder.Services.AddCaching();
+
 // Configure OpenAI
 builder.Services.AddOpenAI(builder.Configuration);
 
@@ -180,6 +183,7 @@ if (app.Environment.IsDevelopment())
 }
 
 // Custom middleware
+app.UseMiddleware<RequestValidationMiddleware>();
 app.UseMiddleware<ErrorHandlingMiddleware>();
 app.UseMiddleware<JwtMiddleware>();
 

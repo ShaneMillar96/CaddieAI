@@ -24,13 +24,21 @@ public class ErrorHandlingMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An unhandled exception occurred");
             await HandleExceptionAsync(context, ex);
         }
     }
 
-    private static async Task HandleExceptionAsync(HttpContext context, Exception exception)
+    private async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
+        var correlationId = context.TraceIdentifier;
+        var userId = GetCurrentUserId(context);
+        var endpoint = $"{context.Request.Method} {context.Request.Path}";
+
+        // Log the exception with structured data
+        _logger.LogError(exception,
+            "Unhandled exception occurred. CorrelationId: {CorrelationId}, UserId: {UserId}, Endpoint: {Endpoint}",
+            correlationId, userId, endpoint);
+
         context.Response.ContentType = "application/json";
 
         var response = exception switch
@@ -40,31 +48,36 @@ public class ErrorHandlingMiddleware
                 Success = false,
                 Message = "Validation failed",
                 ErrorCode = "VALIDATION_ERROR",
-                Errors = validationEx.Errors.Select(e => e.ErrorMessage).ToList()
+                Errors = validationEx.Errors.Select(e => e.ErrorMessage).ToList(),
+                CorrelationId = correlationId
             },
             UnauthorizedAccessException => new ApiResponse
             {
                 Success = false,
                 Message = "Unauthorized access",
-                ErrorCode = "UNAUTHORIZED"
+                ErrorCode = "UNAUTHORIZED",
+                CorrelationId = correlationId
             },
             ArgumentException argumentEx => new ApiResponse
             {
                 Success = false,
                 Message = argumentEx.Message,
-                ErrorCode = "INVALID_ARGUMENT"
+                ErrorCode = "INVALID_ARGUMENT",
+                CorrelationId = correlationId
             },
             InvalidOperationException invalidOpEx => new ApiResponse
             {
                 Success = false,
                 Message = invalidOpEx.Message,
-                ErrorCode = "INVALID_OPERATION"
+                ErrorCode = "INVALID_OPERATION",
+                CorrelationId = correlationId
             },
             _ => new ApiResponse
             {
                 Success = false,
                 Message = "An internal server error occurred",
-                ErrorCode = "INTERNAL_ERROR"
+                ErrorCode = "INTERNAL_ERROR",
+                CorrelationId = correlationId
             }
         };
 
@@ -83,5 +96,10 @@ public class ErrorHandlingMiddleware
         });
 
         await context.Response.WriteAsync(jsonResponse);
+    }
+
+    private static string GetCurrentUserId(HttpContext context)
+    {
+        return context.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "Anonymous";
     }
 }
