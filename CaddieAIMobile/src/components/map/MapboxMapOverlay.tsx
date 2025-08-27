@@ -188,29 +188,15 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
   return (
     <View style={styles.container} pointerEvents="box-none">
 
-      {/* Left Side Round Controls */}
-      <View style={styles.leftControls}>
-        {/* Complete Round Button */}
-        {onCompleteRound && (
-          <TouchableOpacity
-            style={styles.completeControlButton}
-            onPress={onCompleteRound}
-            activeOpacity={0.8}
-          >
-            <Icon name="check-circle" size={24} color="#3b82f6" />
-          </TouchableOpacity>
-        )}
-        
-        {/* Abandon Round Button */}
-        {onAbandonRound && (
-          <TouchableOpacity
-            style={styles.abandonControlButton}
-            onPress={onAbandonRound}
-            activeOpacity={0.8}
-          >
-            <Icon name="cancel" size={24} color="#ef4444" />
-          </TouchableOpacity>
-        )}
+      {/* Top Right Menu */}
+      <View style={styles.topRightMenu}>
+        <TouchableOpacity
+          style={styles.menuButton}
+          onPress={onRoundControlsPress}
+          activeOpacity={0.7}
+        >
+          <Icon name="more-horiz" size={24} color="#4a7c59" />
+        </TouchableOpacity>
       </View>
 
       {/* Right Side Enhanced Controls */}
@@ -312,33 +298,6 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
 
       </View>
 
-      {/* Modern Bottom Control Bar */}
-      <View style={styles.bottomBar}>
-        {/* Tracking Status */}
-        {isLocationTracking && (
-          <View style={styles.trackingPill}>
-            <View style={styles.trackingDot} />
-            <Text style={styles.trackingText}>Tracking</Text>
-          </View>
-        )}
-
-        {/* Round Status */}
-        <View style={styles.roundStatusPill}>
-          <Icon name="sports-golf" size={14} color="#4a7c59" />
-          <Text style={styles.roundStatus}>
-            {roundStatus || 'InProgress'}
-          </Text>
-        </View>
-
-        {/* Menu Button */}
-        <TouchableOpacity
-          style={styles.menuButton}
-          onPress={onRoundControlsPress}
-          activeOpacity={0.7}
-        >
-          <Icon name="more-horiz" size={24} color="#4a7c59" />
-        </TouchableOpacity>
-      </View>
 
 
 
@@ -625,20 +584,19 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 
-  // Modern Left Controls
-  leftControls: {
+  // Top Right Menu
+  topRightMenu: {
     position: 'absolute',
-    left: 20,
-    top: '40%',
-    alignItems: 'center',
-    gap: 12,
+    top: 100,
+    right: 20,
+    zIndex: 1000,
   },
   
   // Modern Right Controls
   rightControls: {
     position: 'absolute',
     right: 20,
-    top: '40%',
+    top: '30%',
     alignItems: 'center',
     gap: 12,
   },
@@ -671,36 +629,6 @@ const styles = StyleSheet.create({
   controlButtonLabelActive: {
     color: '#ffffff',
   },
-  completeControlButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#ffffff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: '#e5e5e5',
-  },
-  abandonControlButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#ffffff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: '#e5e5e5',
-  },
   scoreCompletedButton: {
     borderColor: '#28a745',
     backgroundColor: '#f0fff4',
@@ -709,61 +637,6 @@ const styles = StyleSheet.create({
     color: '#28a745',
   },
 
-  // Modern Bottom Bar Styles
-  bottomBar: {
-    position: 'absolute',
-    bottom: 110,
-    left: 20,
-    right: 20,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-  },
-  trackingPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  trackingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#28a745',
-  },
-  trackingText: {
-    fontSize: 12,
-    color: '#28a745',
-    fontWeight: '600',
-  },
-  roundStatusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  roundStatus: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#2c5530',
-  },
   menuButton: {
     width: 44,
     height: 44,
@@ -776,14 +649,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-    position: 'absolute',
-    right: 0,
   },
 
   // Minimal Instructions
   instructionsContainer: {
     position: 'absolute',
-    bottom: 100,
+    bottom: 200,
     alignSelf: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     borderRadius: 20,

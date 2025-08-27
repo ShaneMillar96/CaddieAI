@@ -797,15 +797,6 @@ export const ActiveRoundScreen: React.FC = () => {
 
   // Round control handlers
   const roundControlHandlers = {
-    pause: async () => {
-      if (!activeRound) return;
-      try {
-        await dispatch(pauseRound(activeRound.id)).unwrap();
-        Alert.alert('Round Paused', 'Your round has been paused successfully.');
-      } catch (error) {
-        Alert.alert('Error', 'Failed to pause round. Please try again.');
-      }
-    },
     resume: async () => {
       if (!activeRound) return;
       try {
@@ -1097,25 +1088,6 @@ export const ActiveRoundScreen: React.FC = () => {
                 </TouchableOpacity>
               )}
 
-              {activeRound?.status === 'InProgress' && (
-                <TouchableOpacity
-                  style={[styles.controlButton, styles.pauseButton]}
-                  onPress={roundControlHandlers.pause}
-                  disabled={isUpdating}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.buttonContent}>
-                    <View style={[styles.iconContainer, styles.pauseIconBg]}>
-                      <Icon name="pause" size={28} color="#fff" />
-                    </View>
-                    <View style={styles.buttonTextContainer}>
-                      <Text style={styles.buttonTitle}>Pause Round</Text>
-                      <Text style={styles.buttonSubtitle}>Take a break</Text>
-                    </View>
-                    <Icon name="chevron-right" size={24} color="#f59e0b" />
-                  </View>
-                </TouchableOpacity>
-              )}
 
               <TouchableOpacity
                 style={[styles.controlButton, styles.completeButton]}
@@ -1409,12 +1381,6 @@ const styles = StyleSheet.create({
   },
   resumeIconBg: {
     backgroundColor: '#22c55e',
-  },
-  pauseButton: {
-    borderColor: '#fef3c7',
-  },
-  pauseIconBg: {
-    backgroundColor: '#f59e0b',
   },
   completeButton: {
     borderColor: '#dbeafe',
