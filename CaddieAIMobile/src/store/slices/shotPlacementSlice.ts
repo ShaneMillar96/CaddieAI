@@ -5,12 +5,42 @@ import {
   ShotPlacementState as ServiceShotPlacementState,
   ShotPlacementCoordinates
 } from '../../services/ShotPlacementService';
-import { SkillLevel } from '../../types';
+import { SkillLevel, WeatherData } from '../../types';
 import { getSkillBasedDistanceSuggestions, validateDistanceForSkillLevel } from '../../services/SkillBasedAdviceEngine';
 import { dynamicCaddieService } from '../../services/DynamicCaddieService';
 import type { RootState } from '../index';
 
-// Redux state interface
+// =============================================================================
+// AI ANALYSIS INTERFACES
+// =============================================================================
+
+/**
+ * Weather conditions interface for shot analysis
+ */
+export interface WeatherConditions {
+  conditions: string;
+  windSpeed: number;
+  windDirection: string;
+  temperature: number;
+}
+
+/**
+ * Shot analysis interface for AI-powered recommendations
+ */
+export interface ShotAnalysis {
+  recommendedClub: string;
+  shotTips: string[];
+  weatherConditions?: WeatherConditions;
+  confidenceScore?: number;
+}
+
+// =============================================================================
+// REDUX STATE INTERFACE
+// =============================================================================
+
+/**
+ * Enhanced shot placement state with AI analysis capabilities
+ */
 export interface ShotPlacementState {
   // Current shot placement data
   currentShot: ShotPlacementData | null;
@@ -25,8 +55,8 @@ export interface ShotPlacementState {
   
   // Target and distance information  
   targetLocation: ShotPlacementCoordinates | null;
-  distanceToPin: number;
-  distanceFromCurrentLocation: number;
+  distanceToPin: number; // Distance to pin in yards
+  distanceFromCurrentLocation: number; // Distance from current location in yards
   clubRecommendation: string | null;
   
   // Round progression context
@@ -55,6 +85,16 @@ export interface ShotPlacementState {
     validationMessage: string | null;
     isDistanceRealistic: boolean;
   } | null;
+  
+  // AI Analysis state
+  aiAnalysis: ShotAnalysis | null;
+  isAnalysisLoading: boolean;
+  analysisError: string | null;
+  showAnalysisBox: boolean;
+  
+  // Weather data cache
+  weatherData: WeatherConditions | null;
+  weatherLastUpdated: number | null;
 }
 
 const initialState: ShotPlacementState = {
@@ -79,9 +119,19 @@ const initialState: ShotPlacementState = {
     voiceGuidanceEnabled: true,
   },
   skillSuggestions: null,
+  // AI Analysis initial state
+  aiAnalysis: null,
+  isAnalysisLoading: false,
+  analysisError: null,
+  showAnalysisBox: false,
+  // Weather data initial state
+  weatherData: null,
+  weatherLastUpdated: null,
 };
 
-// Async thunks for shot placement operations
+// =============================================================================
+// ASYNC THUNKS
+// =============================================================================
 
 /**
  * Create a new shot placement with skill-based validation and AI integration
@@ -169,6 +219,100 @@ export const cancelShotPlacement = createAsyncThunk(
       return null;
     } catch (error: any) {
       return rejectWithValue(error.message || 'Failed to cancel shot placement');
+    }
+  }
+);
+
+/**
+ * Generate AI-powered shot analysis
+ */
+export const generateShotAnalysis = createAsyncThunk(
+  'shotPlacement/generateShotAnalysis',
+  async (payload: {
+    distanceYards: number;
+    location: { latitude: number; longitude: number };
+    userId: number;
+    roundId: number;
+    currentHole: number;
+    skillLevel?: string;
+  }, { rejectWithValue, getState }) => {
+    try {
+      const { distanceYards, location, userId, roundId, currentHole, skillLevel } = payload;
+      const state = getState() as RootState;
+      
+      // Get weather conditions from cache or use defaults
+      const weatherData = state.shotPlacement.weatherData;
+      const conditions = weatherData ? {
+        windSpeedMph: weatherData.windSpeed,
+        windDirection: weatherData.windDirection,
+        temperature: weatherData.temperature
+      } : undefined;
+      
+      console.log('🧠 generateShotAnalysis: Calling DynamicCaddieService with enhanced analysis');
+      
+      // Call enhanced shot analysis method from DynamicCaddieService
+      const analysis = await dynamicCaddieService.generateShotAnalysis(
+        distanceYards,
+        location,
+        skillLevel || 'intermediate',
+        roundId,
+        userId,
+        currentHole,
+        conditions
+      );
+      
+      console.log('✅ generateShotAnalysis: Analysis completed:', analysis);
+      return analysis;
+      
+    } catch (error: any) {
+      console.error('❌ generateShotAnalysis: Error occurred:', error);
+      
+      // Provide fallback analysis if AI fails
+      const fallbackAnalysis: ShotAnalysis = {
+        recommendedClub: payload.distanceYards > 150 ? '7-Iron' : 'Pitching Wedge',
+        shotTips: [
+          `${payload.distanceYards} yards to target`,
+          'Aim for center of green',
+          'Check wind and pin position'
+        ],
+        confidenceScore: 0.75
+      };
+      
+      return fallbackAnalysis;
+    }
+  }
+);
+
+/**
+ * Fetch weather data for shot analysis
+ */
+export const fetchWeatherData = createAsyncThunk(
+  'shotPlacement/fetchWeatherData',
+  async (location: { latitude: number; longitude: number }, { rejectWithValue, getState }) => {
+    try {
+      const state = getState() as RootState;
+      const { weatherData, weatherLastUpdated } = state.shotPlacement;
+      
+      // Check if cached weather data is still valid (5 minutes)
+      const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+      const now = Date.now();
+      
+      if (weatherData && weatherLastUpdated && (now - weatherLastUpdated) < CACHE_DURATION) {
+        return weatherData;
+      }
+      
+      // TODO: Replace with actual weather API integration
+      // For now, return mock weather data
+      const mockWeatherData: WeatherConditions = {
+        conditions: 'Partly Cloudy',
+        windSpeed: 8,
+        windDirection: 'SW',
+        temperature: 22
+      };
+      
+      return mockWeatherData;
+    } catch (error: any) {
+      return rejectWithValue(error.message || 'Failed to fetch weather data');
     }
   }
 );
@@ -298,6 +442,11 @@ const shotPlacementSlice = createSlice({
       state.isActivatingShot = false;
       state.error = null;
       state.skillSuggestions = null;
+      // Clear AI analysis when resetting shot placement
+      state.aiAnalysis = null;
+      state.analysisError = null;
+      state.showAnalysisBox = false;
+      state.isAnalysisLoading = false;
     },
     
     // Quick distance calculation for preview with skill-based suggestions
@@ -364,6 +513,32 @@ const shotPlacementSlice = createSlice({
     
     clearSkillSuggestions: (state) => {
       state.skillSuggestions = null;
+    },
+    
+    // AI Analysis actions
+    setShowAnalysisBox: (state, action: PayloadAction<boolean>) => {
+      state.showAnalysisBox = action.payload;
+    },
+    
+    clearAnalysis: (state) => {
+      state.aiAnalysis = null;
+      state.analysisError = null;
+      state.showAnalysisBox = false;
+    },
+    
+    setAnalysisError: (state, action: PayloadAction<string>) => {
+      state.analysisError = action.payload;
+      state.isAnalysisLoading = false;
+    },
+    
+    cacheWeatherData: (state, action: PayloadAction<WeatherConditions>) => {
+      state.weatherData = action.payload;
+      state.weatherLastUpdated = Date.now();
+    },
+    
+    clearWeatherCache: (state) => {
+      state.weatherData = null;
+      state.weatherLastUpdated = null;
     },
   },
   
@@ -445,6 +620,11 @@ const shotPlacementSlice = createSlice({
       state.clubRecommendation = null;
       state.isCreatingShot = false;
       state.isActivatingShot = false;
+      // Clear AI analysis when cancelling shot placement
+      state.aiAnalysis = null;
+      state.analysisError = null;
+      state.showAnalysisBox = false;
+      state.isAnalysisLoading = false;
     });
     
     builder.addCase(cancelShotPlacement.rejected, (state, action) => {
@@ -458,6 +638,44 @@ const shotPlacementSlice = createSlice({
     
     builder.addCase(updateShotPlacementConfig.rejected, (state, action) => {
       state.error = action.payload as string;
+    });
+    
+    // Generate shot analysis
+    builder.addCase(generateShotAnalysis.pending, (state) => {
+      state.isAnalysisLoading = true;
+      state.analysisError = null;
+    });
+    
+    builder.addCase(generateShotAnalysis.fulfilled, (state, action) => {
+      state.isAnalysisLoading = false;
+      state.aiAnalysis = action.payload;
+      state.showAnalysisBox = true;
+    });
+    
+    builder.addCase(generateShotAnalysis.rejected, (state, action) => {
+      state.isAnalysisLoading = false;
+      state.analysisError = action.payload as string;
+      // Show analysis box with error for user feedback
+      state.showAnalysisBox = true;
+    });
+    
+    // Fetch weather data
+    builder.addCase(fetchWeatherData.fulfilled, (state, action) => {
+      state.weatherData = action.payload;
+      state.weatherLastUpdated = Date.now();
+      
+      // Update existing analysis with weather data if available
+      if (state.aiAnalysis) {
+        state.aiAnalysis = {
+          ...state.aiAnalysis,
+          weatherConditions: action.payload
+        };
+      }
+    });
+    
+    builder.addCase(fetchWeatherData.rejected, (state, action) => {
+      // Weather fetch failure doesn't break the flow
+      console.warn('Weather fetch failed:', action.payload);
     });
   },
 });
@@ -479,6 +697,12 @@ export const {
   clearPreview,
   updateSkillSuggestions,
   clearSkillSuggestions,
+  // AI Analysis actions
+  setShowAnalysisBox,
+  clearAnalysis,
+  setAnalysisError,
+  cacheWeatherData,
+  clearWeatherCache,
 } = shotPlacementSlice.actions;
 
 // Export reducer
@@ -521,6 +745,25 @@ export const selectShotPlacementConfig = (state: { shotPlacement: ShotPlacementS
 export const selectSkillSuggestions = (state: { shotPlacement: ShotPlacementState }) => 
   state.shotPlacement.skillSuggestions;
 
+// AI Analysis selectors
+export const selectAIAnalysis = (state: { shotPlacement: ShotPlacementState }) => 
+  state.shotPlacement.aiAnalysis;
+
+export const selectIsAnalysisLoading = (state: { shotPlacement: ShotPlacementState }) => 
+  state.shotPlacement.isAnalysisLoading;
+
+export const selectAnalysisError = (state: { shotPlacement: ShotPlacementState }) => 
+  state.shotPlacement.analysisError;
+
+export const selectShowAnalysisBox = (state: { shotPlacement: ShotPlacementState }) => 
+  state.shotPlacement.showAnalysisBox;
+
+export const selectWeatherData = (state: { shotPlacement: ShotPlacementState }) => 
+  state.shotPlacement.weatherData;
+
+export const selectWeatherLastUpdated = (state: { shotPlacement: ShotPlacementState }) => 
+  state.shotPlacement.weatherLastUpdated;
+
 // Enhanced selector for skill-aware shot placement
 export const selectSkillAwareShotPlacement = createSelector(
   [
@@ -537,4 +780,41 @@ export const selectSkillAwareShotPlacement = createSelector(
     hasSkillValidation: !!skillSuggestions,
     isDistanceAppropriate: skillSuggestions?.isDistanceRealistic ?? true,
   })
+);
+
+// Enhanced AI analysis selector with complete context
+export const selectAIAnalysisWithContext = createSelector(
+  [
+    (state: RootState) => state.shotPlacement.aiAnalysis,
+    (state: RootState) => state.shotPlacement.isAnalysisLoading,
+    (state: RootState) => state.shotPlacement.analysisError,
+    (state: RootState) => state.shotPlacement.showAnalysisBox,
+    (state: RootState) => state.shotPlacement.weatherData,
+    (state: RootState) => state.shotPlacement.distanceFromCurrentLocation
+  ],
+  (analysis, isLoading, error, showBox, weather, distance) => ({
+    analysis,
+    isLoading,
+    error,
+    showBox,
+    weatherData: weather,
+    distanceYards: Math.round(distance * 1.094), // Convert meters to yards
+    hasAnalysis: !!analysis,
+    isReady: !isLoading && !error && !!analysis
+  })
+);
+
+// Weather cache validity selector
+export const selectIsWeatherCacheValid = createSelector(
+  [
+    (state: RootState) => state.shotPlacement.weatherData,
+    (state: RootState) => state.shotPlacement.weatherLastUpdated
+  ],
+  (weatherData, lastUpdated) => {
+    if (!weatherData || !lastUpdated) return false;
+    
+    const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+    const now = Date.now();
+    return (now - lastUpdated) < CACHE_DURATION;
+  }
 );

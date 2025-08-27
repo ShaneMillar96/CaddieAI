@@ -95,6 +95,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IShotTypeDetectionService, ShotTypeDetectionService>();
         services.AddScoped<ISkillBasedAdviceService, SkillBasedAdviceService>();
         services.AddScoped<IEnhancedShotAnalysisService, EnhancedShotAnalysisService>();
+        services.AddScoped<IShotAnalysisService, ShotAnalysisService>();
         
         // Removed IClubRecommendationService - unused implementation
         
@@ -240,7 +241,8 @@ public static class ServiceCollectionExtensions
             typeof(UserCourseMappingProfile),
             typeof(RoundMappingProfile),
             typeof(HoleScoreMappingProfile),
-            typeof(AICaddieMappingProfile)
+            typeof(AICaddieMappingProfile),
+            typeof(ShotAnalysisControllerMappingProfile)
             // Removed unused mapping profiles
         );
 

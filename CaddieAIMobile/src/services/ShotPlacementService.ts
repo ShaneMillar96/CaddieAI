@@ -11,8 +11,8 @@ export interface ShotPlacementCoordinates {
 export interface ShotPlacementData {
   id: string;
   coordinates: ShotPlacementCoordinates;
-  distanceToPin: number;
-  distanceFromCurrentLocation: number;
+  distanceToPin: number; // Distance in yards
+  distanceFromCurrentLocation: number; // Distance in yards
   isActive: boolean;
   completedAt?: number;
   clubRecommendation?: string;
@@ -181,6 +181,7 @@ export class ShotPlacementService {
     this.shotStartLocation = currentLocation;
     this.setState(ShotPlacementState.SHOT_PLACEMENT);
 
+    console.log(`🎯 ShotPlacementService: Distance conversion - Meters: ${(distanceFromCurrent / 1.094).toFixed(1)}m → Yards: ${distanceFromCurrent}y`);
     console.log(`🎯 ShotPlacementService: Created shot placement at ${distanceFromCurrent}y from current position`);
     
     // Notify listeners

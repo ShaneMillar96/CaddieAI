@@ -193,24 +193,22 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
         {/* Complete Round Button */}
         {onCompleteRound && (
           <TouchableOpacity
-            style={[styles.controlButton, styles.completeControlButton]}
+            style={styles.completeControlButton}
             onPress={onCompleteRound}
             activeOpacity={0.8}
           >
             <Icon name="check-circle" size={24} color="#3b82f6" />
-            <Text style={styles.controlButtonLabel}>Complete</Text>
           </TouchableOpacity>
         )}
         
         {/* Abandon Round Button */}
         {onAbandonRound && (
           <TouchableOpacity
-            style={[styles.controlButton, styles.abandonControlButton]}
+            style={styles.abandonControlButton}
             onPress={onAbandonRound}
             activeOpacity={0.8}
           >
             <Icon name="cancel" size={24} color="#ef4444" />
-            <Text style={styles.controlButtonLabel}>Abandon</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -343,14 +341,6 @@ const MapboxMapOverlay: React.FC<MapboxMapOverlayProps> = ({
       </View>
 
 
-      {/* Minimal Instructions - Only show in active placement modes */}
-      {currentLocation && shotPlacementMode && (
-        <View style={styles.instructionsContainer}>
-          <Text style={styles.instructionsText}>
-            Tap to place shot target
-          </Text>
-        </View>
-      )}
 
       {/* Pin Placement Mode Instructions */}
       {isPinPlacementMode && (
@@ -653,25 +643,26 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   controlButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: '#ffffff',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 4,
-    borderWidth: 2,
-    borderColor: '#4a7c59',
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
   },
   controlButtonLabel: {
     fontSize: 8,
     color: '#4a7c59',
     fontWeight: '600',
-    marginTop: 2,
+    marginTop: 1,
+    textAlign: 'center',
   },
   controlButtonActive: {
     backgroundColor: '#4a7c59',
@@ -681,12 +672,34 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   completeControlButton: {
-    borderColor: '#3b82f6',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
   },
   abandonControlButton: {
-    borderColor: '#ef4444',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
   },
   scoreCompletedButton: {
     borderColor: '#28a745',
@@ -699,7 +712,7 @@ const styles = StyleSheet.create({
   // Modern Bottom Bar Styles
   bottomBar: {
     position: 'absolute',
-    bottom: 20,
+    bottom: 110,
     left: 20,
     right: 20,
     flexDirection: 'row',

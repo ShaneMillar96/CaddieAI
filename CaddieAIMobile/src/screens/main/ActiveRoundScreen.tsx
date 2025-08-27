@@ -56,6 +56,13 @@ import {
   selectClubRecommendation,
   selectServiceState,
   selectIsPlacingShot,
+  // AI Analysis imports
+  generateShotAnalysis,
+  selectAIAnalysis,
+  selectIsAnalysisLoading,
+  selectAnalysisError,
+  selectShowAnalysisBox,
+  setShowAnalysisBox,
 } from '../../store/slices/shotPlacementSlice';
 import { LoadingSpinner } from '../../components/auth/LoadingSpinner';
 import { ErrorMessage } from '../../components/auth/ErrorMessage';
@@ -67,6 +74,7 @@ import { ScorecardOverlay } from '../../components/common';
 import MapboxMapView from '../../components/map/MapboxMapView';
 import MapboxMapOverlay from '../../components/map/MapboxMapOverlay';
 import MapErrorBoundary from '../../components/map/MapErrorBoundary';
+import { AIAnalysisBox } from '../../components/map/AIAnalysisBox';
 import { 
   golfLocationService, 
   LocationData,
@@ -80,7 +88,24 @@ import {
 import { HoleCompletionRequest } from '../../types/golf';
 import voiceAIApiService from '../../services/voiceAIApi';
 import { pinDistanceCalculator, PinDistances, Coordinate } from '../../utils/PinDistanceCalculator';
+import { SkillLevel } from '../../types/index';
 // RealtimeAudioServiceV2 is now managed by VoiceChatModalV2 component
+
+// Helper function to convert SkillLevel enum to string
+const skillLevelToString = (skillLevel: SkillLevel): string => {
+  switch (skillLevel) {
+    case SkillLevel.Beginner:
+      return 'beginner';
+    case SkillLevel.Intermediate:
+      return 'intermediate';
+    case SkillLevel.Advanced:
+      return 'advanced';
+    case SkillLevel.Professional:
+      return 'professional';
+    default:
+      return 'intermediate';
+  }
+};
 
 // Navigation types
 type MainStackParamList = {
@@ -134,6 +159,12 @@ export const ActiveRoundScreen: React.FC = () => {
   const clubRecommendation = useSelector(selectClubRecommendation);
   const serviceState = useSelector(selectServiceState);
   const isPlacingShot = useSelector(selectIsPlacingShot);
+  
+  // AI Analysis Redux state
+  const aiAnalysis = useSelector(selectAIAnalysis);
+  const isAnalysisLoading = useSelector(selectIsAnalysisLoading);
+  const analysisError = useSelector(selectAnalysisError);
+  const showAnalysisBox = useSelector(selectShowAnalysisBox);
 
   // Hole navigation state from Redux selectors
   const currentHole = useSelector(selectCurrentHole);
@@ -716,6 +747,26 @@ export const ActiveRoundScreen: React.FC = () => {
 
       if (createShotPlacement.fulfilled.match(result)) {
         console.log('✅ ActiveRoundScreen: Shot placement created successfully');
+        
+        // Trigger AI analysis after successful shot placement
+        if (activeRound?.id && user?.id) {
+          console.log('🧠 ActiveRoundScreen: Triggering AI shot analysis with backend integration');
+          
+          // Generate AI-powered shot analysis (backend handles weather data fetching)
+          console.log(`🎯 ActiveRoundScreen: Distance consistency check - Calculated: ${Math.round(distanceFromCurrent)}y`);
+          dispatch(generateShotAnalysis({
+            distanceYards: Math.round(distanceFromCurrent),
+            location: { latitude: coordinate.latitude, longitude: coordinate.longitude },
+            userId: Number(user.id),
+            roundId: activeRound.id,
+            currentHole,
+            skillLevel: skillLevelToString(user.skillLevelId || SkillLevel.Intermediate)
+          }));
+          
+          // Show analysis box
+          dispatch(setShowAnalysisBox(true));
+        }
+        
         // Disable placing mode after successful placement
         dispatch(setPlacingShot(false));
       }
@@ -910,6 +961,22 @@ export const ActiveRoundScreen: React.FC = () => {
         />
       </MapErrorBoundary>
       )}
+
+      {/* AI Analysis Box - Enhanced Shot Analysis Feature */}
+      {isMapboxReady && showAnalysisBox && (() => {
+        const displayDistance = distances?.fromCurrent ? Math.round(distances.fromCurrent) : undefined;
+        console.log(`🎯 ActiveRoundScreen: AIAnalysisBox distance display - Redux value: ${distances?.fromCurrent}y → Display: ${displayDistance}y`);
+        return (
+          <AIAnalysisBox
+            visible={showAnalysisBox}
+            analysis={aiAnalysis}
+            isLoading={isAnalysisLoading}
+            error={analysisError}
+            distance={displayDistance} // Already in yards from ShotPlacementService
+            onClose={() => dispatch(setShowAnalysisBox(false))}
+          />
+        );
+      })()}
 
       {/* Enhanced Mapbox Map Overlay */}
       <MapboxMapOverlay

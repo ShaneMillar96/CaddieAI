@@ -495,7 +495,9 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
           ? ` from current position to target location` 
           : '';
         
-        return `Club recommendation: ${distance} yards${locationContext}${skillContext}${handicapContext}. What club and strategy do you recommend?`;
+        const message = `Club recommendation: ${distance} yards${locationContext}${skillContext}${handicapContext}. What club and strategy do you recommend?`;
+        console.log(`🎯 ClubRecommendation Message: "${message}" (distance from context: ${distance})`);
+        return message;
       
       case 'GeneralAssistance':
         if (userInput) {
@@ -700,6 +702,200 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
   }
 
   /**
+   * Generate comprehensive shot analysis with AI-powered recommendations
+   */
+  async generateShotAnalysis(
+    distanceYards: number,
+    location: { latitude: number; longitude: number },
+    userSkill: string,
+    roundId: number,
+    userId: number,
+    currentHole?: number,
+    conditions?: {
+      windSpeedMph?: number;
+      windDirection?: string;
+      temperature?: number;
+    }
+  ): Promise<any> {
+    try {
+      console.log(`🧠 DynamicCaddieService: Generating shot analysis for ${distanceYards} yards`);
+      
+      // Get current user context from Redux store
+      const state = store.getState();
+      const user = selectUser(state);
+      const activeRound = selectActiveRound(state);
+      const userSkillContext = selectUserSkillContext(state);
+      
+      // Build comprehensive analysis context
+      const analysisContext: CaddieContext = {
+        location: {
+          currentHole,
+          latitude: location.latitude,
+          longitude: location.longitude,
+          withinCourseBoundaries: true,
+          timestamp: new Date().toISOString(),
+        },
+        golfContext: {
+          targetDistanceYards: distanceYards,
+          currentHole,
+          shotType: 'approach',
+          recommendedClub: undefined,
+          shotPlacementActive: true,
+        },
+        player: {
+          skillLevel: userSkillContext?.skillLevel || 'intermediate',
+          communicationStyle: this.getCommunicationStyleForSkillLevel(userSkillContext?.skillLevel) as 'encouraging' | 'technical' | 'balanced' | 'casual' | 'professional',
+          handicapIndex: user?.handicap,
+        },
+        metadata: {
+          isEnhancedAnalysis: true,
+          analysisType: 'comprehensive',
+          includeWeather: !!conditions,
+        }
+      };
+
+      // Try backend AI integration first (with OpenAI and weather)
+      try {
+        const backendAnalysis = await this.getBackendShotAnalysis({
+          distanceYards,
+          location,
+          userSkill,
+          roundId,
+          userId,
+          currentHole,
+          conditions
+        });
+        
+        if (backendAnalysis) {
+          console.log('✅ DynamicCaddieService: Backend shot analysis successful with OpenAI and weather');
+          
+          // Map backend response (ShotAnalysisResponseDto) to frontend interface (ShotAnalysis)
+          return {
+            recommendedClub: backendAnalysis.recommendedClub,
+            shotTips: backendAnalysis.shotTips || [],
+            confidenceScore: (backendAnalysis.confidenceScore || 85) / 100, // Convert to decimal
+            weatherConditions: backendAnalysis.weatherConditions ? {
+              conditions: backendAnalysis.weatherConditions.conditions,
+              windSpeed: backendAnalysis.weatherConditions.windSpeed,
+              windDirection: backendAnalysis.weatherConditions.windDirection,
+              temperature: backendAnalysis.weatherConditions.temperature
+            } : undefined
+          };
+        }
+      } catch (backendError) {
+        console.warn('⚠️ DynamicCaddieService: Backend analysis failed, using fallback:', backendError);
+      }
+
+      // Log distance consistency for debugging
+      console.log(`🎯 generateShotAnalysis: Using fallback analysis - UI: ${distanceYards}y, Context: ${analysisContext.golfContext?.targetDistanceYards}y`);
+      
+      // Fallback to local analysis if backend fails (non-AI generated tips)
+      return {
+        recommendedClub: this.getSkillAwareClubRecommendation(distanceYards, userSkill),
+        shotTips: this.getShotTips(distanceYards, conditions),
+        confidenceScore: 0.70, // Lower confidence for fallback
+        weatherConditions: conditions ? {
+          conditions: this.getWeatherDescription(conditions),
+          windSpeed: conditions.windSpeedMph || 0,
+          windDirection: conditions.windDirection || 'Unknown',
+          temperature: conditions.temperature || 20
+        } : undefined
+      };
+      
+    } catch (error) {
+      console.error('❌ DynamicCaddieService: Shot analysis error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get backend-powered shot analysis
+   */
+  private async getBackendShotAnalysis(params: any): Promise<any | null> {
+    try {
+      // Map parameters to backend DTO format
+      const requestData = {
+        userId: params.userId,
+        roundId: params.roundId,
+        holeNumber: params.currentHole || 1,
+        distanceYards: params.distanceYards,
+        latitude: params.location.latitude,
+        longitude: params.location.longitude,
+        playerSkillLevel: params.userSkill || 'intermediate'
+      };
+
+      console.log('🎯 DynamicCaddieService: Calling backend shot analysis API with:', requestData);
+      
+      const response = await apiService.post('shot-analysis', requestData);
+      
+      if (response.success && response.data) {
+        console.log('✅ DynamicCaddieService: Backend shot analysis successful:', response.data);
+        return response.data;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ DynamicCaddieService: Backend shot analysis failed:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get club recommendation based on distance and skill level for analysis
+   */
+  private getSkillAwareClubRecommendation(distanceYards: number, skillLevel: string): string {
+    const skill = skillLevel.toLowerCase();
+    
+    if (distanceYards >= 200) {
+      return skill === 'beginner' ? 'Hybrid or 5-Wood' : 'Driver or 3-Wood';
+    } else if (distanceYards >= 150) {
+      return skill === 'beginner' ? '7-Iron' : '6 or 7-Iron';
+    } else if (distanceYards >= 100) {
+      return skill === 'beginner' ? '9-Iron' : 'Pitching Wedge';
+    } else {
+      return 'Sand or Lob Wedge';
+    }
+  }
+
+  /**
+   * Generate shot tips based on distance and conditions
+   */
+  private getShotTips(distanceYards: number, conditions?: any): string[] {
+    const tips: string[] = [];
+    
+    if (distanceYards >= 150) {
+      tips.push('Take smooth, controlled swing');
+      tips.push('Focus on center contact');
+    } else {
+      tips.push('Control distance with swing length');
+      tips.push('Aim for center of green');
+    }
+    
+    if (conditions?.windSpeedMph && conditions.windSpeedMph > 10) {
+      tips.push('Adjust for wind conditions');
+    }
+    
+    tips.push('Check pin position and slopes');
+    
+    return tips.slice(0, 3); // Limit to 3 tips for UI
+  }
+
+  /**
+   * Get weather description from conditions
+   */
+  private getWeatherDescription(conditions: any): string {
+    if (conditions.windSpeedMph > 15) {
+      return 'Windy';
+    } else if (conditions.temperature < 10) {
+      return 'Cold';
+    } else if (conditions.temperature > 25) {
+      return 'Warm';
+    } else {
+      return 'Moderate';
+    }
+  }
+
+  /**
    * Generate general golf advice outside of active rounds
    */
   async generateGeneralAdvice(
@@ -797,6 +993,7 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
       } : undefined,
       golfContext: {
         ...baseContext.golfContext,
+        shotType: currentShotType?.type || 'approach',
         targetDistanceYards: distanceFromCurrent || baseContext.golfContext?.targetDistanceYards || 150,
         shotPlacement: shotPlacementTarget,
         currentLocation: baseContext.golfContext?.currentLocation,
@@ -868,13 +1065,31 @@ export class DynamicCaddieService implements DynamicCaddieHelper {
     try {
       // For club recommendations, get backend analysis
       if (request.scenario === 'ClubRecommendation' && request.context.golfContext?.targetDistanceYards) {
-        const response = await apiService.get(
-          `ai-caddie/club-recommendation/${request.userId}?distanceYards=${request.context.golfContext.targetDistanceYards}`,
-          { retryAttempts: 1, timeout: 5000 }
-        );
+        try {
+          const response = await apiService.get(
+            `ai-caddie/club-recommendation/${request.userId}?distanceYards=${request.context.golfContext.targetDistanceYards}`,
+            { retryAttempts: 1, timeout: 5000 }
+          );
 
-        if (response.success && response.data) {
-          return `${response.data.primaryClub} for ${request.context.golfContext.targetDistanceYards} yards. ${response.data.advice || ''}`;
+          console.log(`🔄 Backend API Response for ${request.context.golfContext.targetDistanceYards}y:`, {
+            success: response.success,
+            hasData: !!response.data,
+            primaryClub: response.data?.primaryClub,
+            advice: response.data?.advice
+          });
+
+          if (response.success && response.data) {
+            // Ensure we have a valid primaryClub, otherwise use fallback
+            const club = response.data.primaryClub || this.getSkillAwareClubRecommendation(
+              request.context.golfContext.targetDistanceYards, 
+              this.getSkillLevelName(request.context.userSkillLevel || SkillLevel.Intermediate).toLowerCase()
+            );
+            console.log(`🎯 Backend Enhanced Message: Using club "${club}" for ${request.context.golfContext.targetDistanceYards} yards`);
+            return `${club} for ${request.context.golfContext.targetDistanceYards} yards. ${response.data.advice || ''}`;
+          }
+        } catch (apiError) {
+          console.warn('🚨 Backend API Error for club recommendation:', apiError);
+          // Continue to fallback logic
         }
       }
       
