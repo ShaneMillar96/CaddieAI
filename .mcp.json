@@ -10,6 +10,14 @@
         "JIRA_PROJECT_KEY": "ECS",
         "AUTO_CREATE_TEST_TICKETS": "false"
       }
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest",
+        "--viewport-size", "412,915",
+        "--caps", "vision"
+      ]
     }
   }
 }
