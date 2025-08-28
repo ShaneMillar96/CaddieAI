@@ -28,6 +28,7 @@ import {
   navigateToNextHole,
   navigateToPreviousHole,
 } from '../../store/slices/roundSlice';
+import { clearDashboardCache } from '../../store/slices/dashboardSlice';
 import {
   selectCurrentHole,
   selectViewingHole,
@@ -601,6 +602,7 @@ export const ActiveRoundScreen: React.FC = () => {
               onPress: async () => {
                 try {
                   await dispatch(completeRound(activeRound?.id || 0)).unwrap();
+                  dispatch(clearDashboardCache()); // Clear cache to refresh dashboard
                   navigation.navigate('Home');
                 } catch (error) {
                   console.error('Error completing round:', error);
@@ -827,6 +829,7 @@ export const ActiveRoundScreen: React.FC = () => {
             onPress: async () => {
               try {
                 await dispatch(completeRound(activeRound.id)).unwrap();
+                dispatch(clearDashboardCache()); // Clear cache to refresh dashboard
                 Alert.alert(
                   'Round Complete', 
                   `Congratulations! You completed ${completedHolesCount} holes with a score of ${activeRound.totalScore || 0}.`

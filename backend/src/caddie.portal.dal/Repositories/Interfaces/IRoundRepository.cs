@@ -24,4 +24,8 @@ public interface IRoundRepository
     Task<IEnumerable<Round>> GetPaginatedAsync(int page, int pageSize, int? userId = null, RoundStatusEnum? status = null);
     Task<int> GetTotalCountAsync(int? userId = null, RoundStatusEnum? status = null);
     Task<object?> GetRoundStatisticsAsync(int userId, DateOnly? startDate = null, DateOnly? endDate = null);
+    
+    // Dashboard Analytics Methods
+    Task<IEnumerable<Round>> GetCompletedRoundsByUserIdAsync(int userId, int daysPeriod);
+    Task<IEnumerable<Round>> GetRecentCompletedRoundsByUserIdAsync(int userId, int limit);
 }

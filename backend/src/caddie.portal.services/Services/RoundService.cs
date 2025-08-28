@@ -393,28 +393,44 @@ public class RoundService : IRoundService
             }
 
             var currentStatus = (RoundStatusEnum)round.StatusId;
+            
+            // If already completed, return the current round (idempotent operation)
+            if (currentStatus == RoundStatusEnum.Completed)
+            {
+                _logger.LogInformation("Round {RoundId} is already completed", roundId);
+                return MapToRoundModel(round);
+            }
+            
+            // Only allow completion from InProgress or Paused states
             if (currentStatus != RoundStatusEnum.InProgress && currentStatus != RoundStatusEnum.Paused)
             {
                 throw new InvalidOperationException($"Can only complete rounds that are in progress or paused. Current status: {currentStatus}");
             }
 
-            // Validate score if provided
-            if (await ValidateRoundScoreAsync(roundId, model.TotalScore))
+            // Use existing total score if not provided or if 0
+            var finalTotalScore = model.TotalScore;
+            if (model.TotalScore <= 0)
             {
-                var completedStatusId = GetStatusIdByEnum(RoundStatusEnum.Completed);
-                round.StatusId = completedStatusId;
-                round.TotalScore = model.TotalScore;
-                round.EndTime = DateTime.UtcNow;
+                // Use the existing total score from the database (already calculated from hole completions)
+                finalTotalScore = round.TotalScore ?? 0;
+                _logger.LogInformation("Using existing total score {TotalScore} for round {RoundId}", finalTotalScore, roundId);
+            }
 
-                var updatedRound = await _roundRepository.UpdateAsync(round);
-                
-                _logger.LogInformation("Round completed successfully: ID {RoundId} with score {TotalScore}", roundId, model.TotalScore);
-                return MapToRoundModel(updatedRound);
-            }
-            else
+            // Validate the final score
+            if (!await ValidateRoundScoreAsync(roundId, finalTotalScore))
             {
-                throw new ArgumentException($"Invalid score {model.TotalScore} for round {roundId}");
+                throw new ArgumentException($"Invalid total score {finalTotalScore} for round {roundId}");
             }
+
+            var completedStatusId = GetStatusIdByEnum(RoundStatusEnum.Completed);
+            round.StatusId = completedStatusId;
+            round.TotalScore = finalTotalScore;
+            round.EndTime = DateTime.UtcNow;
+
+            var updatedRound = await _roundRepository.UpdateAsync(round);
+            
+            _logger.LogInformation("Round completed successfully: ID {RoundId} with score {TotalScore}", roundId, finalTotalScore);
+            return MapToRoundModel(updatedRound);
         }
         catch (Exception ex)
         {
@@ -1226,13 +1242,12 @@ public class RoundService : IRoundService
             var nextHole = holeNumber + 1;
             var isComplete = false;
 
-            // Check if this completes the round (hole 18)
+            // Update current hole but don't auto-complete the round
+            // Let the user explicitly complete the round via CompleteRoundAsync
             if (holeNumber >= 18)
             {
-                isComplete = true;
-                round.StatusId = GetStatusIdByEnum(RoundStatusEnum.Completed);
-                round.EndTime = DateTime.UtcNow;
                 round.CurrentHole = 18;
+                // Note: Round stays InProgress until manually completed
             }
             else
             {

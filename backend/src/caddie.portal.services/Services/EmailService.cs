@@ -142,7 +142,11 @@ public class EmailService : IEmailService
             message.Body = builder.ToMessageBody();
 
             using var client = new SmtpClient();
-            await client.ConnectAsync(_emailSettings.SmtpHost, _emailSettings.SmtpPort, _emailSettings.EnableSsl);
+            // Use SecureSocketOptions.StartTls for port 587 (Gmail SMTP)
+            var secureOptions = _emailSettings.SmtpPort == 587 
+                ? MailKit.Security.SecureSocketOptions.StartTls 
+                : (_emailSettings.EnableSsl ? MailKit.Security.SecureSocketOptions.SslOnConnect : MailKit.Security.SecureSocketOptions.None);
+            await client.ConnectAsync(_emailSettings.SmtpHost, _emailSettings.SmtpPort, secureOptions);
             await client.AuthenticateAsync(_emailSettings.SmtpUsername, _emailSettings.SmtpPassword);
             await client.SendAsync(message);
             await client.DisconnectAsync(true);

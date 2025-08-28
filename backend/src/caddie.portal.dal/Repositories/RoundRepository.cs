@@ -296,4 +296,40 @@ public class RoundRepository : IRoundRepository
             }
         };
     }
+
+    /// <summary>
+    /// Get completed rounds for a user within a specified time period
+    /// Uses optimized index: idx_rounds_user_completed_date
+    /// </summary>
+    public async Task<IEnumerable<Round>> GetCompletedRoundsByUserIdAsync(int userId, int daysPeriod)
+    {
+        var cutoffDate = DateOnly.FromDateTime(DateTime.Now.AddDays(-daysPeriod));
+        
+        return await _context.Rounds
+            .Include(r => r.Course)
+            .Include(r => r.HoleScores)
+                .ThenInclude(hs => hs.Hole)
+            .Where(r => r.UserId == userId && 
+                       r.StatusId == (int)RoundStatusEnum.Completed &&
+                       r.RoundDate >= cutoffDate)
+            .OrderByDescending(r => r.UpdatedAt)
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Get recent completed rounds for a user with a specific limit
+    /// Uses optimized index: idx_rounds_user_completed_date
+    /// </summary>
+    public async Task<IEnumerable<Round>> GetRecentCompletedRoundsByUserIdAsync(int userId, int limit)
+    {
+        return await _context.Rounds
+            .Include(r => r.Course)
+            .Include(r => r.HoleScores)
+                .ThenInclude(hs => hs.Hole)
+            .Where(r => r.UserId == userId && 
+                       r.StatusId == (int)RoundStatusEnum.Completed)
+            .OrderByDescending(r => r.UpdatedAt)
+            .Take(limit)
+            .ToListAsync();
+    }
 }

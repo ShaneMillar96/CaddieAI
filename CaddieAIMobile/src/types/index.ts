@@ -144,3 +144,6 @@ export interface PaginatedResponse<T> {
 
 // Re-export all golf domain types
 export * from './golf';
+
+// Re-export dashboard types
+export * from './dashboard';

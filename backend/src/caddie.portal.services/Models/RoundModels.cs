@@ -2,11 +2,11 @@ namespace caddie.portal.services.Models;
 
 public enum RoundStatus
 {
-    NotStarted,
-    InProgress,
-    Paused,
-    Completed,
-    Abandoned
+    NotStarted = 1,
+    InProgress = 2,
+    Paused = 3,
+    Completed = 4,
+    Abandoned = 5
 }
 
 public class RoundModel

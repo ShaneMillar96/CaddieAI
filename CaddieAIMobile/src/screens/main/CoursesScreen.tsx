@@ -23,6 +23,7 @@ import {
   abandonRound,
   completeRound 
 } from '../../store/slices/roundSlice';
+import { clearDashboardCache } from '../../store/slices/dashboardSlice';
 import { CourseCard } from '../../components/common/CourseCard';
 import { CourseSearchBar } from '../../components/common/CourseSearchBar';
 import { LoadingSpinner } from '../../components/auth/LoadingSpinner';
@@ -222,6 +223,7 @@ export const CoursesScreen: React.FC = () => {
           onPress: async () => {
             try {
               await dispatch(completeRound(activeRound.id)).unwrap();
+              dispatch(clearDashboardCache()); // Clear cache to refresh dashboard
               Alert.alert('Round Completed', 'Your previous round has been completed.', [
                 { text: 'OK', onPress: onComplete }
               ]);

@@ -101,6 +101,9 @@ public static class ServiceCollectionExtensions
         
         // Analytics services - removed unused implementations
 
+        // Analytics and dashboard services
+        services.AddScoped<IDashboardService, DashboardService>();
+        
         // Caching services
         services.AddScoped<ICacheService, CacheService>();
 
@@ -223,6 +226,9 @@ public static class ServiceCollectionExtensions
             }
         });
 
+        // Dashboard analytics settings
+        services.Configure<DashboardAnalyticsOptions>(configuration.GetSection(DashboardAnalyticsOptions.SectionName));
+
         // Other settings without environment variable overrides
         services.Configure<AuthenticationSettings>(configuration.GetSection(AuthenticationSettings.SectionName));
         services.Configure<OpenAISettings>(configuration.GetSection(OpenAISettings.SectionName));
@@ -242,7 +248,8 @@ public static class ServiceCollectionExtensions
             typeof(RoundMappingProfile),
             typeof(HoleScoreMappingProfile),
             typeof(AICaddieMappingProfile),
-            typeof(ShotAnalysisControllerMappingProfile)
+            typeof(ShotAnalysisControllerMappingProfile),
+            typeof(DashboardControllerMappingProfile)
             // Removed unused mapping profiles
         );
 

@@ -20,6 +20,7 @@ import {
   abandonRound,
   completeRound 
 } from '../../store/slices/roundSlice';
+import { clearDashboardCache } from '../../store/slices/dashboardSlice';
 import { WeatherData } from '../../types/golf';
 import { LoadingSpinner } from '../../components/auth/LoadingSpinner';
 import { ErrorMessage } from '../../components/auth/ErrorMessage';
@@ -122,6 +123,7 @@ export const CourseDetailScreen: React.FC = () => {
           onPress: async () => {
             try {
               await dispatch(completeRound(activeRound.id)).unwrap();
+              dispatch(clearDashboardCache()); // Clear cache to refresh dashboard
               Alert.alert('Round Completed', 'Your previous round has been completed.', [
                 { text: 'OK', onPress: onComplete }
               ]);

@@ -9,6 +9,7 @@ import shotPlacementReducer from './slices/shotPlacementSlice';
 import userCoursesReducer from './slices/userCoursesSlice';
 import testModeReducer from './slices/testModeSlice';
 import aiCaddieReducer from './slices/aiCaddieSlice';
+import dashboardReducer from './slices/dashboardSlice';
 import { apiOptimizationMiddleware } from './middleware/apiOptimizationMiddleware';
 
 // Root reducer combining all slices
@@ -21,13 +22,14 @@ const rootReducer = combineReducers({
   userCourses: userCoursesReducer,
   testMode: testModeReducer,
   aiCaddie: aiCaddieReducer,
+  dashboard: dashboardReducer,
 });
 
 const persistConfig = {
   key: 'root',
   storage: AsyncStorage,
   whitelist: ['auth', 'rounds', 'userCourses', 'testMode'], // Persist auth, rounds, user courses, and test mode
-  blacklist: ['courses', 'voice', 'aiCaddie'], // Don't persist course data, voice state, or AI caddie state (real-time data)
+  blacklist: ['courses', 'voice', 'aiCaddie', 'dashboard'], // Don't persist course data, voice state, AI caddie state, or dashboard (real-time data)
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
