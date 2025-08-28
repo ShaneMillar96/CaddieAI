@@ -16,6 +16,7 @@ import {
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { CompositeNavigationProp } from '@react-navigation/native';
 
 // Redux
 import { AppDispatch } from '../../store';
@@ -42,17 +43,14 @@ import {
   QuickActionsWidget,
 } from '../../components/dashboard';
 
-// Types
-type MainStackParamList = {
-  Home: undefined;
-  Courses: undefined;
-  'AI Chat': undefined;
-  'Active Round': undefined;
-  'Round Details': { roundId: number };
-  'Course Detail': { courseId: number };
-};
+// Navigation
+import { DashboardStackParamList } from '../../navigation/DashboardNavigator';
+import { MainTabParamList } from '../../types';
 
-type NavigationProp = StackNavigationProp<MainStackParamList, 'Home'>;
+type NavigationProp = CompositeNavigationProp<
+  StackNavigationProp<DashboardStackParamList, 'DashboardHome'>,
+  StackNavigationProp<MainTabParamList>
+>;
 
 export const DashboardHomeScreen: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -115,28 +113,23 @@ export const DashboardHomeScreen: React.FC = () => {
 
   const handleViewCourses = useCallback(() => {
     console.log('🏌️ DashboardHomeScreen: Navigating to courses...');
-    navigation.navigate('Courses');
+    navigation.navigate('Courses' as any);
   }, [navigation]);
 
   const handleOpenChat = useCallback(() => {
     console.log('🤖 DashboardHomeScreen: Opening AI chat...');
-    navigation.navigate('AI Chat');
+    navigation.navigate('AIChat' as any);
   }, [navigation]);
 
-  const handleRoundPress = useCallback((roundId: number) => {
-    console.log(`📄 DashboardHomeScreen: Opening round details for round ${roundId}`);
-    navigation.navigate('Round Details', { roundId });
+  const handleRoundPress = useCallback((roundId: number, courseName?: string) => {
+    console.log(`📄 DashboardHomeScreen: Opening scorecard for round ${roundId}`);
+    navigation.navigate('RoundScorecard', { roundId, courseName });
   }, [navigation]);
 
   const handleViewAllRounds = useCallback(() => {
-    console.log('📄 DashboardHomeScreen: Viewing all rounds...');
-    // Note: This would typically navigate to a full rounds list screen
-    Alert.alert(
-      'All Rounds',
-      'This would show a complete list of your golf rounds with detailed statistics.',
-      [{ text: 'OK' }]
-    );
-  }, []);
+    console.log('📄 DashboardHomeScreen: Navigating to All Rounds screen...');
+    navigation.navigate('AllRounds');
+  }, [navigation]);
 
   const handleRefreshInsights = useCallback(() => {
     console.log('🧠 DashboardHomeScreen: Refreshing performance insights...');

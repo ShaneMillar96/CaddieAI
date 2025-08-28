@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { MainTabParamList } from '../types';
-import DashboardHomeScreen from '../screens/main/DashboardHomeScreen';
+import DashboardNavigator from './DashboardNavigator';
 import ActiveRoundScreen from '../screens/main/ActiveRoundScreen';
 import AICaddieScreen from '../screens/main/AICaddieScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
@@ -70,11 +70,11 @@ export const MainTabNavigator: React.FC = () => {
     >
       <Tab.Screen
         name="Home"
-        component={DashboardHomeScreen}
+        component={DashboardNavigator}
         options={{
           title: 'Dashboard',
           tabBarIcon: DashboardIcon,
-          headerShown: true, // Use consistent green header like other screens
+          headerShown: false, // Let DashboardNavigator handle headers
         }}
       />
       <Tab.Screen

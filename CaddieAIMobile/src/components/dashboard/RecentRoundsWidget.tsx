@@ -48,7 +48,7 @@ export const RecentRoundsWidget: React.FC<RecentRoundsWidgetProps> = ({
   const renderRoundItem = ({ item }: { item: RecentRoundDto }) => (
     <TouchableOpacity
       style={styles.roundItem}
-      onPress={() => onRoundPress(item.roundId)}
+      onPress={() => onRoundPress(item.roundId, item.courseName)}
       activeOpacity={0.7}
     >
       <View style={styles.roundHeader}>

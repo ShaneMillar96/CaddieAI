@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import authReducer from './slices/authSlice';
 import courseReducer from './slices/courseSlice';
 import roundReducer from './slices/roundSlice';
+import roundsHistoryReducer from './slices/roundsSlice';
 import voiceReducer from './slices/voiceSlice';
 import shotPlacementReducer from './slices/shotPlacementSlice';
 import userCoursesReducer from './slices/userCoursesSlice';
@@ -17,6 +18,7 @@ const rootReducer = combineReducers({
   auth: authReducer,
   courses: courseReducer,
   rounds: roundReducer,
+  roundsHistory: roundsHistoryReducer,
   voice: voiceReducer,
   shotPlacement: shotPlacementReducer,
   userCourses: userCoursesReducer,
@@ -28,7 +30,7 @@ const rootReducer = combineReducers({
 const persistConfig = {
   key: 'root',
   storage: AsyncStorage,
-  whitelist: ['auth', 'rounds', 'userCourses', 'testMode'], // Persist auth, rounds, user courses, and test mode
+  whitelist: ['auth', 'rounds', 'roundsHistory', 'userCourses', 'testMode'], // Persist auth, rounds, rounds history, user courses, and test mode
   blacklist: ['courses', 'voice', 'aiCaddie', 'dashboard'], // Don't persist course data, voice state, AI caddie state, or dashboard (real-time data)
 };
 

@@ -888,6 +888,23 @@ public class RoundService : IRoundService
             holeScore.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
+
+            // If score was updated, recalculate and update the round's total score
+            if (model.Score.HasValue)
+            {
+                var round = await _context.Rounds.FirstOrDefaultAsync(r => r.Id == holeScore.RoundId);
+                if (round != null)
+                {
+                    var totalScore = await CalculateRoundTotalInternalAsync(holeScore.RoundId);
+                    round.TotalScore = totalScore;
+                    round.UpdatedAt = DateTime.UtcNow;
+                    _context.Rounds.Update(round);
+                    await _context.SaveChangesAsync();
+
+                    _logger.LogInformation("Updated hole score {HoleScoreId} for round {RoundId}. Updated total score to {TotalScore}", 
+                        id, holeScore.RoundId, totalScore);
+                }
+            }
             
             return MapToHoleScoreModel(holeScore);
         }
@@ -908,8 +925,23 @@ public class RoundService : IRoundService
                 return false;
             }
 
+            var roundId = holeScore.RoundId;
             _context.HoleScores.Remove(holeScore);
             await _context.SaveChangesAsync();
+
+            // Recalculate and update the round's total score
+            var round = await _context.Rounds.FirstOrDefaultAsync(r => r.Id == roundId);
+            if (round != null)
+            {
+                var totalScore = await CalculateRoundTotalInternalAsync(roundId);
+                round.TotalScore = totalScore;
+                round.UpdatedAt = DateTime.UtcNow;
+                _context.Rounds.Update(round);
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Deleted hole score {HoleScoreId} from round {RoundId}. Updated total score to {TotalScore}", 
+                    id, roundId, totalScore);
+            }
             
             return true;
         }
@@ -1054,9 +1086,16 @@ public class RoundService : IRoundService
                 existingScore.UpdatedAt = DateTime.UtcNow;
                 _context.HoleScores.Update(existingScore);
                 await _context.SaveChangesAsync();
+
+                // Recalculate and update the round's total score
+                var updatedTotalScore = await CalculateRoundTotalInternalAsync(roundId);
+                round.TotalScore = updatedTotalScore;
+                round.UpdatedAt = DateTime.UtcNow;
+                _context.Rounds.Update(round);
+                await _context.SaveChangesAsync();
                 
-                _logger.LogInformation("Updated hole score for round {RoundId} hole {HoleNumber}: {Score}", 
-                    roundId, model.HoleNumber, model.Score);
+                _logger.LogInformation("Updated hole score for round {RoundId} hole {HoleNumber}: {Score}. Updated total score to {TotalScore}", 
+                    roundId, model.HoleNumber, model.Score, updatedTotalScore);
                 
                 return MapToHoleScoreModel(existingScore);
             }
@@ -1075,8 +1114,15 @@ public class RoundService : IRoundService
             _context.HoleScores.Add(holeScore);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Completed hole {HoleNumber} for round {RoundId} with score {Score}", 
-                model.HoleNumber, roundId, model.Score);
+            // Recalculate and update the round's total score
+            var totalScore = await CalculateRoundTotalInternalAsync(roundId);
+            round.TotalScore = totalScore;
+            round.UpdatedAt = DateTime.UtcNow;
+            _context.Rounds.Update(round);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Completed hole {HoleNumber} for round {RoundId} with score {Score}. Updated total score to {TotalScore}", 
+                model.HoleNumber, roundId, model.Score, totalScore);
 
             return MapToHoleScoreModel(holeScore);
         }
@@ -1416,8 +1462,15 @@ public class RoundService : IRoundService
 
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Quick score updated for round {RoundId}, hole {HoleNumber}: score {Score}", 
-                roundId, holeNumber, score);
+            // Recalculate and update the round's total score
+            var totalScore = await CalculateRoundTotalInternalAsync(roundId);
+            holeScore.Round.TotalScore = totalScore;
+            holeScore.Round.UpdatedAt = DateTime.UtcNow;
+            _context.Rounds.Update(holeScore.Round);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Quick score updated for round {RoundId}, hole {HoleNumber}: score {Score}. Updated total score to {TotalScore}", 
+                roundId, holeNumber, score, totalScore);
 
             return MapToHoleScoreModel(holeScore);
         }

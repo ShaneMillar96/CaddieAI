@@ -77,7 +77,7 @@ export interface RefreshInsightsRequestDto {
 export interface RecentRoundsWidgetProps {
   rounds: RecentRoundDto[];
   loading: boolean;
-  onRoundPress: (roundId: number) => void;
+  onRoundPress: (roundId: number, courseName?: string) => void;
   onViewAllPress: () => void;
 }
 

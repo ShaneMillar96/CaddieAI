@@ -7,7 +7,7 @@ import {
   RoundStatus,
   HoleCompletionRequest,
   QuickScoreUpdate,
-  DashboardState,
+  RoundDashboardState,
 } from '../../types';
 import roundApi from '../../services/roundApi';
 

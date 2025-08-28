@@ -387,9 +387,9 @@ export interface CourseState {
 }
 
 /**
- * Dashboard state interface for hole navigation and UI management
+ * Round dashboard state interface for hole navigation and UI management
  */
-export interface DashboardState {
+export interface RoundDashboardState {
   currentHole: number;          // Actual hole for GPS/AI features
   viewingHole: number;          // Hole displayed in UI
   showScoreModal: boolean;      // Full completion modal
@@ -414,7 +414,7 @@ export interface RoundState {
   isCompleting: boolean;
   error: string | null;
   lastSyncTime: string | null;
-  dashboardState: DashboardState;
+  dashboardState: RoundDashboardState;
 }
 
 // =============================================================================
