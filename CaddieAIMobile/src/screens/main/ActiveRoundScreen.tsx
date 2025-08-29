@@ -483,38 +483,48 @@ export const ActiveRoundScreen: React.FC = () => {
 
   // Toggle shot placement mode
   const handleShotPlacementToggle = useCallback(async () => {
-    // Disable shot placement if viewing different hole
-    if (shouldDisableShotPlacement) {
-      Alert.alert(
-        'Shot Placement Unavailable',
-        `Shot placement is only available for the current hole (${currentHole}). You are viewing hole ${viewingHole}.`,
-        [
-          { text: 'OK' },
-          { 
-            text: 'Go to Current Hole', 
-            onPress: () => {
-              // Reset viewing hole to current hole
-              dispatch(resetToCurrentHole());
-            }
-          }
-        ]
-      );
-      return;
-    }
+    console.log('🎯 Shot placement toggle requested:', {
+      currentHole,
+      viewingHole,
+      shouldDisableShotPlacement,
+      isViewingDifferentHole,
+      activeRoundId: activeRound?.id
+    });
 
     const newMode = !shotPlacementModeEnabled;
-    setShotPlacementModeEnabled(newMode);
     
     if (newMode) {
+      // Only check restrictions when ENABLING shot placement mode
+      if (shouldDisableShotPlacement) {
+        console.log('❌ Shot placement disabled: viewing different hole');
+        Alert.alert(
+          'Shot Placement Unavailable',
+          `Shot placement is only available for the current hole (${currentHole}). You are viewing hole ${viewingHole}.`,
+          [
+            { text: 'OK' },
+            { 
+              text: 'Go to Current Hole', 
+              onPress: () => {
+                // Reset viewing hole to current hole
+                dispatch(resetToCurrentHole());
+              }
+            }
+          ]
+        );
+        return;
+      }
+      
       // Enable shot placement mode
       dispatch(setPlacingShot(true));
       console.log('🎯 ActiveRoundScreen: Shot placement mode enabled');
     } else {
-      // Disable shot placement mode
+      // Disable shot placement mode (no restrictions when disabling)
       dispatch(cancelShotPlacement());
       dispatch(setPlacingShot(false));
       console.log('🎯 ActiveRoundScreen: Shot placement mode disabled');
     }
+    
+    setShotPlacementModeEnabled(newMode);
   }, [shotPlacementModeEnabled, dispatch]);
 
   // Activate shot placement (user ready to take shot)

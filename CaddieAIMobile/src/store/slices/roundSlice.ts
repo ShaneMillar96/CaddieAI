@@ -470,6 +470,12 @@ const roundSlice = createSlice({
     builder.addCase(createRound.fulfilled, (state, action) => {
       state.isLoading = false;
       state.activeRound = action.payload;
+      
+      // Reset to hole 1 when creating a round
+      state.dashboardState.currentHole = 1;
+      state.dashboardState.viewingHole = 1;
+      
+      console.log('🎆 Round created: Reset hole state to 1');
     });
     builder.addCase(createRound.rejected, (state, action) => {
       state.isLoading = false;
@@ -484,6 +490,12 @@ const roundSlice = createSlice({
     builder.addCase(startRound.fulfilled, (state, action) => {
       state.isStarting = false;
       state.activeRound = action.payload;
+      
+      // Reset to hole 1 when starting a round
+      state.dashboardState.currentHole = 1;
+      state.dashboardState.viewingHole = 1;
+      
+      console.log('▶️ Round started: Reset hole state to 1');
     });
     builder.addCase(startRound.rejected, (state, action) => {
       state.isStarting = false;
@@ -560,6 +572,12 @@ const roundSlice = createSlice({
       // Move from active to history
       state.activeRound = null;
       
+      // Reset hole state for next round
+      state.dashboardState.currentHole = 1;
+      state.dashboardState.viewingHole = 1;
+      
+      console.log('✅ Round completed: Reset hole state to 1 for next round');
+      
       // Add to history if not already there
       const existingIndex = state.roundHistory.findIndex(round => round.id === completedRound.id);
       if (existingIndex >= 0) {
@@ -586,6 +604,12 @@ const roundSlice = createSlice({
       if (state.activeRound && state.activeRound.id === abandonedRound.id) {
         state.activeRound = null;
       }
+      
+      // Reset hole state for next round
+      state.dashboardState.currentHole = 1;
+      state.dashboardState.viewingHole = 1;
+      
+      console.log('🚫 Round abandoned: Reset hole state to 1 for next round');
       
       // Add to history
       const existingIndex = state.roundHistory.findIndex(round => round.id === abandonedRound.id);
@@ -621,7 +645,27 @@ const roundSlice = createSlice({
     });
     builder.addCase(fetchActiveRound.fulfilled, (state, action) => {
       state.isLoading = false;
-      state.activeRound = action.payload;
+      const newActiveRound = action.payload;
+      const isNewRound = !state.activeRound || state.activeRound.id !== newActiveRound?.id;
+      
+      state.activeRound = newActiveRound;
+      
+      // Reset hole state when loading a new round (different ID) or first round
+      if (isNewRound && newActiveRound) {
+        // Determine the current hole based on completed scores
+        const completedHoleNumbers = newActiveRound.holeScores?.map(hs => hs.holeNumber) || [];
+        const maxCompletedHole = completedHoleNumbers.length > 0 
+          ? Math.max(...completedHoleNumbers)
+          : 0;
+        
+        // Current hole is the next hole after the highest completed hole, but minimum 1
+        const nextHole = Math.min(maxCompletedHole + 1, newActiveRound.course?.totalHoles || 18);
+        
+        state.dashboardState.currentHole = nextHole;
+        state.dashboardState.viewingHole = nextHole;
+        
+        console.log(`🔄 Round loaded: Reset hole state to ${nextHole} (completed holes: ${completedHoleNumbers.join(', ') || 'none'})`);
+      }
     });
     builder.addCase(fetchActiveRound.rejected, (state, action) => {
       state.isLoading = false;
@@ -746,6 +790,12 @@ const roundSlice = createSlice({
       state.isStarting = false;
       state.activeRound = action.payload;
       state.error = null;
+      
+      // Always reset to hole 1 when creating a new round
+      state.dashboardState.currentHole = 1;
+      state.dashboardState.viewingHole = 1;
+      
+      console.log('🎆 New round created: Reset hole state to 1');
     });
     builder.addCase(createAndStartRound.rejected, (state, action) => {
       state.isStarting = false;

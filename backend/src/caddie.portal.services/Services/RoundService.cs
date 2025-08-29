@@ -857,6 +857,16 @@ public class RoundService : IRoundService
             _context.HoleScores.Add(holeScore);
             await _context.SaveChangesAsync();
 
+            // Recalculate and update the round's total score
+            var totalScore = await CalculateRoundTotalInternalAsync(roundId);
+            round.TotalScore = totalScore;
+            round.UpdatedAt = DateTime.UtcNow;
+            _context.Rounds.Update(round);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Created hole score for round {RoundId} hole {HoleNumber}: {Score}. Updated total score to {TotalScore}", 
+                roundId, model.HoleNumber, model.Score, totalScore);
+
             // Reload with hole information
             await _context.Entry(holeScore).Reference(hs => hs.Hole).LoadAsync();
             
